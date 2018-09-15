@@ -6,6 +6,10 @@ extern crate openssl;
 use std::path::PathBuf;
 use self::actix_web::{server, App, HttpRequest, Responder, fs::NamedFile, http::Method};
 use self::actix_web::Result as wResult;
+
+use self::actix::*;
+use self::actix_web::*;
+
 use self::openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 //use futures::future::Future;
 use std::sync::mpsc;
@@ -26,13 +30,30 @@ fn goodby(_req: &HttpRequest) -> impl Responder {
     "Goodby!"
 }
 
+/// Define http actor
+struct Ws;
+
+impl Actor for Ws {
+    type Context = ws::WebsocketContext<Self>;
+}
+
+/// Handler for ws::Message message
+impl StreamHandler<ws::Message, ws::ProtocolError> for Ws {
+
+    fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
+        match msg {
+            ws::Message::Ping(msg) => ctx.pong(&msg),
+            ws::Message::Text(text) => ctx.text(text),
+            ws::Message::Binary(bin) => ctx.binary(bin),
+            _ => (),
+        }
+    }
+}
+
 pub fn start() -> ServerHandle {
     // load ssl keys
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-    builder
-        .set_private_key_file("key.pem", SslFiletype::PEM)
-        .unwrap();
-
+    builder.set_private_key_file("key.pem", SslFiletype::PEM).unwrap();
     builder.set_certificate_chain_file("cert.pem").unwrap();
 
     let (tx, rx) = mpsc::channel();
@@ -40,6 +61,7 @@ pub fn start() -> ServerHandle {
     thread::spawn(move || {
         let sys = actix::System::new("http-server");
         let addr = server::new(|| App::new()
+        .resource("/wss/", |r| r.f(|req| ws::start(req, Ws)))
         .resource(r"/{tail:.*}", |r| r.method(Method::GET).f(index))
         .resource("/goodby.html", |r| r.f(goodby)) 
         )

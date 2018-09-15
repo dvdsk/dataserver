@@ -1,100 +1,38 @@
-extern crate openssl;
-extern crate ws;
+extern crate websocket;
+extern crate native_tls;
 
-use self::ws::util::TcpStream;
-use self::ws::Error as wsError;
-use self::ws::Result as wsResult;
-use self::ws::{CloseCode, Handler, Handshake, Message, Sender};
-
+use std::thread;
+use std::io::Read;
 use std::fs::File;
 
-use std::io::{Error, Read};
-use std::rc::Rc;
-use std::thread;
+use self::websocket::Message;
+use self::websocket::sync::Server;
+//use self::websocket::native_tls::{Identity, TlsAcceptor, TlsStream};
+use self::native_tls::{Pkcs12, TlsAcceptor};
 
-use self::openssl::pkey::PKey;
-use self::openssl::ssl::{SslAcceptor, SslMethod, SslStream};
-use self::openssl::x509::X509;
+pub fn start(){
+	
+	let mut file = File::open("identity.pfx").unwrap();
+	let mut pkcs12 = vec![];
+	file.read_to_end(&mut pkcs12).unwrap();
+	let pkcs12 = Pkcs12::from_der(&pkcs12, "").unwrap();
 
-struct Server {
-    out: Sender,
-    ssl: Rc<SslAcceptor>,
-}
+	let acceptor = TlsAcceptor::builder(pkcs12).unwrap().build().unwrap();
 
-impl Handler for Server {
-    fn upgrade_ssl_server(&mut self, sock: TcpStream) -> wsResult<SslStream<TcpStream>> {
-        println!("trying to ssl");
-        println!("{:?}",self.ssl.accept(sock));
-        self.ssl.accept(sock).map_err(From::from)
-    }
+	let server = Server::bind_secure("0.0.0.0:3012", acceptor).unwrap();
 
-    fn on_open(&mut self, _: Handshake) -> wsResult<()> {
-        // We have a new connection, so we increment the connection counter
-        println!("user connected to webserver");
-        Ok(())
-    }
+	thread::spawn(move || {
+		println!("testy");
+		for connection in server {
+			println!("client connected to websocket, error: {:?}", connection.is_err());
+			// Spawn a new thread for each connection.
+			//thread::spawn(move || {
+					//let mut client = connection.accept().unwrap();
+					//let message = Message::text("Hello, client!");
+					//let _ = client.send_message(&message);
 
-    fn on_message(&mut self, msg: Message) -> wsResult<()> {
-        // Tell the user the current count
-        println!("user send message to webserver");
-
-        // Echo the message back
-        self.out.send(msg)
-    }
-
-    fn on_close(&mut self, code: CloseCode, reason: &str) {
-        match code {
-            CloseCode::Normal => println!("The client is done with the connection."),
-            CloseCode::Away => println!("The client is leaving the site."),
-            CloseCode::Abnormal => {
-                println!("Closing handshake failed! Unable to obtain closing status from client.")
-            }
-            _ => println!("The client encountered an error: {}", reason),
-        }
-
-        // The connection is going down
-    }
-
-    fn on_error(&mut self, err: wsError) {
-        println!("The server encountered an error: {:?}", err);
-    }
-}
-
-pub fn start() {
-    let cert = {
-        let data = read_file("cert.pem").unwrap();
-        X509::from_pem(data.as_ref()).unwrap()
-    };
-
-    let pkey = {
-        let data = read_file("key.pem").unwrap();
-        PKey::private_key_from_pem(data.as_ref()).unwrap()
-    };
-
-    thread::spawn(move || {
-        let acceptor = Rc::new({
-            let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-            builder.set_private_key(&pkey).unwrap();
-            builder.set_certificate(&cert).unwrap();
-            builder.build()
-        });
-
-        ws::Builder::new()
-            .with_settings(ws::Settings {
-                encrypt_server: true,
-                ..ws::Settings::default()
-            }).build(|out: ws::Sender| Server {
-                out: out,
-                ssl: acceptor.clone(),
-            }).unwrap()
-            .listen("0.0.0.0:3012")
-            .unwrap();
-    });
-}
-
-fn read_file(name: &str) -> Result<Vec<u8>, Error> {
-    let mut file = File::open(name)?;
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf)?;
-    Ok(buf)
+					//// ...
+			//});
+		}
+	});
 }

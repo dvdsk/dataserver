@@ -4,7 +4,8 @@ version = "0.1.0"
 authors = ["David Kleingeld <dskleingeld@gmail.com>"]
 
 [dependencies]
-ws = { git = "https://github.com/peddermaster2/ws-rs", branch = "update-ssl", features = ["ssl"]}
+websocket = "0.20.3"
+native-tls = "^0.1.2"
 
 actix-web = { version = "0.7.7", features = ["alpn"] }
 openssl = "^0.10"

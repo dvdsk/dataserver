@@ -1,14 +1,14 @@
 extern crate actix;
 extern crate actix_web;
 extern crate openssl;
+extern crate env_logger;
 
-//use self::actix::System;
 use std::path::PathBuf;
-use self::actix_web::{server, App, HttpRequest, Responder, fs::NamedFile, http::Method};
-use self::actix_web::Result as wResult;
 
 use self::actix::*;
-use self::actix_web::*;
+use self::actix_web::{http, server, App, ws, HttpRequest, HttpResponse, Responder, fs::NamedFile, http::Method};
+use self::actix_web::Result as wResult;
+use self::actix_web::Error as wError;
 
 use self::openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 //use futures::future::Future;
@@ -30,21 +30,33 @@ fn goodby(_req: &HttpRequest) -> impl Responder {
     "Goodby!"
 }
 
-/// Define http actor
-struct Ws;
 
-impl Actor for Ws {
+/// do websocket handshake and start `MyWebSocket` actor
+fn ws_index(r: &HttpRequest) -> Result<HttpResponse, wError> {
+	println!("websocket connected");
+    ws::start(r, MyWebSocket)
+}
+
+/// websocket connection is long running connection, it easier
+/// to handle with an actor
+struct MyWebSocket;
+
+impl Actor for MyWebSocket {
     type Context = ws::WebsocketContext<Self>;
 }
 
-/// Handler for ws::Message message
-impl StreamHandler<ws::Message, ws::ProtocolError> for Ws {
-
+/// Handler for `ws::Message`
+impl StreamHandler<ws::Message, ws::ProtocolError> for MyWebSocket {
     fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
+        // process websocket messages
+        println!("WS: {:?}", msg);
         match msg {
             ws::Message::Ping(msg) => ctx.pong(&msg),
             ws::Message::Text(text) => ctx.text(text),
             ws::Message::Binary(bin) => ctx.binary(bin),
+            ws::Message::Close(_) => {
+                ctx.stop();
+            }
             _ => (),
         }
     }
@@ -52,6 +64,11 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for Ws {
 
 pub fn start() -> ServerHandle {
     // load ssl keys
+    
+    if ::std::env::var("RUST_LOG").is_err() {
+        ::std::env::set_var("RUST_LOG", "actix_web=info"); }
+	env_logger::init();
+    
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
     builder.set_private_key_file("key.pem", SslFiletype::PEM).unwrap();
     builder.set_certificate_chain_file("cert.pem").unwrap();
@@ -61,11 +78,13 @@ pub fn start() -> ServerHandle {
     thread::spawn(move || {
         let sys = actix::System::new("http-server");
         let addr = server::new(|| App::new()
-        .resource("/wss/", |r| r.f(|req| ws::start(req, Ws)))
+        // websocket route
+        .resource("/ws/", |r| r.method(http::Method::GET).f(ws_index))
         .resource(r"/{tail:.*}", |r| r.method(Method::GET).f(index))
         .resource("/goodby.html", |r| r.f(goodby)) 
         )
 		.bind_ssl("0.0.0.0:8080", builder).unwrap()
+        //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
 		.shutdown_timeout(60)    // <- Set shutdown timeout to 60 seconds
 		.start();
 

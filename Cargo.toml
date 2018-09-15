@@ -10,3 +10,5 @@ native-tls = "^0.1.2"
 actix-web = { version = "0.7.7", features = ["alpn"] }
 openssl = "^0.10"
 actix = "0.7.4"
+
+env_logger = "0.5.13"

@@ -1,0 +1,11 @@
+[package]
+name = "dataserver"
+version = "0.1.0"
+authors = ["David Kleingeld <dskleingeld@gmail.com>"]
+
+[dependencies]
+ws = { git = "https://github.com/peddermaster2/ws-rs", branch = "update-ssl", features = ["ssl"]}
+
+actix-web = { version = "0.7.7", features = ["alpn"] }
+openssl = "^0.10"
+actix = "0.7.4"

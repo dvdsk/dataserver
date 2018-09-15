@@ -1,0 +1,130 @@
+<head>
+  <!-- Plotly.js -->
+   <script src="plotly-latest.min.js"></script>
+</head>
+
+<body>
+  <div id="myDiv"><!-- Plotly chart will be drawn inside this DIV --></div>
+  <script>
+	(function() {
+	var d3 = Plotly.d3;
+
+	var WIDTH_IN_PERCENT_OF_PARENT = 100,
+		HEIGHT_IN_PERCENT_OF_PARENT = 80;
+
+	var gd3 = d3.select('body')
+		.append('div')
+		.style({
+			width: WIDTH_IN_PERCENT_OF_PARENT + '%',
+			'margin-left': (100 - WIDTH_IN_PERCENT_OF_PARENT) / 2 + '%',
+
+			height: HEIGHT_IN_PERCENT_OF_PARENT + 'vh',
+			'margin-top': (100 - HEIGHT_IN_PERCENT_OF_PARENT) / 2 + 'vh'
+		});
+
+	var gd = gd3.node();
+
+	var x = [];
+	var counter;
+	var oldCounter = 0;
+	var webSocketCounter = 0;
+	
+	var initY;
+	var initLen;
+	var numbOfMessagesPerInit;
+	
+	var data = [{
+		type: 'scattergl',
+		color: 'blue'},
+	{
+		yaxis: 'y2',
+		color: 'orange',
+		type: 'scattergl'}
+	];
+	
+	
+    function updatePlot(evt){
+        var yraw = new Float32Array(evt.data);
+		var y2 = yraw.slice(yraw.length/2);
+		var y1 = yraw.slice(0,yraw.length/2);
+
+		x.length = 0;
+		for (counter = oldCounter; counter < oldCounter+1*yraw.length/2; counter+=1) {
+			x.push(counter);
+		}
+		oldCounter = counter;
+		
+		Plotly.extendTraces(gd, {
+			x: [x,x], 
+			y: [Array.from(y1) ,Array.from(y2)]
+		  }, [0,1])
+	}
+	
+    function initPlot(evt){
+		if (webSocketCounter==0){
+			numbOfMessagesPerInit = (new Int16Array(evt.data))[0];
+			//console.log(numbOfMessagesPerInit);
+		} else if (webSocketCounter == 1){
+			data[0].y = Array.from(new Float32Array(evt.data));
+		} else if (webSocketCounter <= numbOfMessagesPerInit){
+			data[0].y = data[0].y.concat(Array.from(new Float32Array(evt.data)));
+			
+		} else if (webSocketCounter == numbOfMessagesPerInit+1){
+			numbOfMessagesPerInit = (new Int16Array(evt.data))[0];
+			console.log(numbOfMessagesPerInit);
+		} else if (webSocketCounter == numbOfMessagesPerInit+2){
+			data[1].y = Array.from(new Float32Array(evt.data));
+		} else if (webSocketCounter <= numbOfMessagesPerInit + (numbOfMessagesPerInit+1 )){
+			data[1].y = data[1].y.concat(Array.from(new Float32Array(evt.data)));
+			
+		} else {
+			for (counter = oldCounter; counter < oldCounter+1*data[1].y.length; counter+=1) {
+				x.push(counter);
+			}
+			oldCounter = counter;
+			data[0].x = Array.from(x);
+			data[1].x = Array.from(x);
+			Plotly.newPlot(gd, data, layout);
+			ws.onmessage = updatePlot;
+		}
+		webSocketCounter++;
+	}
+	
+	ws = new WebSocket("ws://deviousd.duckdns.org:3012/ws")
+	ws.binaryType = 'arraybuffer';
+	
+	ws.onmessage = initPlot;
+
+		
+
+
+	var layout = {
+		font: {
+			//family: 'Courier New, monospace',
+			size: 30
+		},
+		xaxis: {title: 'time (s)'},
+		yaxis: {
+		  title: 'humidity',
+		  titlefont: {color: 'blue'},
+		  tickfont: {color: 'blue'},
+		},
+		yaxis2: {
+		  title: 'temp',
+		  titlefont: {color: 'orange'},
+		  tickfont: {color: 'orange'},
+		  overlaying: 'y',
+		  side: 'right'
+		}
+	};
+	
+	
+})();  
+
+	
+
+  </script>
+</body>
+
+//.map(function(x) { return x * 10; });
+//document.getElementById('myDiv').innerHTML = JSON.stringify(yraw, null, 2);

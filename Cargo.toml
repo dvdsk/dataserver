@@ -4,11 +4,16 @@ version = "0.1.0"
 authors = ["David Kleingeld <dskleingeld@gmail.com>"]
 
 [dependencies]
-websocket = "0.20.3"
-native-tls = "^0.1.2"
+#websocket = "0.20.3"
+#native-tls = "^0.1.2"
 
 actix-web = { version = "0.7.7", features = ["alpn"] }
 openssl = "^0.10"
 actix = "0.7.4"
 
 env_logger = "0.5.13"
+acme-client = "0.5.3"
+
+webpki = "0.18.1"
+webpki-roots = "0.15.0"
+untrusted = "0.6.2"

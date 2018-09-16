@@ -1,14 +1,16 @@
 extern crate actix;
 extern crate actix_web;
-extern crate openssl;
 extern crate env_logger;
+extern crate openssl;
 
 use std::path::PathBuf;
 
 use self::actix::*;
-use self::actix_web::{http, server, App, ws, HttpRequest, HttpResponse, Responder, fs::NamedFile, http::Method};
-use self::actix_web::Result as wResult;
 use self::actix_web::Error as wError;
+use self::actix_web::Result as wResult;
+use self::actix_web::{
+    fs::NamedFile, http, http::Method, server, ws, App, HttpRequest, HttpResponse, Responder,
+};
 
 use self::openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 //use futures::future::Future;
@@ -19,10 +21,10 @@ use std::time::Duration;
 type ServerHandle = self::actix::Addr<self::actix_web::server::Server>;
 
 fn index(req: &HttpRequest) -> wResult<NamedFile> {
-	let file_name: PathBuf = req.match_info().query("tail")?;
+    let file_name: PathBuf = req.match_info().query("tail")?;
     let mut path: PathBuf = PathBuf::from("web/");
-    path.push(file_name );
-    
+    path.push(file_name);
+
     Ok(NamedFile::open(path)?)
 }
 
@@ -30,10 +32,9 @@ fn goodby(_req: &HttpRequest) -> impl Responder {
     "Goodby!"
 }
 
-
 /// do websocket handshake and start `MyWebSocket` actor
 fn ws_index(r: &HttpRequest) -> Result<HttpResponse, wError> {
-	println!("websocket connected");
+    println!("websocket connected");
     ws::start(r, MyWebSocket)
 }
 
@@ -64,13 +65,16 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for MyWebSocket {
 
 pub fn start() -> ServerHandle {
     // load ssl keys
-    
+
     if ::std::env::var("RUST_LOG").is_err() {
-        ::std::env::set_var("RUST_LOG", "actix_web=info"); }
-	env_logger::init();
-    
+        ::std::env::set_var("RUST_LOG", "actix_web=info");
+    }
+    env_logger::init();
+
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-    builder.set_private_key_file("key.pem", SslFiletype::PEM).unwrap();
+    builder
+        .set_private_key_file("key.pem", SslFiletype::PEM)
+        .unwrap();
     builder.set_certificate_chain_file("cert.pem").unwrap();
 
     let (tx, rx) = mpsc::channel();

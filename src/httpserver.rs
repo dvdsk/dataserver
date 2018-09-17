@@ -84,11 +84,13 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> ServerHandle {
         let sys = actix::System::new("http-server");
         let addr = server::new(|| App::new()
         // websocket route
+        // note some browsers need already existing http connection to 
+        // this server for the upgrade to wss to work
         .resource("/ws/", |r| r.method(http::Method::GET).f(ws_index))
         .resource(r"/{tail:.*}", |r| r.method(Method::GET).f(index))
         .resource("/goodby.html", |r| r.f(goodby)) 
         )
-		.bind_ssl("0.0.0.0:8060", builder).unwrap()
+		.bind_ssl("0.0.0.0:8080", builder).unwrap()
         //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
 		.shutdown_timeout(60)    // <- Set shutdown timeout to 60 seconds
 		.start();

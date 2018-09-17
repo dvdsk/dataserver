@@ -178,17 +178,17 @@ fn stop_server(handle: ServerHandle) {
 }
 
 // FIXME
-//fn make_domain_list<'a>(domain: &'a str) -> &'a[&str;2] {
-	//let mut domain = domain.to_owned();
+fn make_domain_list(domain: &str) -> (String, String) {
+	let mut domain = domain.to_owned();
 	
-	//if domain.starts_with("www.") {
-		//let without_www = domain.split_off(4);
-		//&[domain.as_str(), without_www.as_str()]
-	//} else {
-		//let www = "www.".to_owned();
-		//&[(www+&domain).as_str(), domain.as_str()]
-	//}
-//}
+	if domain.starts_with("www.") {
+		let without_www = domain.split_off(4);
+		(domain, without_www)
+	} else {
+		let www = "www.".to_owned();
+		(www+&domain, domain)
+	}
+}
 
 pub fn generate_and_sign_keys(
     domain: &str,
@@ -197,7 +197,8 @@ pub fn generate_and_sign_keys(
     user_private_key: &Path,
 ) -> Result<(), aError> {
 	
-	let domains = ["deviousd.duckdns.org","www.deviousd.duckdns.org"];
+	let (a,b) = make_domain_list(domain);
+	let domains = [a.as_str(), b.as_str()];
     let directory = Directory::lets_encrypt().unwrap();
 
     let account = if user_private_key.exists() {

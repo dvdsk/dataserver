@@ -19,9 +19,7 @@ fn main() {
         println!("could not auto generate certificate, error: {:?}", error)
     }
 
-	//certificate_manager::host_server();
-
-    //let handle = httpserver::start();
+    let handle = httpserver::start( Path::new("keys/cert.key"), Path::new("keys/cert.cert") );
     pause();
-    //httpserver::stop(handle);
+    httpserver::stop(handle);
 }

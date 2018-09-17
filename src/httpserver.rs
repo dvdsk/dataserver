@@ -17,6 +17,7 @@ use self::openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+use std::path::Path;
 
 type ServerHandle = self::actix::Addr<self::actix_web::server::Server>;
 
@@ -63,7 +64,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for MyWebSocket {
     }
 }
 
-pub fn start() -> ServerHandle {
+pub fn start(signed_cert: &Path, private_key: &Path) -> ServerHandle {
     // load ssl keys
 
     if ::std::env::var("RUST_LOG").is_err() {
@@ -73,9 +74,9 @@ pub fn start() -> ServerHandle {
 
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
     builder
-        .set_private_key_file("key.pem", SslFiletype::PEM)
+        .set_private_key_file(private_key, SslFiletype::PEM)
         .unwrap();
-    builder.set_certificate_chain_file("cert.pem").unwrap();
+    builder.set_certificate_chain_file(signed_cert).unwrap();
 
     let (tx, rx) = mpsc::channel();
 
@@ -87,7 +88,7 @@ pub fn start() -> ServerHandle {
         .resource(r"/{tail:.*}", |r| r.method(Method::GET).f(index))
         .resource("/goodby.html", |r| r.f(goodby)) 
         )
-		.bind_ssl("0.0.0.0:8080", builder).unwrap()
+		.bind_ssl("0.0.0.0:8060", builder).unwrap()
         //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
 		.shutdown_timeout(60)    // <- Set shutdown timeout to 60 seconds
 		.start();

@@ -13,13 +13,14 @@ use self::acme_client::error::Error as aError;
 use self::acme_client::Directory;
 //use self::acme_client::LETSENCRYPT_INTERMEDIATE_CERT_URL;
 
-use self::actix_web::{fs, server, App, /*from here on for testing only*/ http, HttpResponse, HttpRequest};
+use self::actix_web::{fs, server, App, http, HttpRequest};
 use self::actix_web::Result as wResult;
 use std::sync::mpsc;
 use std::thread;
 
 use std::fs::create_dir;
 use std::fs::File;
+use std::fs::remove_dir_all;
 use std::io::Read;
 use std::path::Path;
 use std::time::Duration;
@@ -176,12 +177,27 @@ fn stop_server(handle: ServerHandle) {
         .timeout(Duration::from_secs(5)); // <- Send `StopServer` message to server.
 }
 
+// FIXME
+//fn make_domain_list<'a>(domain: &'a str) -> &'a[&str;2] {
+	//let mut domain = domain.to_owned();
+	
+	//if domain.starts_with("www.") {
+		//let without_www = domain.split_off(4);
+		//&[domain.as_str(), without_www.as_str()]
+	//} else {
+		//let www = "www.".to_owned();
+		//&[(www+&domain).as_str(), domain.as_str()]
+	//}
+//}
+
 pub fn generate_and_sign_keys(
     domain: &str,
     signed_cert: &Path,
     private_key: &Path,
     user_private_key: &Path,
 ) -> Result<(), aError> {
+	
+	let domains = ["deviousd.duckdns.org","www.deviousd.duckdns.org"];
     let directory = Directory::lets_encrypt().unwrap();
 
     let account = if user_private_key.exists() {
@@ -199,30 +215,34 @@ pub fn generate_and_sign_keys(
     };
 
     // Create a identifier authorization for example.com
-    let authorization = account.authorization(domain).unwrap();
-
-    // Validate ownership of example.com with http challenge
-    let http_challenge = authorization
-        .get_http_challenge()
-        .ok_or("HTTP challenge not found")
-        .unwrap();
-
+    // TODO add www. domain, and strip domain of www if it already has
+    // also print domains for which certs are being requested
     create_dir(".tmp/www");
-    http_challenge.save_key_authorization(".tmp/www").unwrap();
-
     //host server with key saved above
-    let server = host_server().expect("needs to be ran as root");
-	//now server is up we are to finish the challange
-    http_challenge.validate().unwrap();
+	let server = host_server().expect("needs to be ran as root");
+    
+    for domain in domains.iter() {
+		let authorization = account.authorization(domain).unwrap();
+
+		// Validate ownership of example.com with http challenge
+		let http_challenge = authorization
+			.get_http_challenge()
+			.ok_or("HTTP challenge not found")
+			.unwrap();
+
+		http_challenge.save_key_authorization(".tmp/www").unwrap();
+		http_challenge.validate().unwrap();
+	}
+
     //done, we can shut this server down
     stop_server(server);
     //clean up challange dir
-    //TODO
+	remove_dir_all(".tmp/www")?;
 
     //this wil generate a key and csr (certificate signing request)
     //then send the csr off for signing
     let cert = account
-        .certificate_signer(&[domain])
+        .certificate_signer(&domains)
         .sign_certificate()
         .unwrap();
 
@@ -236,14 +256,4 @@ pub fn generate_and_sign_keys(
 #[test]
 pub fn netflix_test() {
     netflix(Path::new("tests/ee.der"), Path::new("tests/inter.der"));
-}
-
-use std::io::{stdin, stdout, Read as localRead, Write};
-pub fn pause() {
-    let mut stdout = stdout();
-    stdout
-        .write(b"Press Enter to halt servers and quit...")
-        .unwrap();
-    stdout.flush().unwrap();
-    stdin().read(&mut [0]).unwrap();
 }

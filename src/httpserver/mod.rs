@@ -18,10 +18,17 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 use std::path::Path;
+use std::time::Instant;
+
+mod websocket_dataserver;
+
+struct WsDataSessionState {
+    addr: Addr<websocket_dataserver::DataServer>,
+}
 
 type ServerHandle = self::actix::Addr<self::actix_web::server::Server>;
 
-fn index(req: &HttpRequest) -> wResult<NamedFile> {
+fn index(req: &HttpRequest<WsDataSessionState>) -> wResult<NamedFile> {
     let file_name: PathBuf = req.match_info().query("tail")?;
     let mut path: PathBuf = PathBuf::from("web/");
     path.push(file_name);
@@ -29,26 +36,41 @@ fn index(req: &HttpRequest) -> wResult<NamedFile> {
     Ok(NamedFile::open(path)?)
 }
 
-fn goodby(_req: &HttpRequest) -> impl Responder {
+fn goodby(_req: &HttpRequest<WsDataSessionState>) -> impl Responder {
     "Goodby!"
 }
 
 /// do websocket handshake and start `MyWebSocket` actor
-fn ws_index(r: &HttpRequest) -> Result<HttpResponse, wError> {
+fn ws_index(r: &HttpRequest<WsDataSessionState>) -> Result<HttpResponse, wError> {
     println!("websocket connected");
-    ws::start(r, MyWebSocket)
+    ws::start(r, WsDataSession {
+            id: 0,
+            hb: Instant::now(),
+            room: "Main".to_owned(),
+            name: None,
+		},
+	)
 }
 
-/// websocket connection is long running connection, it easier
-/// to handle with an actor
-struct MyWebSocket;
+// store data in here, it can then be accessed using self
+struct WsDataSession {
+    /// unique session id
+    id: usize,
+    /// Client must send ping at least once per 10 seconds, otherwise we drop
+    /// connection.
+    hb: Instant,
+    /// joined room
+    room: String,
+    /// peer name
+    name: Option<String>,
+}
 
-impl Actor for MyWebSocket {
-    type Context = ws::WebsocketContext<Self>;
+impl Actor for WsDataSession {
+	type Context = ws::WebsocketContext<Self, WsDataSessionState>;
 }
 
 /// Handler for `ws::Message`
-impl StreamHandler<ws::Message, ws::ProtocolError> for MyWebSocket {
+impl StreamHandler<ws::Message, ws::ProtocolError> for WsDataSession {
     fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
         // process websocket messages
         println!("WS: {:?}", msg);
@@ -68,7 +90,7 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> ServerHandle {
     // load ssl keys
 
     if ::std::env::var("RUST_LOG").is_err() {
-        ::std::env::set_var("RUST_LOG", "actix_web=info");
+        ::std::env::set_var("RUST_LOG", "actix_web=trace");
     }
     env_logger::init();
 
@@ -81,22 +103,31 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> ServerHandle {
     let (tx, rx) = mpsc::channel();
 
     thread::spawn(move || {
+		
+		// Start data server actor in separate thread
         let sys = actix::System::new("http-server");
-        let addr = server::new(|| App::new()
-        // websocket route
-        // note some browsers need already existing http connection to 
-        // this server for the upgrade to wss to work
-        .resource("/ws/", |r| r.method(http::Method::GET).f(ws_index))
-        .resource(r"/{tail:.*}", |r| r.method(Method::GET).f(index))
-        .resource("/goodby.html", |r| r.f(goodby)) 
-        )
-		.bind_ssl("0.0.0.0:8080", builder).unwrap()
-        //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
-		.shutdown_timeout(60)    // <- Set shutdown timeout to 60 seconds
-		.start();
+		let data_server = Arbiter::start(|_| websocket_dataserver::DataServer::default());
+        
+        let addr = server::new(move || {       
+        //let addr = server::HttpServer::new(move || {
+			 // Websocket sessions state
+			let state = WsDataSessionState {addr: data_server.clone() };
+			App::with_state(state)
+			
+			// websocket route
+			// note some browsers need already existing http connection to 
+			// this server for the upgrade to wss to work
+			.resource("/ws/", |r| r.method(http::Method::GET).f(ws_index))
+			.resource(r"/{tail:.*}", |r| r.method(Method::GET).f(index))
+			.resource("/goodby.html", |r| r.f(goodby)) 
+			})
+			.bind_ssl("0.0.0.0:8080", builder).unwrap()
+			//.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
+			.shutdown_timeout(60)    // <- Set shutdown timeout to 60 seconds
+			.start();
 
-        let _ = tx.send(addr);
-        let _ = sys.run();
+		let _ = tx.send(addr);
+		let _ = sys.run();
     });
 
     let handle = rx.recv().unwrap();

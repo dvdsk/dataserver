@@ -17,3 +17,5 @@ acme-client = "0.5.3"
 webpki = "0.18.1"
 webpki-roots = "0.15.0"
 untrusted = "0.6.2"
+
+rand = "0.5.5"

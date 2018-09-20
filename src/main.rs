@@ -19,7 +19,9 @@ fn main() {
         //println!("could not auto generate certificate, error: {:?}", error)
     //}
 
-    let handle = httpserver::start( Path::new("keys/cert.key"), Path::new("keys/cert.cert") );
+    let (data_handle, web_handle) = httpserver::start( Path::new("keys/cert.key"), Path::new("keys/cert.cert") );
+    pause();    
+    httpserver::send_newdata(data_handle);
     pause();
-    httpserver::stop(handle);
+    httpserver::stop(web_handle);
 }

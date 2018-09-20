@@ -6,10 +6,11 @@ extern crate openssl;
 use std::path::PathBuf;
 
 use self::actix::*;
+use self::actix::Addr;
 use self::actix_web::Error as wError;
 use self::actix_web::Result as wResult;
 use self::actix_web::{
-    fs::NamedFile, http, http::Method, server, ws, App, HttpRequest, HttpResponse, Responder,
+    fs::NamedFile, http, http::Method, server, ws, App, HttpRequest, HttpResponse, Responder, 
 };
 
 use self::openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
@@ -27,6 +28,7 @@ struct WsDataSessionState {
 }
 
 type ServerHandle = self::actix::Addr<self::actix_web::server::Server>;
+type DataHandle = self::actix::Addr<websocket_dataserver::DataServer>;
 
 fn index(req: &HttpRequest<WsDataSessionState>) -> wResult<NamedFile> {
     let file_name: PathBuf = req.match_info().query("tail")?;
@@ -67,6 +69,49 @@ struct WsDataSession {
 
 impl Actor for WsDataSession {
 	type Context = ws::WebsocketContext<Self, WsDataSessionState>;
+	
+	fn started(&mut self, ctx: &mut Self::Context) {
+        // register self in chat server. `AsyncContext::wait` register
+        // future within context, but context waits until this future resolves
+        // before processing any other events.
+        // HttpContext::state() is instance of WsChatSessionState, state is shared
+        // across all routes within application
+        
+        println!("TEST");
+        
+        let addr = ctx.address();
+        ctx.state()
+            .addr
+            .send(websocket_dataserver::Connect {
+                addr: addr.recipient(),
+            })
+            .into_actor(self)
+            .then(|res, act, ctx| {
+                match res {
+                    Ok(res) => act.id = res,
+                    // something is wrong with chat server
+                    _ => ctx.stop(),
+                }
+                fut::ok(())
+            })
+            .wait(ctx);
+	}
+	
+	
+    fn stopping(&mut self, ctx: &mut Self::Context) -> Running {
+        // notify chat server
+        //ctx.state().addr.do_send(server::Disconnect { id: self.id });
+        Running::Stop
+	}
+}
+
+/// Handle messages from chat server, we simply send it to peer websocket
+impl Handler<websocket_dataserver::Message> for WsDataSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: websocket_dataserver::Message, ctx: &mut Self::Context) {
+        ctx.text(msg.0);
+    }
 }
 
 /// Handler for `ws::Message`
@@ -86,7 +131,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsDataSession {
     }
 }
 
-pub fn start(signed_cert: &Path, private_key: &Path) -> ServerHandle {
+pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandle) {
     // load ssl keys
 
     if ::std::env::var("RUST_LOG").is_err() {
@@ -102,16 +147,17 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> ServerHandle {
 
     let (tx, rx) = mpsc::channel();
 
-    thread::spawn(move || {
-		
+
+
+    thread::spawn(move || {	
 		// Start data server actor in separate thread
-        let sys = actix::System::new("http-server");
+		let sys = actix::System::new("http-server");
 		let data_server = Arbiter::start(|_| websocket_dataserver::DataServer::default());
+        let data_server_clone = data_server.clone();
         
         let addr = server::new(move || {       
-        //let addr = server::HttpServer::new(move || {
 			 // Websocket sessions state
-			let state = WsDataSessionState {addr: data_server.clone() };
+			let state = WsDataSessionState {addr: data_server_clone.clone() };
 			App::with_state(state)
 			
 			// websocket route
@@ -126,18 +172,24 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> ServerHandle {
 			.shutdown_timeout(60)    // <- Set shutdown timeout to 60 seconds
 			.start();
 
-		let _ = tx.send(addr);
+		let _ = tx.send((data_server,addr));
 		let _ = sys.run();
     });
 
-    let handle = rx.recv().unwrap();
-    handle
+    let (data_handle, web_handle) = rx.recv().unwrap();
+    (data_handle, web_handle)
 }
 
 pub fn stop(handle: ServerHandle) {
     let _ = handle
         .send(server::StopServer { graceful: true })
         .timeout(Duration::from_secs(5)); // <- Send `StopServer` message to server.
+}
+
+pub fn send_newdata(handle: DataHandle) {
+    let _ = handle
+        .send(websocket_dataserver::NewData { from: websocket_dataserver::data_type::humidity });
+        //.timeout(Duration::from_secs(5)); 
 }
 
 use std::io::{stdin, stdout, Read, Write};

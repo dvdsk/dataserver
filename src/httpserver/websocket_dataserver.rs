@@ -165,3 +165,24 @@ impl Actor for DataServer {
     /// with other actors.
     type Context = Context<Self>;
 }
+
+///////////////////////////////////
+
+
+//// this is our Message
+//pub struct Test(pub usize, pub usize);
+
+//// we have to define the response type for `Sum` message
+//impl Message for Test {
+    //type Result = usize;
+//}
+
+//// now we need to define `MessageHandler` for the `Sum` message.
+//impl Handler<Test> for DataServer {
+    //type Result = usize;   // <- Message response type
+
+    //fn handle(&mut self, msg: Test, ctx: &mut Context<Self>) -> Self::Result {
+		//println!("sat");
+        //msg.0 + msg.1
+    //}
+//}

@@ -2,10 +2,19 @@
 
 mod certificate_manager;
 mod httpserver;
-use httpserver::pause;
 
 use std::path::Path;
-
+	
+use std::io::{stdin, stdout, Read, Write};
+pub fn pause() {
+    let mut stdout = stdout();
+    stdout
+        .write(b"Press Enter to halt servers and quit...")
+        .unwrap();
+    stdout.flush().unwrap();
+    stdin().read(&mut [0]).unwrap();
+}
+	
 fn main() {
 
 	
@@ -24,6 +33,7 @@ fn main() {
     let (data_handle, web_handle) = httpserver::start( Path::new("keys/cert.key"), Path::new("keys/cert.cert") );
     pause();    
     httpserver::send_newdata(data_handle);
+    //httpserver::send_test(data_handle);
     pause();
     httpserver::stop(web_handle);
 }

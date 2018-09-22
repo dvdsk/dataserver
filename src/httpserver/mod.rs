@@ -5,8 +5,10 @@ extern crate openssl;
 
 use std::path::PathBuf;
 
+
 use self::actix::*;
 use self::actix::Addr;
+
 use self::actix_web::Error as wError;
 use self::actix_web::Result as wResult;
 use self::actix_web::{
@@ -187,7 +189,7 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
 		let data_server = Arbiter::start(|_| websocket_dataserver::DataServer::default());
         let data_server_clone = data_server.clone();
         
-        let addr = server::new(move || {       
+        let web_server = server::new(move || {       
 			 // Websocket sessions state
 			let state = WsDataSessionState {addr: data_server_clone.clone() };
 			App::with_state(state)
@@ -204,7 +206,7 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
 			.shutdown_timeout(60)    // <- Set shutdown timeout to 60 seconds
 			.start();
 
-		let _ = tx.send((data_server,addr));
+		let _ = tx.send((data_server,web_server));
 		let _ = sys.run();
     });
 
@@ -219,18 +221,26 @@ pub fn stop(handle: ServerHandle) {
 }
 
 pub fn send_newdata(handle: DataHandle) {
-    let _ = handle
-        .send(websocket_dataserver::NewData { from: websocket_dataserver::DataSource::Humidity });
+    handle.do_send(websocket_dataserver::NewData { from: websocket_dataserver::DataSource::Humidity });
         println!("send signal there is new data");
         //.timeout(Duration::from_secs(5)); 
 }
 
-use std::io::{stdin, stdout, Read, Write};
-pub fn pause() {
-    let mut stdout = stdout();
-    stdout
-        .write(b"Press Enter to halt servers and quit...")
-        .unwrap();
-    stdout.flush().unwrap();
-    stdin().read(&mut [0]).unwrap();
-}
+//pub fn send_test(handle: DataHandle) {
+    //let res = handle.send(websocket_dataserver::Test( 2,4));
+        ////.timeout(Duration::from_secs(5)); 
+    //println!("res {}",res);
+    //Arbiter::spawn(res.then(|res| {
+        //match res {
+            //Ok(result) => println!("SUM: {}", result),
+            //_ => println!("Something wrong"),
+        //}
+        //System::current().stop();
+        //future::result(Ok(()))
+    //}));
+        
+//}
+
+//pub fn send_test(handle: DataHandle) {
+    //let res = handle.do_send(websocket_dataserver::Test( 2,4)); 
+//}

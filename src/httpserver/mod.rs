@@ -114,6 +114,7 @@ impl Handler<websocket_dataserver::clientMessage> for WsDataSession {
     type Result = ();
 
     fn handle(&mut self, msg: websocket_dataserver::clientMessage, ctx: &mut Self::Context) {
+		println!("websocket");
         ctx.text(msg.0);
     }
 }
@@ -221,26 +222,7 @@ pub fn stop(handle: ServerHandle) {
 }
 
 pub fn send_newdata(handle: DataHandle) {
-    handle.do_send(websocket_dataserver::NewData { from: websocket_dataserver::DataSource::Humidity });
+    handle.do_send(websocket_dataserver::NewData { from: websocket_dataserver::DataSource::Light });
         println!("send signal there is new data");
         //.timeout(Duration::from_secs(5)); 
 }
-
-//pub fn send_test(handle: DataHandle) {
-    //let res = handle.send(websocket_dataserver::Test( 2,4));
-        ////.timeout(Duration::from_secs(5)); 
-    //println!("res {}",res);
-    //Arbiter::spawn(res.then(|res| {
-        //match res {
-            //Ok(result) => println!("SUM: {}", result),
-            //_ => println!("Something wrong"),
-        //}
-        //System::current().stop();
-        //future::result(Ok(()))
-    //}));
-        
-//}
-
-//pub fn send_test(handle: DataHandle) {
-    //let res = handle.do_send(websocket_dataserver::Test( 2,4)); 
-//}

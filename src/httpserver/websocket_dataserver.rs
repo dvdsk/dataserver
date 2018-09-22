@@ -23,6 +23,7 @@ pub enum DataSource {
 	Error,
 }
 
+
 pub fn source_string_to_enum(source_name: &str) -> Result<DataSource, ()> {
 	match source_name {
 		"Light" => Ok(DataSource::Light),
@@ -46,14 +47,16 @@ impl Handler<NewData> for DataServer {
     type Result = usize;
 
     fn handle(&mut self, msg: NewData, _: &mut Context<Self>) -> Self::Result {
-        
+		println!("NewData, subs: {:?}", self.subs);
         println!("there is new data");
         let subs = self.subs.get(&msg.from).unwrap();
-		//println!("{}", subs);
+		println!("msg.from: {:?}", msg.from);
+		println!("subs: {:?}", subs);
 		for client in subs.iter() {
-			//println!("{}", client);
+			println!("client: {:?}", client);
             if let Some(session) = self.sessions.get(client) {
-				let _ = session.addr.send(clientMessage("test".to_owned()));
+				let _ = session.addr.do_send(clientMessage("test".to_owned()));
+				println!("send stuff");
 			}
 		}
 	0
@@ -72,7 +75,6 @@ impl Handler<Connect> for DataServer {
 
     fn handle(&mut self, msg: Connect, _: &mut Context<Self>) -> Self::Result {
         println!("Someone joined");
-
         // register session with random id
         let id = self.rng.borrow_mut().gen::<usize>();
         self.sessions.insert(id, clientInfo {addr: msg.addr, subs: Vec::new()} );
@@ -118,19 +120,22 @@ impl Handler<SubscribeToSource> for DataServer {
 
     fn handle(&mut self, msg: SubscribeToSource, _: &mut Context<Self>) -> Self::Result {
         let SubscribeToSource { id, source } = msg;
-        println!("subscribing to source");
 		let client_info = self.sessions.get_mut(&id).unwrap();
 		client_info.subs.push(source.clone() );
         
         //fix when non lexical borrow checker arrives
         if let Some(subscribers) = self.subs.get_mut(&source){
 			subscribers.insert(id);
+			//println!("subToScours, subs: {:?}", self.subs);
+			println!("added new id to subs");
 			return ()
 		}
 		
 		let mut subscribers = HashSet::new();
 		subscribers.insert(id);
 		self.subs.insert(source, subscribers);
+		println!("subToScours, subs: {:?}", self.subs);
+		println!("added new subscriber set for");
         ()
     }
 }
@@ -150,10 +155,16 @@ pub struct DataServer {
 impl Default for DataServer {
     fn default() -> DataServer {
 
+		let mut subs = HashMap::new();
+		subs.insert(DataSource::Light,HashSet::new() );
+		subs.insert(DataSource::Humidity,HashSet::new() );
+		subs.insert(DataSource::Temperature,HashSet::new() );
+		subs.insert(DataSource::Error,HashSet::new() );						
+
         DataServer {
             sessions: HashMap::new(),
-            subs: HashMap::new(),
-            
+            subs: subs,
+                      
             rng: RefCell::new(rand::thread_rng()),
         }
     }
@@ -167,22 +178,3 @@ impl Actor for DataServer {
 }
 
 ///////////////////////////////////
-
-
-//// this is our Message
-//pub struct Test(pub usize, pub usize);
-
-//// we have to define the response type for `Sum` message
-//impl Message for Test {
-    //type Result = usize;
-//}
-
-//// now we need to define `MessageHandler` for the `Sum` message.
-//impl Handler<Test> for DataServer {
-    //type Result = usize;   // <- Message response type
-
-    //fn handle(&mut self, msg: Test, ctx: &mut Context<Self>) -> Self::Result {
-		//println!("sat");
-        //msg.0 + msg.1
-    //}
-//}

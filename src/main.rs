@@ -1,3 +1,5 @@
+#[macro_use] extern crate log;
+
 mod certificate_manager;
 mod httpserver;
 use httpserver::pause;

@@ -85,7 +85,9 @@ impl Actor for WsDataSession {
             .send(websocket_dataserver::Connect {
                 addr: addr.recipient(),
             })
+            //wait for response
             .into_actor(self)
+            //process response in closure
             .then(|res, act, ctx| {
                 match res {
                     Ok(res) => act.id = res,
@@ -100,16 +102,16 @@ impl Actor for WsDataSession {
 	
     fn stopping(&mut self, ctx: &mut Self::Context) -> Running {
         // notify chat server
-        //ctx.state().addr.do_send(server::Disconnect { id: self.id });
+        ctx.state().addr.do_send(websocket_dataserver::Disconnect { id: self.id });
         Running::Stop
 	}
 }
 
 /// Handle messages from chat server, we simply send it to peer websocket
-impl Handler<websocket_dataserver::Message> for WsDataSession {
+impl Handler<websocket_dataserver::clientMessage> for WsDataSession {
     type Result = ();
 
-    fn handle(&mut self, msg: websocket_dataserver::Message, ctx: &mut Self::Context) {
+    fn handle(&mut self, msg: websocket_dataserver::clientMessage, ctx: &mut Self::Context) {
         ctx.text(msg.0);
     }
 }
@@ -120,13 +122,43 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsDataSession {
         // process websocket messages
         println!("WS: {:?}", msg);
         match msg {
+            ws::Message::Text(text) => {
+				let m = text.trim();
+				if m.starts_with('/') {
+                    let v: Vec<&str> = m.splitn(2, ' ').collect();
+                    match v[0] {
+                        "/Sub" => {
+							if let Ok(source) = websocket_dataserver::source_string_to_enum(v[1]){
+								ctx.state().addr.do_send(websocket_dataserver::SubscribeToSource {
+									id: self.id,
+									source: source,
+								});
+							} else { warn!("unknown source: {}",v[1]); }
+                        }
+                        "/join" => {
+                            //if v.len() == 2 {
+                                //self.room = v[1].to_owned();
+                                //ctx.state().addr.do_send(server::Join {
+                                    //id: self.id,
+                                    //name: self.room.clone(),
+                                //});
+
+                                //ctx.text("joined");
+                            //} else {
+                                //ctx.text("!!! room name is required");
+                            //}
+                        }
+                        "/name" => {
+
+                        }
+                        _ => ctx.text(format!("!!! unknown command: {:?}", m)),
+					}
+				}
+			},//handle other websocket commands
             ws::Message::Ping(msg) => ctx.pong(&msg),
-            ws::Message::Text(text) => ctx.text(text),
             ws::Message::Binary(bin) => ctx.binary(bin),
-            ws::Message::Close(_) => {
-                ctx.stop();
-            }
-            _ => (),
+            ws::Message::Close(_) => {ctx.stop();}
+			_ => (),
         }
     }
 }
@@ -188,7 +220,8 @@ pub fn stop(handle: ServerHandle) {
 
 pub fn send_newdata(handle: DataHandle) {
     let _ = handle
-        .send(websocket_dataserver::NewData { from: websocket_dataserver::data_type::humidity });
+        .send(websocket_dataserver::NewData { from: websocket_dataserver::DataSource::Humidity });
+        println!("send signal there is new data");
         //.timeout(Duration::from_secs(5)); 
 }
 

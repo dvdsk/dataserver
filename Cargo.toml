@@ -19,3 +19,4 @@ webpki-roots = "0.15.0"
 untrusted = "0.6.2"
 
 rand = "0.5.5"
+log = "0.4.5"

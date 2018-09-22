@@ -28,7 +28,7 @@ use std::env;
 use std::io;
 use std::path::PathBuf;
 
-fn certificate_valid(signed_cert: &Path, private_key: &Path) -> bool {
+fn certificate_valid(_signed_cert: &Path, _private_key: &Path) -> bool {
     //if signed_cert.exists() && if private_key.exists(){
 
     ////static ALL_SIGALGS: &'static [&'static webpki::SignatureAlgorithm] = &[
@@ -98,7 +98,7 @@ pub fn netflix(signed_cert: &Path, intermediate_cert: &Path) {
 fn am_root() -> bool {
     match env::var("USER") {
         Ok(val) => val == "root",
-        Err(e) => false,
+        Err(_e) => false,
     }
 }
 

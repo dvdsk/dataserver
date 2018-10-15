@@ -6,6 +6,7 @@ extern crate webpki;
 extern crate webpki_roots;
 
 extern crate actix;
+extern crate actix_net;
 
 use self::webpki_roots::TLS_SERVER_ROOTS;
 
@@ -142,7 +143,7 @@ fn index(req: &HttpRequest) -> wResult<fs::NamedFile> {
     Ok(fs::NamedFile::open(full_path)?)
 }
 
-type ServerHandle = self::actix::Addr<self::actix_web::server::Server>;
+type ServerHandle = self::actix::Addr<actix_net::server::Server>;
 pub fn host_server() -> Result<ServerHandle, ()>{
     
     if let Ok(port) = get_port() {    

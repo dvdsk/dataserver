@@ -1,5 +1,10 @@
 extern crate actix;
 extern crate actix_web;
+extern crate actix_net;
+
+extern crate bytes;
+extern crate futures;
+
 extern crate env_logger;
 extern crate openssl;
 
@@ -12,8 +17,14 @@ use self::actix::Addr;
 use self::actix_web::Error as wError;
 use self::actix_web::Result as wResult;
 use self::actix_web::{
-    fs::NamedFile, http, http::Method, server, ws, App, HttpRequest, HttpResponse, Responder, 
+    fs::NamedFile, http, http::Method, server, ws, App, middleware,
+    HttpRequest, HttpResponse, Responder, http::StatusCode, HttpMessage, AsyncResponder, FutureResponse,
 };
+use self::actix_web::middleware::identity::RequestIdentity;
+use self::actix_web::middleware::identity::{CookieIdentityPolicy, IdentityService};
+
+use self::futures::future::Future;
+use self::bytes::Bytes;
 
 use self::openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 //use futures::future::Future;
@@ -24,20 +35,49 @@ use std::path::Path;
 use std::time::Instant;
 
 mod websocket_dataserver;
+mod timeseries_access;
 
 struct WsDataSessionState {
     addr: Addr<websocket_dataserver::DataServer>,
 }
 
-type ServerHandle = self::actix::Addr<self::actix_web::server::Server>;
+type ServerHandle = self::actix::Addr<actix_net::server::Server>;
 type DataHandle = self::actix::Addr<websocket_dataserver::DataServer>;
 
-fn index(req: &HttpRequest<WsDataSessionState>) -> wResult<NamedFile> {
+fn serve_file(req: &HttpRequest<WsDataSessionState>) -> wResult<NamedFile> {
     let file_name: PathBuf = req.match_info().query("tail")?;
     let mut path: PathBuf = PathBuf::from("web/");
     path.push(file_name);
 
     Ok(NamedFile::open(path)?)
+}
+
+
+fn index(req: &HttpRequest<WsDataSessionState>) -> String {
+    format!("Hello {}", req.identity().unwrap_or("Anonymous".to_owned()))
+}
+
+fn login(req: &HttpRequest<WsDataSessionState>) -> HttpResponse {
+    req.remember("user1".to_owned());
+    println!("logging in");
+    HttpResponse::Found().header("location", "/").finish()
+}
+
+fn logout(req: &HttpRequest<WsDataSessionState>) -> HttpResponse {
+    req.forget();
+    HttpResponse::Found().header("location", "/").finish()
+}
+
+fn newdata(req: &HttpRequest<WsDataSessionState>) -> FutureResponse<HttpResponse> {
+    
+    req.body()
+        .from_err()
+        .and_then(move |bytes: Bytes| {
+            //timeseries_access::store_new_data(&bytes);
+            println!("Body: {:?}", bytes);
+            Ok(HttpResponse::Ok().status(StatusCode::ACCEPTED).finish())
+        })
+        .responder()
 }
 
 fn goodby(_req: &HttpRequest<WsDataSessionState>) -> impl Responder {
@@ -49,9 +89,6 @@ fn ws_index(r: &HttpRequest<WsDataSessionState>) -> Result<HttpResponse, wError>
     println!("websocket connected");
     ws::start(r, WsDataSession {
             id: 0,
-            hb: Instant::now(),
-            room: "Main".to_owned(),
-            name: None,
 		},
 	)
 }
@@ -60,13 +97,6 @@ fn ws_index(r: &HttpRequest<WsDataSessionState>) -> Result<HttpResponse, wError>
 struct WsDataSession {
     /// unique session id
     id: usize,
-    /// Client must send ping at least once per 10 seconds, otherwise we drop
-    /// connection.
-    hb: Instant,
-    /// joined room
-    room: String,
-    /// peer name
-    name: Option<String>,
 }
 
 impl Actor for WsDataSession {
@@ -109,7 +139,7 @@ impl Actor for WsDataSession {
 	}
 }
 
-/// Handle messages from chat server, we simply send it to peer websocket
+/// send messages to server if requested by dataserver
 impl Handler<websocket_dataserver::clientMessage> for WsDataSession {
     type Result = ();
 
@@ -195,21 +225,31 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
 			let state = WsDataSessionState {addr: data_server_clone.clone() };
 			App::with_state(state)
 			
+            .middleware(IdentityService::new(
+                CookieIdentityPolicy::new(&[0; 32])
+                    .name("plantmonitor_session")
+                    .secure(true),
+            ))
 			// websocket route
 			// note some browsers need already existing http connection to 
 			// this server for the upgrade to wss to work
 			.resource("/ws/", |r| r.method(http::Method::GET).f(ws_index))
-			.resource(r"/{tail:.*}", |r| r.method(Method::GET).f(index))
 			.resource("/goodby.html", |r| r.f(goodby)) 
+            .resource("/login", |r| r.f(login))
+            .resource("/logout", |r| r.f(logout))
+            .resource("/", |r| r.f(index))
+            //.resource(r"/newdata/{tail:.*}", |r| r.method(Method::POST).f(newdata))
+			//.resource(r"/{tail:.*}", |r| r.method(Method::GET).f(serve_file))
 			})
-			.bind_ssl("0.0.0.0:8080", builder).unwrap()
-			//.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
+			//.bind_rustls("0.0.0.0:8080", builder).unwrap()
+			.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
 			.shutdown_timeout(60)    // <- Set shutdown timeout to 60 seconds
 			.start();
 
 		let _ = tx.send((data_server,web_server));
 		let _ = sys.run();
     });
+
 
     let (data_handle, web_handle) = rx.recv().unwrap();
     (data_handle, web_handle)

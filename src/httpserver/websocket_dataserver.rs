@@ -55,6 +55,9 @@ impl Handler<NewData> for DataServer {
 		for client in subs.iter() {
 			println!("client: {:?}", client);
             if let Some(session) = self.sessions.get(client) {
+				//todo dont just send a string here, do something that 
+				//blocks till a websocket client awnsers, and sends 
+				//the signal that there is new data.
 				let _ = session.addr.do_send(clientMessage("test".to_owned()));
 				println!("send stuff");
 			}

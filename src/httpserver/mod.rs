@@ -6,7 +6,7 @@ extern crate bytes;
 extern crate futures;
 
 extern crate env_logger;
-extern crate openssl;
+extern crate rustls;
 
 use std::path::PathBuf;
 
@@ -26,8 +26,12 @@ use self::actix_web::middleware::identity::{CookieIdentityPolicy, IdentityServic
 use self::futures::future::Future;
 use self::bytes::Bytes;
 
-use self::openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
-//use futures::future::Future;
+use self::rustls::internal::pemfile::{certs, rsa_private_keys, pkcs8_private_keys};
+use self::rustls::{NoClientAuth, ServerConfig};
+
+use std::fs::File;
+use std::io::BufReader;
+
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -204,11 +208,13 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
     }
     env_logger::init();
 
-    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-    builder
-        .set_private_key_file(private_key, SslFiletype::PEM)
-        .unwrap();
-    builder.set_certificate_chain_file(signed_cert).unwrap();
+
+    let mut config = ServerConfig::new(NoClientAuth::new());
+    let cert_file = &mut BufReader::new(File::open(signed_cert).unwrap());
+    let key_file = &mut BufReader::new(File::open(private_key).unwrap());
+    let cert_chain = certs(cert_file).unwrap();
+    let mut key = pkcs8_private_keys(key_file).unwrap();
+    config.set_single_cert(cert_chain, key.pop().unwrap() ).unwrap();
 
     let (tx, rx) = mpsc::channel();
 
@@ -241,8 +247,8 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
             //.resource(r"/newdata/{tail:.*}", |r| r.method(Method::POST).f(newdata))
 			//.resource(r"/{tail:.*}", |r| r.method(Method::GET).f(serve_file))
 			})
-			//.bind_rustls("0.0.0.0:8080", builder).unwrap()
-			.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
+			.bind_rustls("0.0.0.0:8080", config).unwrap()
+			//.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
 			.shutdown_timeout(60)    // <- Set shutdown timeout to 60 seconds
 			.start();
 

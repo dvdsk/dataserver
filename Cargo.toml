@@ -11,8 +11,9 @@ actix-web = { version = "0.7.13", features = ["rust-tls"] }
 actix-net = "0.1.1"
 
 #openssl = "^0.10"
-openssl = "0.10.12"
+#openssl = "0.10.12"
 #openssl = { version = "0.10", features = ["vendored"] }
+rustls = "0.14.0"
 
 actix = "0.7.5"
 futures = "0.1.25"

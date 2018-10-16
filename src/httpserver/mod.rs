@@ -1,6 +1,7 @@
 extern crate actix;
 extern crate actix_web;
 extern crate actix_net;
+extern crate actix_web_httpauth;
 
 extern crate bytes;
 extern crate futures;
@@ -22,6 +23,12 @@ use self::actix_web::{
 };
 use self::actix_web::middleware::identity::RequestIdentity;
 use self::actix_web::middleware::identity::{CookieIdentityPolicy, IdentityService};
+use self::actix_web::http::header::Header;
+
+use self::actix_web_httpauth::headers::www_authenticate::{WWWAuthenticate};
+
+use self::actix_web_httpauth::headers::www_authenticate::basic::Basic as Basic_auth_header;
+use self::actix_web_httpauth::headers::authorization::{Authorization, Basic};
 
 use self::futures::future::Future;
 use self::bytes::Bytes;
@@ -70,6 +77,27 @@ fn login(req: &HttpRequest<WsDataSessionState>) -> HttpResponse {
 fn logout(req: &HttpRequest<WsDataSessionState>) -> HttpResponse {
     req.forget();
     HttpResponse::Found().header("location", "/").finish()
+}
+
+fn secure_page(req: &HttpRequest<WsDataSessionState>) -> HttpResponse {
+    if let Ok(auth) = Authorization::<Basic>::parse(req) {
+        println!("Username, {}", auth.username);        
+        if let Some(ref passw) = auth.password {
+            println!("Password, {}",passw );
+        }
+    } else {
+       println!("HTTP AUTHORIZATION ERROR");
+    }
+    
+
+
+    
+    let challenge = Basic_auth_header {
+        realm: Some("Restricted area".to_string()),
+    };
+    req.build_response(StatusCode::UNAUTHORIZED)
+        .set(WWWAuthenticate(challenge))
+        .finish()
 }
 
 fn newdata(req: &HttpRequest<WsDataSessionState>) -> FutureResponse<HttpResponse> {
@@ -244,6 +272,7 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
             .resource("/login", |r| r.f(login))
             .resource("/logout", |r| r.f(logout))
             .resource("/", |r| r.f(index))
+            .resource("/secure_page", |r| r.f(secure_page))
             //.resource(r"/newdata/{tail:.*}", |r| r.method(Method::POST).f(newdata))
 			//.resource(r"/{tail:.*}", |r| r.method(Method::GET).f(serve_file))
 			})

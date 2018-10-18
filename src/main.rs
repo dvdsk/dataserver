@@ -63,7 +63,7 @@ mod tests {
         data_string.write_u16::<NativeEndian>(((temp+20.)*100.) as u16).unwrap();
         data_string.write_u16::<NativeEndian>((humidity*100.) as u16).unwrap();
         
-        let res = client.post("https://www.deviousd.duckdns.org:8080/newdata/test_user")
+        let res = client.post("https://www.deviousd.duckdns.org:8080/newdata")
                  .body(data_string)
                  .send().unwrap();
         println!("res: {:?}",res);

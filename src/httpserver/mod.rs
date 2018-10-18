@@ -9,6 +9,8 @@ extern crate futures;
 extern crate env_logger;
 extern crate rustls;
 
+extern crate minimal_timeseries;
+
 use std::path::PathBuf;
 
 
@@ -44,18 +46,22 @@ use std::thread;
 use std::time::Duration;
 use std::path::Path;
 use std::time::Instant;
+use std::collections::HashMap;
+
+use self::minimal_timeseries::Timeseries;
 
 mod websocket_dataserver;
 mod timeseries_access;
 
-struct WsDataSessionState {
+struct SessionState {
     addr: Addr<websocket_dataserver::DataServer>,
+    userdata: HashMap<&'static str, Timeseries>,
 }
 
 type ServerHandle = self::actix::Addr<actix_net::server::Server>;
 type DataHandle = self::actix::Addr<websocket_dataserver::DataServer>;
 
-fn serve_file(req: &HttpRequest<WsDataSessionState>) -> wResult<NamedFile> {
+fn serve_file(req: &HttpRequest<SessionState>) -> wResult<NamedFile> {
     let file_name: PathBuf = req.match_info().query("tail")?;
     let mut path: PathBuf = PathBuf::from("web/");
     path.push(file_name);
@@ -64,60 +70,71 @@ fn serve_file(req: &HttpRequest<WsDataSessionState>) -> wResult<NamedFile> {
 }
 
 
-fn index(req: &HttpRequest<WsDataSessionState>) -> String {
+fn index(req: &HttpRequest<SessionState>) -> String {
     format!("Hello {}", req.identity().unwrap_or("Anonymous".to_owned()))
 }
 
-fn login(req: &HttpRequest<WsDataSessionState>) -> HttpResponse {
-    req.remember("user1".to_owned());
-    println!("logging in");
-    HttpResponse::Found().header("location", "/").finish()
-}
-
-fn logout(req: &HttpRequest<WsDataSessionState>) -> HttpResponse {
+fn logout(req: &HttpRequest<SessionState>) -> HttpResponse {
     req.forget();
     HttpResponse::Found().header("location", "/").finish()
 }
 
-fn secure_page(req: &HttpRequest<WsDataSessionState>) -> HttpResponse {
+fn secure_page(req: &HttpRequest<SessionState>) -> HttpResponse {
+    
+    let username = if let Some(username) = req.identity(){
+        username
+    } else {
+        //redirect to login/org url
+        
+    };
+    
+    println!("{}",username);
+    HttpResponse::Ok().status(StatusCode::ACCEPTED).finish()
+}
+
+
+fn login(req: &HttpRequest<SessionState>) -> HttpResponse {
+    
     if let Ok(auth) = Authorization::<Basic>::parse(req) {
         println!("Username, {}", auth.username);        
         if let Some(ref passw) = auth.password {
             println!("Password, {}",passw );
+            if passw == "123" { 
+                req.remember(auth.username.clone());
+                return Ok(auth.username.clone())
+            } 
         }
-    } else {
-       println!("HTTP AUTHORIZATION ERROR");
     }
     
-
-
-    
+    println!("HTTP AUTHORIZATION ERROR");
     let challenge = Basic_auth_header {
         realm: Some("Restricted area".to_string()),
     };
-    req.build_response(StatusCode::UNAUTHORIZED)
-        .set(WWWAuthenticate(challenge))
-        .finish()
+    Err(
+        req.build_response(StatusCode::UNAUTHORIZED)
+            .set(WWWAuthenticate(challenge))
+            .finish()
+    )
 }
 
-fn newdata(req: &HttpRequest<WsDataSessionState>) -> FutureResponse<HttpResponse> {
+fn newdata(req: &HttpRequest<SessionState>) -> FutureResponse<HttpResponse> {
+    println!("funct start");
     
     req.body()
         .from_err()
         .and_then(move |bytes: Bytes| {
-            //timeseries_access::store_new_data(&bytes);
+            timeseries_access::store_new_data(&bytes);
             println!("Body: {:?}", bytes);
             Ok(HttpResponse::Ok().status(StatusCode::ACCEPTED).finish())
-        })
-        .responder()
+        }).responder()
 }
 
-fn goodby(_req: &HttpRequest<WsDataSessionState>) -> impl Responder {
+fn goodby(_req: &HttpRequest<SessionState>) -> impl Responder {
     "Goodby!"
 }
 
 /// do websocket handshake and start `MyWebSocket` actor
-fn ws_index(r: &HttpRequest<WsDataSessionState>) -> Result<HttpResponse, wError> {
+fn ws_index(r: &HttpRequest<SessionState>) -> Result<HttpResponse, wError> {
     println!("websocket connected");
     ws::start(r, WsDataSession {
             id: 0,
@@ -132,7 +149,7 @@ struct WsDataSession {
 }
 
 impl Actor for WsDataSession {
-	type Context = ws::WebsocketContext<Self, WsDataSessionState>;
+	type Context = ws::WebsocketContext<Self, SessionState>;
 	
 	fn started(&mut self, ctx: &mut Self::Context) {
         // register self in chat server. `AsyncContext::wait` register
@@ -236,7 +253,6 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
     }
     env_logger::init();
 
-
     let mut config = ServerConfig::new(NoClientAuth::new());
     let cert_file = &mut BufReader::new(File::open(signed_cert).unwrap());
     let key_file = &mut BufReader::new(File::open(private_key).unwrap());
@@ -246,8 +262,6 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
 
     let (tx, rx) = mpsc::channel();
 
-
-
     thread::spawn(move || {	
 		// Start data server actor in separate thread
 		let sys = actix::System::new("http-server");
@@ -256,7 +270,7 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
         
         let web_server = server::new(move || {       
 			 // Websocket sessions state
-			let state = WsDataSessionState {addr: data_server_clone.clone() };
+			let state = SessionState {addr: data_server_clone.clone() };
 			App::with_state(state)
 			
             .middleware(IdentityService::new(
@@ -269,12 +283,11 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
 			// this server for the upgrade to wss to work
 			.resource("/ws/", |r| r.method(http::Method::GET).f(ws_index))
 			.resource("/goodby.html", |r| r.f(goodby)) 
-            .resource("/login", |r| r.f(login))
             .resource("/logout", |r| r.f(logout))
             .resource("/", |r| r.f(index))
             .resource("/secure_page", |r| r.f(secure_page))
-            //.resource(r"/newdata/{tail:.*}", |r| r.method(Method::POST).f(newdata))
-			//.resource(r"/{tail:.*}", |r| r.method(Method::GET).f(serve_file))
+            .resource(r"/newdata", |r| r.method(Method::POST).f(newdata))
+			.resource(r"/{tail:.*}", |r| r.method(Method::GET).f(serve_file))
 			})
 			.bind_rustls("0.0.0.0:8080", config).unwrap()
 			//.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)

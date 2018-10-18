@@ -20,6 +20,7 @@ rustls = "0.14.0"
 actix = "0.7.5"
 futures = "0.1.25"
 bytes = "0.4.10"
+walkdir = "2.2.5"
 
 env_logger = "0.5.13"
 acme-client = "0.5.3"

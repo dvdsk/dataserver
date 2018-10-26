@@ -22,7 +22,7 @@ use self::actix_web::middleware::identity::{CookieIdentityPolicy, IdentityServic
 use self::actix_web::Error as wError;
 use self::actix_web::Result as wResult;
 use self::actix_web::{
-	fs::NamedFile, http, http::Method, http::StatusCode, middleware, server, ws, App,
+	fs::NamedFile, http, http::Method, http::StatusCode, middleware, server, ws, App, State,
 	AsyncResponder, Form, FutureResponse, HttpMessage, HttpRequest, HttpResponse, Responder,
 };
 
@@ -59,8 +59,8 @@ struct SessionState {
 
 #[derive(Deserialize)]
 struct loginData {
-	username: String,
-	password: String,
+	u: String,
+	p: String,
 }
 
 type ServerHandle = self::actix::Addr<actix_net::server::Server>;
@@ -111,11 +111,27 @@ fn login_page(req: &HttpRequest<SessionState>) -> HttpResponse {
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
 
-fn login_get_and_check(req: &HttpRequest<SessionState>) -> wResult<String> {
-    println!("let me check that");
-	let ivalue: isize = req.match_info().query("u")?;
-	println!("{:?}", ivalue);
-	Ok(format!("isuze value: {:?}", ivalue))
+//fn login_get_and_check(req: &HttpRequest<SessionState>) -> wResult<String> {
+    //println!("let me check that");
+    //println!("{:?}",req.match_info() );
+	//let ivalue: isize = req.match_info().query("u")?;
+	//println!("{:?}", ivalue);
+	//Ok(format!("isuze value: {:?}", ivalue))
+//}
+
+/// State and POST Params
+fn login_get_and_check(
+    (state, params): (State<SessionState>, Form<loginData>),
+) -> wResult<HttpResponse> {
+    
+    println!("{:?}",params.u);
+    
+    Ok(HttpResponse::build(http::StatusCode::OK)
+        .content_type("text/plain")
+        .body(format!(
+            "Your name is {}, and in AppState I have foo: {}",
+            params.u, params.p
+        )))
 }
 
 fn newdata(req: &HttpRequest<SessionState>) -> FutureResponse<HttpResponse> {
@@ -286,17 +302,17 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
                     .name("plantmonitor_session")
                     .secure(true),
             ))
-			// websocket route
-			// note some browsers need already existing http connection to 
-			// this server for the upgrade to wss to work
-			.resource("/ws/", |r| r.method(http::Method::GET).f(ws_index))
-			.resource("/goodby.html", |r| r.f(goodby)) 
-            .resource("/logout", |r| r.f(logout))
-            .resource("/", |r| r.f(index))
-            .resource(r"/newdata", |r| r.method(Method::POST).f(newdata))
-			.resource(r"/login/{tail:.*}", |r| {
-                r.method(http::Method::POST).f(login_get_and_check);
-                r.method(http::Method::GET).f(login_page);
+                // websocket route
+                // note some browsers need already existing http connection to 
+                // this server for the upgrade to wss to work
+                .resource("/ws/", |r| r.method(http::Method::GET).f(ws_index))
+                .resource("/goodby.html", |r| r.f(goodby)) 
+                .resource("/logout", |r| r.f(logout))
+                .resource("/", |r| r.f(index))
+                .resource(r"/newdata", |r| r.method(Method::POST).f(newdata))
+                .resource(r"/login/{tail:.*}", |r| {
+                        r.method(http::Method::POST).with(login_get_and_check);
+                        r.method(http::Method::GET).f(login_page);
             })
             .resource(r"/{tail:.*}", |r| r.f(serve_file)) 
         })

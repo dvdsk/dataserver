@@ -16,6 +16,7 @@ actix-net = "0.1.1"
 #openssl = "0.10.12"
 #openssl = { version = "0.10", features = ["vendored"] }
 rustls = "0.14.0"
+ring = "0.13.2"
 
 actix = "0.7.5"
 futures = "0.1.25"
@@ -29,11 +30,14 @@ webpki = "0.18.1"
 webpki-roots = "0.15.0"
 untrusted = "0.6.2"
 
+chrono = { version = "0.4.6", features = ["serde"] }
 rand = "0.5.5"
 log = "0.4.5"
+bincode = "1.0.1"
 
 serde_derive = "1.0.80"
 serde = "1.0.80"
+serde_yaml = "0.8.7"
 
 #for testing
 reqwest = "0.9.2"

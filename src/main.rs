@@ -47,7 +47,7 @@ mod tests {
 	use super::*;
 	extern crate byteorder;
 	extern crate reqwest;
-	use self::byteorder::{LittleEndian, NativeEndian, WriteBytesExt};
+	use self::byteorder::{NativeEndian, WriteBytesExt};
 
 	#[test]
 	fn put_new_data() {

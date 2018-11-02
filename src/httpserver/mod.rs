@@ -8,6 +8,8 @@ extern crate futures;
 
 extern crate env_logger;
 extern crate rustls;
+extern crate rand;
+extern crate chrono;
 
 extern crate minimal_timeseries;
 
@@ -16,7 +18,6 @@ use std::path::PathBuf;
 use self::actix::Addr;
 use self::actix::*;
 
-use self::actix_web::http::header::Header;
 use self::actix_web::middleware::identity::RequestIdentity;
 use self::actix_web::middleware::identity::{CookieIdentityPolicy, IdentityService};
 use self::actix_web::Error as wError;
@@ -26,39 +27,51 @@ use self::actix_web::{
 	AsyncResponder, Form, FutureResponse, HttpMessage, HttpRequest, HttpResponse, Responder,
 };
 
-use self::actix_web_httpauth::headers::www_authenticate::WWWAuthenticate;
-
-use self::actix_web_httpauth::headers::authorization::{Authorization, Basic};
-use self::actix_web_httpauth::headers::www_authenticate::basic::Basic as Basic_auth_header;
-
 use self::bytes::Bytes;
 use self::futures::future::Future;
 
-use self::rustls::internal::pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
+use self::rustls::internal::pemfile::{certs, pkcs8_private_keys};
 use self::rustls::{NoClientAuth, ServerConfig};
+use self::rand::FromEntropy;
+use self::rand::Rng;
 
 use std::fs::File;
 use std::io::BufReader;
+
+use std::sync::{Arc, RwLock, atomic::AtomicUsize};
+
 
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-use std::time::Instant;
+use self::chrono::{DateTime, Utc};
 
 use self::minimal_timeseries::Timeseries;
 
 mod timeseries_access;
 mod websocket_dataserver;
+mod secure_database;
+use self::secure_database::{TimeseriesAutorisation, PasswordDatabase};
 
-struct SessionState {
-	addr: Addr<websocket_dataserver::DataServer>,
-	data: HashMap<u16, Timeseries>,
+struct Session {//TODO deprecate 
+    authorised_timeseries: Vec<TimeseriesAutorisation>,
+	last_login: DateTime<Utc>, 
+	username: String,
+    //add more temporary user specific data as needed
+}
+
+struct WebServerData {
+	passw_db: Arc<RwLock<PasswordDatabase>>,
+	websocket_addr: Addr<websocket_dataserver::DataServer>,
+	data: Arc<RwLock<HashMap<u16,timeseries_access::DataSet>>>,
+	sessions: Arc<RwLock<HashMap<u16,Session>>> ,
+	free_session_ids: Arc<AtomicUsize>,
 }
 
 #[derive(Deserialize)]
-struct loginData {
+struct Logindata {
 	u: String,
 	p: String,
 }
@@ -66,7 +79,7 @@ struct loginData {
 type ServerHandle = self::actix::Addr<actix_net::server::Server>;
 type DataHandle = self::actix::Addr<websocket_dataserver::DataServer>;
 
-fn serve_file(req: &HttpRequest<SessionState>) -> wResult<NamedFile> {
+fn serve_file(req: &HttpRequest<WebServerData>) -> wResult<NamedFile> {
 	let file_name: String = req.match_info().query("tail")?;
 
 	let mut path: PathBuf = PathBuf::from("web/");
@@ -74,13 +87,18 @@ fn serve_file(req: &HttpRequest<SessionState>) -> wResult<NamedFile> {
 	Ok(NamedFile::open(path)?)
 }
 
-fn index(req: &HttpRequest<SessionState>) -> String {
+fn index(req: &HttpRequest<WebServerData>) -> String {
 	format!("Hello {}", req.identity().unwrap_or("Anonymous".to_owned()))
 }
 
-fn logout(req: &HttpRequest<SessionState>) -> HttpResponse {
+fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
+	let page = include_str!("static_webpages/login.html");
+	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
+}
+
+fn logout(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	req.forget();
-	HttpResponse::Found().header("location", "/").finish()
+	HttpResponse::Found().finish()
 }
 
 pub struct CheckLogin;
@@ -88,6 +106,7 @@ impl<S> middleware::Middleware<S> for CheckLogin {
 	// We only need to hook into the `start` for this middleware.
 	fn start(&self, req: &HttpRequest<S>) -> wResult<middleware::Started> {
 		if let Some(id) = req.identity() {
+            //check if valid session
 			return Ok(middleware::Started::Done);
 		} else {
 			// Don't forward to /login if we are already on /login
@@ -105,26 +124,42 @@ impl<S> middleware::Middleware<S> for CheckLogin {
 	}
 }
 
-fn login_page(req: &HttpRequest<SessionState>) -> HttpResponse {
+fn login_page(req: &HttpRequest<WebServerData>) -> HttpResponse {
     println!("hi");
 	let page = include_str!("static_webpages/login.html");
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
 
-//fn login_get_and_check(req: &HttpRequest<SessionState>) -> wResult<String> {
-    //println!("let me check that");
-    //println!("{:?}",req.match_info() );
-	//let ivalue: isize = req.match_info().query("u")?;
-	//println!("{:?}", ivalue);
-	//Ok(format!("isuze value: {:?}", ivalue))
-//}
-
 /// State and POST Params
 fn login_get_and_check(
-    (state, params): (State<SessionState>, Form<loginData>),
+    (state, params): (State<WebServerData>, Form<Logindata>),
 ) -> wResult<HttpResponse> {
+    //if login valid (check passwdb) load userinfo
+    let mut passw_db = state.passw_db.write().unwrap();
     
+    if passw_db.verify_password(params.u.as_str().as_bytes(), params.p.as_str().as_bytes()).is_err(){
+		return Ok(HttpResponse::build(http::StatusCode::UNAUTHORIZED)
+        .content_type("text/plain")
+        .body("incorrect password or username"));
+	}
+	let userinfo = passw_db.get_userdata(params.u.as_str().as_bytes());
+    let session = Session {
+		authorised_timeseries: userinfo.authorised_timeseries,
+		last_login: userinfo.last_login, 
+		username: userinfo.username,
+	};
+	
+	//let sessionId = 
+	let mut sessions = state.sessions.write().unwrap();
+	//sessions.insert(,session);
+	
+    //copy userinfo into new session
+    //find free session_numb
+    //store new session
+    //send signed session id cookie to user 
     println!("{:?}",params.u);
+    //generate new session number
+    //state.sessions.
     
     Ok(HttpResponse::build(http::StatusCode::OK)
         .content_type("text/plain")
@@ -134,7 +169,7 @@ fn login_get_and_check(
         )))
 }
 
-fn newdata(req: &HttpRequest<SessionState>) -> FutureResponse<HttpResponse> {
+fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 	println!("funct start");
 
 	req.body()
@@ -146,12 +181,12 @@ fn newdata(req: &HttpRequest<SessionState>) -> FutureResponse<HttpResponse> {
 		}).responder()
 }
 
-fn goodby(_req: &HttpRequest<SessionState>) -> impl Responder {
+fn goodby(_req: &HttpRequest<WebServerData>) -> impl Responder {
 	"Goodby!"
 }
 
 /// do websocket handshake and start `MyWebSocket` actor
-fn ws_index(r: &HttpRequest<SessionState>) -> Result<HttpResponse, wError> {
+fn ws_index(r: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
 	println!("websocket connected");
 	ws::start(r, WsDataSession { id: 0 })
 }
@@ -163,7 +198,7 @@ struct WsDataSession {
 }
 
 impl Actor for WsDataSession {
-	type Context = ws::WebsocketContext<Self, SessionState>;
+	type Context = ws::WebsocketContext<Self, WebServerData>;
 
 	fn started(&mut self, ctx: &mut Self::Context) {
 		// register self in chat server. `AsyncContext::wait` register
@@ -176,7 +211,7 @@ impl Actor for WsDataSession {
 
 		let addr = ctx.address();
 		ctx.state()
-            .addr
+            .websocket_addr
             .send(websocket_dataserver::Connect {
                 addr: addr.recipient(),
             })
@@ -197,17 +232,17 @@ impl Actor for WsDataSession {
 	fn stopping(&mut self, ctx: &mut Self::Context) -> Running {
 		// notify chat server
 		ctx.state()
-			.addr
+			.websocket_addr
 			.do_send(websocket_dataserver::Disconnect { id: self.id });
 		Running::Stop
 	}
 }
 
 /// send messages to server if requested by dataserver
-impl Handler<websocket_dataserver::clientMessage> for WsDataSession {
+impl Handler<websocket_dataserver::ClientMessage> for WsDataSession {
 	type Result = ();
 
-	fn handle(&mut self, msg: websocket_dataserver::clientMessage, ctx: &mut Self::Context) {
+	fn handle(&mut self, msg: websocket_dataserver::ClientMessage, ctx: &mut Self::Context) {
 		println!("websocket");
 		ctx.text(msg.0);
 	}
@@ -227,7 +262,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsDataSession {
 						"/Sub" => {
 							if let Ok(source) = websocket_dataserver::source_string_to_enum(v[1]) {
 								ctx.state()
-									.addr
+									.websocket_addr
 									.do_send(websocket_dataserver::SubscribeToSource {
 										id: self.id,
 										source: source,
@@ -283,6 +318,11 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
 
 	let (tx, rx) = mpsc::channel();
 
+	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load().unwrap()));
+    let data = Arc::new(RwLock::new(timeseries_access::init(PathBuf::from("data")).unwrap())); 
+    let sessions = Arc::new(RwLock::new(HashMap::new()));
+    let free_session_ids = Arc::new(AtomicUsize::new(0));
+
 	thread::spawn(move || {
 		// Start data server actor in separate thread
 		let sys = actix::System::new("http-server");
@@ -291,10 +331,17 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
 
 		let web_server = server::new(move || {
 			 // Websocket sessions state
-			let state = SessionState {
-                addr: data_server_clone.clone(),
-                data: timeseries_access::init(PathBuf::from("data")).unwrap(), 
+			let state = WebServerData {
+                passw_db: passw_db.clone(),
+                websocket_addr: data_server_clone.clone(),
+                data: data.clone(), 
+                sessions: sessions.clone(),
+                free_session_ids: free_session_ids.clone(),
             };
+            let mut cookie_private_key = [0i8; 32];
+            let mut rng = rand::StdRng::from_entropy();
+            rng.fill(&mut cookie_private_key[..]);
+            
 			App::with_state(state)
 			.middleware(CheckLogin)
             .middleware(IdentityService::new(
@@ -310,6 +357,7 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
                 .resource("/logout", |r| r.f(logout))
                 .resource("/", |r| r.f(index))
                 .resource(r"/newdata", |r| r.method(Method::POST).f(newdata))
+                .resource(r"/list_data", |r| r.method(Method::POST).f(newdata))
                 .resource(r"/login/{tail:.*}", |r| {
                         r.method(http::Method::POST).with(login_get_and_check);
                         r.method(http::Method::GET).f(login_page);

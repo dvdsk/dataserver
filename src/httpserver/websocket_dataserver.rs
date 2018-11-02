@@ -32,7 +32,7 @@ pub fn source_string_to_enum(source_name: &str) -> Result<DataSource, ()> {
 }
 
 #[derive(Message)]
-pub struct clientMessage(pub String);
+pub struct ClientMessage(pub String);
 
 #[derive(Message)]
 #[rtype(usize)]
@@ -56,7 +56,7 @@ impl Handler<NewData> for DataServer {
 				//todo dont just send a string here, do something that
 				//blocks till a websocket client awnsers, and sends
 				//the signal that there is new data.
-				let _ = session.addr.do_send(clientMessage("test".to_owned()));
+				let _ = session.addr.do_send(ClientMessage("test".to_owned()));
 				println!("send stuff");
 			}
 		}
@@ -68,7 +68,7 @@ impl Handler<NewData> for DataServer {
 #[derive(Message)]
 #[rtype(usize)]
 pub struct Connect {
-	pub addr: Recipient<clientMessage>,
+	pub addr: Recipient<ClientMessage>,
 }
 
 impl Handler<Connect> for DataServer {
@@ -80,7 +80,7 @@ impl Handler<Connect> for DataServer {
 		let id = self.rng.borrow_mut().gen::<usize>();
 		self.sessions.insert(
 			id,
-			clientInfo {
+			Clientinfo {
 				addr: msg.addr,
 				subs: Vec::new(),
 			},
@@ -146,14 +146,13 @@ impl Handler<SubscribeToSource> for DataServer {
 	}
 }
 
-pub struct clientInfo {
-	addr: Recipient<clientMessage>,
+pub struct Clientinfo {
+	addr: Recipient<ClientMessage>,
 	subs: Vec<DataSource>,
 }
 
 pub struct DataServer {
-	sessions: HashMap<usize, clientInfo>,
-	#[derive(Debug)]
+	sessions: HashMap<usize, Clientinfo>,
 	subs: HashMap<DataSource, HashSet<usize>>,
 
 	rng: RefCell<ThreadRng>,

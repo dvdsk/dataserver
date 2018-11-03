@@ -11,8 +11,6 @@ extern crate rustls;
 extern crate rand;
 extern crate chrono;
 
-extern crate minimal_timeseries;
-
 use std::path::PathBuf;
 
 use self::actix::Addr;
@@ -38,7 +36,7 @@ use self::rand::Rng;
 use std::fs::File;
 use std::io::BufReader;
 
-use std::sync::{Arc, RwLock, atomic::AtomicUsize};
+use std::sync::{Arc, RwLock, atomic::{AtomicUsize,Ordering}};
 
 
 use std::collections::HashMap;
@@ -48,9 +46,7 @@ use std::thread;
 use std::time::Duration;
 use self::chrono::{DateTime, Utc};
 
-use self::minimal_timeseries::Timeseries;
-
-mod timeseries_access;
+pub mod timeseries_access;
 mod websocket_dataserver;
 mod secure_database;
 use self::secure_database::{TimeseriesAutorisation, PasswordDatabase};
@@ -132,9 +128,10 @@ fn login_page(req: &HttpRequest<WebServerData>) -> HttpResponse {
 
 /// State and POST Params
 fn login_get_and_check(
-    (state, params): (State<WebServerData>, Form<Logindata>),
+    (req, params): (HttpRequest<WebServerData>, Form<Logindata>),
 ) -> wResult<HttpResponse> {
     //if login valid (check passwdb) load userinfo
+    let state = req.state();
     let mut passw_db = state.passw_db.write().unwrap();
     
     if passw_db.verify_password(params.u.as_str().as_bytes(), params.p.as_str().as_bytes()).is_err(){
@@ -142,24 +139,20 @@ fn login_get_and_check(
         .content_type("text/plain")
         .body("incorrect password or username"));
 	}
+	//copy userinfo into new session
 	let userinfo = passw_db.get_userdata(params.u.as_str().as_bytes());
     let session = Session {
 		authorised_timeseries: userinfo.authorised_timeseries,
 		last_login: userinfo.last_login, 
 		username: userinfo.username,
 	};
-	
-	//let sessionId = 
+	//find free session_numb, set new session number and store new session
+	let sessionId = state.free_session_ids.fetch_add(1, Ordering::Acquire);
 	let mut sessions = state.sessions.write().unwrap();
-	//sessions.insert(,session);
+	sessions.insert(sessionId as u16,session);
 	
-    //copy userinfo into new session
-    //find free session_numb
-    //store new session
-    //send signed session id cookie to user 
-    println!("{:?}",params.u);
-    //generate new session number
-    //state.sessions.
+    //sign and send session id cookie to user 
+    req.remember(sessionId.to_string());
     
     Ok(HttpResponse::build(http::StatusCode::OK)
         .content_type("text/plain")
@@ -299,7 +292,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsDataSession {
 	}
 }
 
-pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandle) {
+pub fn start(signed_cert: &Path, private_key: &Path, data: Arc<RwLock<HashMap<u16, timeseries_access::DataSet>>>) -> (DataHandle, ServerHandle) {
 	// load ssl keys
 
 	if ::std::env::var("RUST_LOG").is_err() {
@@ -319,7 +312,6 @@ pub fn start(signed_cert: &Path, private_key: &Path) -> (DataHandle, ServerHandl
 	let (tx, rx) = mpsc::channel();
 
 	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load().unwrap()));
-    let data = Arc::new(RwLock::new(timeseries_access::init(PathBuf::from("data")).unwrap())); 
     let sessions = Arc::new(RwLock::new(HashMap::new()));
     let free_session_ids = Arc::new(AtomicUsize::new(0));
 

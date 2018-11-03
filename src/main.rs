@@ -3,12 +3,16 @@ extern crate log;
 #[macro_use]
 extern crate serde_derive;
 
+
 mod certificate_manager;
 mod httpserver;
 
-use std::path::Path;
+use self::httpserver::timeseries_access;
 
+use std::path::{Path,PathBuf};
+use std::sync::{Arc, RwLock};
 use std::io::{stdin, stdout, Read, Write};
+
 pub fn pause() {
 	let mut stdout = stdout();
 	stdout
@@ -33,8 +37,10 @@ fn main() {
 		}
 	}
 
+	let data = Arc::new(RwLock::new(timeseries_access::init(PathBuf::from("data")).unwrap())); 
+
 	let (data_handle, web_handle) =
-		httpserver::start(Path::new("keys/cert.key"), Path::new("keys/cert.cert"));
+	httpserver::start(Path::new("keys/cert.key"), Path::new("keys/cert.cert"), data);
 	pause();
 	httpserver::send_newdata(data_handle);
 	//httpserver::send_test(data_handle);

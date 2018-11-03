@@ -46,22 +46,20 @@ use std::thread;
 use std::time::Duration;
 use self::chrono::{DateTime, Utc};
 
-pub mod timeseries_access;
+pub mod timeseries_interface;
 mod websocket_dataserver;
-mod secure_database;
-use self::secure_database::{TimeseriesAutorisation, PasswordDatabase};
+pub mod secure_database;
+use self::secure_database::{PasswordDatabase};
 
 struct Session {//TODO deprecate 
-    authorised_timeseries: Vec<TimeseriesAutorisation>,
-	last_login: DateTime<Utc>, 
-	username: String,
+    userinfo: secure_database::UserInfo,
     //add more temporary user specific data as needed
 }
 
 struct WebServerData {
 	passw_db: Arc<RwLock<PasswordDatabase>>,
 	websocket_addr: Addr<websocket_dataserver::DataServer>,
-	data: Arc<RwLock<HashMap<u16,timeseries_access::DataSet>>>,
+	data: Arc<RwLock<HashMap<u16,timeseries_interface::DataSet>>>,
 	sessions: Arc<RwLock<HashMap<u16,Session>>> ,
 	free_session_ids: Arc<AtomicUsize>,
 }
@@ -88,7 +86,7 @@ fn index(req: &HttpRequest<WebServerData>) -> String {
 }
 
 fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
-	let page = include_str!("static_webpages/login.html");
+	let page = "list:";
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
 
@@ -102,9 +100,11 @@ impl<S> middleware::Middleware<S> for CheckLogin {
 	// We only need to hook into the `start` for this middleware.
 	fn start(&self, req: &HttpRequest<S>) -> wResult<middleware::Started> {
 		if let Some(id) = req.identity() {
+			println!("authenticated");
             //check if valid session
 			return Ok(middleware::Started::Done);
 		} else {
+			println!("NO SESSION FOUND");
 			// Don't forward to /login if we are already on /login
 			if req.path().starts_with("/login") {
 				return Ok(middleware::Started::Done);
@@ -130,11 +130,14 @@ fn login_page(req: &HttpRequest<WebServerData>) -> HttpResponse {
 fn login_get_and_check(
     (req, params): (HttpRequest<WebServerData>, Form<Logindata>),
 ) -> wResult<HttpResponse> {
+	
+	println!("checking login");
     //if login valid (check passwdb) load userinfo
     let state = req.state();
     let mut passw_db = state.passw_db.write().unwrap();
     
     if passw_db.verify_password(params.u.as_str().as_bytes(), params.p.as_str().as_bytes()).is_err(){
+		println!("incorrect password");
 		return Ok(HttpResponse::build(http::StatusCode::UNAUTHORIZED)
         .content_type("text/plain")
         .body("incorrect password or username"));
@@ -142,9 +145,7 @@ fn login_get_and_check(
 	//copy userinfo into new session
 	let userinfo = passw_db.get_userdata(params.u.as_str().as_bytes());
     let session = Session {
-		authorised_timeseries: userinfo.authorised_timeseries,
-		last_login: userinfo.last_login, 
-		username: userinfo.username,
+		userinfo: userinfo,
 	};
 	//find free session_numb, set new session number and store new session
 	let sessionId = state.free_session_ids.fetch_add(1, Ordering::Acquire);
@@ -154,12 +155,11 @@ fn login_get_and_check(
     //sign and send session id cookie to user 
     req.remember(sessionId.to_string());
     
-    Ok(HttpResponse::build(http::StatusCode::OK)
-        .content_type("text/plain")
-        .body(format!(
-            "Your name is {}, and in AppState I have foo: {}",
-            params.u, params.p
-        )))
+    println!("succes: {}",req.path()["/login".len()..].to_owned());
+    
+    Ok(HttpResponse::Found()
+	   .header(http::header::LOCATION, req.path()["/login".len()..].to_owned())
+	   .finish())
 }
 
 fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
@@ -168,7 +168,7 @@ fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 	req.body()
 		.from_err()
 		.and_then(move |bytes: Bytes| {
-			timeseries_access::store_new_data(&bytes);
+			timeseries_interface::store_new_data(&bytes);
 			println!("Body: {:?}", bytes);
 			Ok(HttpResponse::Ok().status(StatusCode::ACCEPTED).finish())
 		}).responder()
@@ -292,13 +292,15 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsDataSession {
 	}
 }
 
-pub fn start(signed_cert: &Path, private_key: &Path, data: Arc<RwLock<HashMap<u16, timeseries_access::DataSet>>>) -> (DataHandle, ServerHandle) {
+pub fn start(signed_cert: &Path, private_key: &Path, 
+     data: Arc<RwLock<HashMap<u16, timeseries_interface::DataSet>>>, 
+     passw_db: Arc<RwLock<PasswordDatabase>>) -> (DataHandle, ServerHandle) {
 	// load ssl keys
 
-	if ::std::env::var("RUST_LOG").is_err() {
-		::std::env::set_var("RUST_LOG", "actix_web=trace");
-	}
-	env_logger::init();
+	//if ::std::env::var("RUST_LOG").is_err() {
+		//::std::env::set_var("RUST_LOG", "actix_web=trace");
+	//}
+	//env_logger::init();
 
 	let mut config = ServerConfig::new(NoClientAuth::new());
 	let cert_file = &mut BufReader::new(File::open(signed_cert).unwrap());
@@ -311,9 +313,12 @@ pub fn start(signed_cert: &Path, private_key: &Path, data: Arc<RwLock<HashMap<u1
 
 	let (tx, rx) = mpsc::channel();
 
-	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load().unwrap()));
     let sessions = Arc::new(RwLock::new(HashMap::new()));
     let free_session_ids = Arc::new(AtomicUsize::new(0));
+
+	let mut cookie_private_key = [0u8; 32];
+	let mut rng = rand::StdRng::from_entropy();
+	rng.fill(&mut cookie_private_key[..]);
 
 	thread::spawn(move || {
 		// Start data server actor in separate thread
@@ -330,26 +335,26 @@ pub fn start(signed_cert: &Path, private_key: &Path, data: Arc<RwLock<HashMap<u1
                 sessions: sessions.clone(),
                 free_session_ids: free_session_ids.clone(),
             };
-            let mut cookie_private_key = [0i8; 32];
-            let mut rng = rand::StdRng::from_entropy();
-            rng.fill(&mut cookie_private_key[..]);
             
 			App::with_state(state)
-			.middleware(CheckLogin)
             .middleware(IdentityService::new(
-                CookieIdentityPolicy::new(&[0; 32])
-                    .name("plantmonitor_session")
+                CookieIdentityPolicy::new(&cookie_private_key[..])
+                    .domain("deviousd.duckdns.org")
+                    .name("auth-cookie")
+                    .path("/")
                     .secure(true),
             ))
+			.middleware(CheckLogin)
                 // websocket route
                 // note some browsers need already existing http connection to 
                 // this server for the upgrade to wss to work
                 .resource("/ws/", |r| r.method(http::Method::GET).f(ws_index))
                 .resource("/goodby.html", |r| r.f(goodby)) 
                 .resource("/logout", |r| r.f(logout))
+                .resource("/index", |r| r.f(index))
                 .resource("/", |r| r.f(index))
                 .resource(r"/newdata", |r| r.method(Method::POST).f(newdata))
-                .resource(r"/list_data", |r| r.method(Method::POST).f(newdata))
+                .resource(r"/list_data.html", |r| r.method(Method::GET).f(list_data))
                 .resource(r"/login/{tail:.*}", |r| {
                         r.method(http::Method::POST).with(login_get_and_check);
                         r.method(http::Method::GET).f(login_page);

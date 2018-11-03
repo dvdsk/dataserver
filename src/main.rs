@@ -2,12 +2,15 @@
 extern crate log;
 #[macro_use]
 extern crate serde_derive;
-
+#[macro_use] 
+extern crate text_io;
+extern crate chrono;
 
 mod certificate_manager;
 mod httpserver;
 
-use self::httpserver::timeseries_access;
+use self::chrono::Utc;
+use self::httpserver::{timeseries_interface, secure_database::PasswordDatabase, secure_database::UserInfo};
 
 use std::path::{Path,PathBuf};
 use std::sync::{Arc, RwLock};
@@ -20,6 +23,22 @@ pub fn pause() {
 		.unwrap();
 	stdout.flush().unwrap();
 	stdin().read(&mut [0]).unwrap();
+}
+
+fn add_user(passw_db: & Arc<RwLock<PasswordDatabase>>){
+	println!("enter username:");
+	let username: String = read!("{}\n");
+	println!("enter password:");
+	let password: String = read!("{}\n");
+	
+	let user_data = UserInfo{
+		timeseries_with_access: Vec::new(),
+		last_login: Utc::now(), 
+		username: username.clone(),
+	};
+	
+	let mut passw_db = passw_db.write().unwrap();
+	passw_db.store_user(username.as_str().as_bytes(), password.as_str().as_bytes(), user_data);
 }
 
 fn main() {
@@ -37,14 +56,24 @@ fn main() {
 		}
 	}
 
-	let data = Arc::new(RwLock::new(timeseries_access::init(PathBuf::from("data")).unwrap())); 
+	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load().unwrap()));
+	let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("data")).unwrap())); 
 
 	let (data_handle, web_handle) =
-	httpserver::start(Path::new("keys/cert.key"), Path::new("keys/cert.cert"), data);
-	pause();
-	httpserver::send_newdata(data_handle);
-	//httpserver::send_test(data_handle);
-	pause();
+	httpserver::start(Path::new("keys/cert.key"), Path::new("keys/cert.cert"), data.clone(), passw_db.clone() );
+	println!("press: t to send test data, n: to add a new user, q to quit");
+	loop {
+		let mut input = String::new();
+		stdin().read_line(&mut input).unwrap();
+		match input.as_str() {
+			"t\n" => httpserver::send_newdata(data_handle.clone()),
+			"n\n" => add_user(& passw_db),
+			"q\n" => break,
+			_ => println!("unhandled"),
+		};
+	}
+
+	println!("shutting down");
 	httpserver::stop(web_handle);
 }
 

@@ -2,6 +2,8 @@ extern crate ring;
 extern crate chrono;
 extern crate bincode;
 
+use httpserver::timeseries_interface;
+
 use self::bincode::{deserialize_from,serialize_into};
 
 use self::ring::{digest, pbkdf2};
@@ -22,14 +24,8 @@ pub struct User {
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub struct TimeseriesAutorisation {
-	id: u32,
-	autorised_fields: Vec<u8>,
-}
-
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
-	pub authorised_timeseries: Vec<TimeseriesAutorisation>,
+	pub timeseries_with_access: Vec<timeseries_interface::Access>,
 	pub last_login: DateTime<Utc>, 
 	pub username: String,
 }

@@ -43,7 +43,6 @@ pub struct PasswordDatabase {
     // Normally this would be a persistent database.
     // use some embedded database
     pub storage: HashMap<Vec<u8>, User>,
-    
 }
 
 impl PasswordDatabase {
@@ -127,8 +126,7 @@ impl PasswordDatabase {
 	// but common case that the user has used the same password for
 	// multiple systems.
 	pub fn salt(&self, username: &[u8]) -> Vec<u8> {
-		let mut salt = Vec::with_capacity(self.db_salt_component.len() +
-																			username.len());
+		let mut salt = Vec::with_capacity(self.db_salt_component.len() + username.len());
 		salt.extend(self.db_salt_component.as_ref());
 		salt.extend(username);
 		salt

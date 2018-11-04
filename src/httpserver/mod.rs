@@ -21,7 +21,7 @@ use self::actix_web::middleware::identity::{CookieIdentityPolicy, IdentityServic
 use self::actix_web::Error as wError;
 use self::actix_web::Result as wResult;
 use self::actix_web::{
-	fs::NamedFile, http, http::Method, http::StatusCode, middleware, server, ws, App, State,
+	fs::NamedFile, http, http::Method, http::StatusCode, middleware, server, ws, App,
 	AsyncResponder, Form, FutureResponse, HttpMessage, HttpRequest, HttpResponse, Responder,
 };
 
@@ -44,7 +44,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-use self::chrono::{DateTime, Utc};
+use self::chrono::{Utc};
 
 pub mod timeseries_interface;
 mod websocket_dataserver;
@@ -59,7 +59,7 @@ struct Session {//TODO deprecate
 struct WebServerData {
 	passw_db: Arc<RwLock<PasswordDatabase>>,
 	websocket_addr: Addr<websocket_dataserver::DataServer>,
-	data: Arc<RwLock<HashMap<u16,timeseries_interface::DataSet>>>,
+	data: Arc<RwLock<timeseries_interface::Data>>,
 	sessions: Arc<RwLock<HashMap<u16,Session>>> ,
 	free_session_ids: Arc<AtomicUsize>,
 }
@@ -86,8 +86,22 @@ fn index(req: &HttpRequest<WebServerData>) -> String {
 }
 
 fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
-	let page = "list:";
-	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
+	let sessions = req.state().sessions.read().unwrap();
+	let data = req.state().data.read().unwrap();
+	let mut accessible_fields = String::from("<html><body><table>");
+	let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
+	let session = sessions.get(&session_id).unwrap();
+
+	for accessible_dataset in &session.userinfo.timeseries_with_access {
+		let mut dataset_fields = String::new();
+		let id = accessible_dataset.id;
+		for field in data.sets.get(&id).unwrap().metadata.fields.iter() {
+			dataset_fields.push_str(&format!("<td>{}</td>",&field.name));
+		}
+		accessible_fields.push_str(&format!("<tr>{}</tr>",&dataset_fields));
+	}
+	accessible_fields.push_str("</table></body></html>");
+	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(accessible_fields)
 }
 
 fn logout(req: &HttpRequest<WebServerData>) -> HttpResponse {
@@ -100,11 +114,9 @@ impl<S> middleware::Middleware<S> for CheckLogin {
 	// We only need to hook into the `start` for this middleware.
 	fn start(&self, req: &HttpRequest<S>) -> wResult<middleware::Started> {
 		if let Some(id) = req.identity() {
-			println!("authenticated");
             //check if valid session
 			return Ok(middleware::Started::Done);
 		} else {
-			println!("NO SESSION FOUND");
 			// Don't forward to /login if we are already on /login
 			if req.path().starts_with("/login") {
 				return Ok(middleware::Started::Done);
@@ -121,7 +133,6 @@ impl<S> middleware::Middleware<S> for CheckLogin {
 }
 
 fn login_page(req: &HttpRequest<WebServerData>) -> HttpResponse {
-    println!("hi");
 	let page = include_str!("static_webpages/login.html");
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
@@ -143,19 +154,20 @@ fn login_get_and_check(
         .body("incorrect password or username"));
 	}
 	//copy userinfo into new session
-	let userinfo = passw_db.get_userdata(params.u.as_str().as_bytes());
+	let mut userinfo = passw_db.get_userdata(params.u.as_str().as_bytes());
+	userinfo.last_login = Utc::now();
+	
+	passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
     let session = Session {
 		userinfo: userinfo,
 	};
 	//find free session_numb, set new session number and store new session
-	let sessionId = state.free_session_ids.fetch_add(1, Ordering::Acquire);
+	let session_id = state.free_session_ids.fetch_add(1, Ordering::Acquire);
 	let mut sessions = state.sessions.write().unwrap();
-	sessions.insert(sessionId as u16,session);
+	sessions.insert(session_id as u16,session);
 	
     //sign and send session id cookie to user 
-    req.remember(sessionId.to_string());
-    
-    println!("succes: {}",req.path()["/login".len()..].to_owned());
+    req.remember(session_id.to_string());
     
     Ok(HttpResponse::Found()
 	   .header(http::header::LOCATION, req.path()["/login".len()..].to_owned())
@@ -293,7 +305,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsDataSession {
 }
 
 pub fn start(signed_cert: &Path, private_key: &Path, 
-     data: Arc<RwLock<HashMap<u16, timeseries_interface::DataSet>>>, 
+     data: Arc<RwLock<timeseries_interface::Data>>, 
      passw_db: Arc<RwLock<PasswordDatabase>>) -> (DataHandle, ServerHandle) {
 	// load ssl keys
 

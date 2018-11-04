@@ -15,6 +15,7 @@ use self::httpserver::{timeseries_interface, secure_database::PasswordDatabase, 
 use std::path::{Path,PathBuf};
 use std::sync::{Arc, RwLock};
 use std::io::{stdin, stdout, Read, Write};
+use std::collections::HashMap;
 
 pub fn pause() {
 	let mut stdout = stdout();
@@ -32,13 +33,29 @@ fn add_user(passw_db: & Arc<RwLock<PasswordDatabase>>){
 	let password: String = read!("{}\n");
 	
 	let user_data = UserInfo{
-		timeseries_with_access: Vec::new(),
+		timeseries_with_access: HashMap::new(),
 		last_login: Utc::now(), 
 		username: username.clone(),
 	};
 	
 	let mut passw_db = passw_db.write().unwrap();
 	passw_db.store_user(username.as_str().as_bytes(), password.as_str().as_bytes(), user_data);
+}
+
+fn add_dataset(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<timeseries_interface::Data>>){
+	let mut data = data.write().unwrap();
+	if let Ok(dataset_id) = data.add_set(){
+		println!("enter intended owner's username:");
+		let username: String = read!("{}\n");
+		
+		let fields = &data.sets.get(&dataset_id).unwrap().metadata.fields;		
+		let mut passw_db = passw_db.write().unwrap();
+		let userdata = passw_db.get_userdata(username);
+		passw_db.add_owner(dataset_id, fields, userdata);
+	} else {
+		//destroy files
+		println!("could not create new dataset");
+	}
 }
 
 fn main() {
@@ -58,16 +75,18 @@ fn main() {
 
 	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load().unwrap()));
 	let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("data")).unwrap())); 
+	let sessions = Arc::new(RwLock::new(HashMap::new()));
 
 	let (data_handle, web_handle) =
-	httpserver::start(Path::new("keys/cert.key"), Path::new("keys/cert.cert"), data.clone(), passw_db.clone() );
-	println!("press: t to send test data, n: to add a new user, q to quit");
+	httpserver::start(Path::new("keys/cert.key"), Path::new("keys/cert.cert"), data.clone(), passw_db.clone(), sessions.clone());
+	println!("press: t to send test data, n: to add a new user, q to quit, a to add new dataset");
 	loop {
 		let mut input = String::new();
 		stdin().read_line(&mut input).unwrap();
 		match input.as_str() {
 			"t\n" => httpserver::send_newdata(data_handle.clone()),
 			"n\n" => add_user(& passw_db),
+			"a\n" => add_dataset(&passw_db, &data),
 			"q\n" => break,
 			_ => println!("unhandled"),
 		};

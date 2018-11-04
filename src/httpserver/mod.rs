@@ -51,7 +51,7 @@ mod websocket_dataserver;
 pub mod secure_database;
 use self::secure_database::{PasswordDatabase};
 
-struct Session {//TODO deprecate 
+pub struct Session {//TODO deprecate 
     userinfo: secure_database::UserInfo,
     //add more temporary user specific data as needed
 }
@@ -85,24 +85,24 @@ fn index(req: &HttpRequest<WebServerData>) -> String {
 	format!("Hello {}", req.identity().unwrap_or("Anonymous".to_owned()))
 }
 
-fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
-	let sessions = req.state().sessions.read().unwrap();
-	let data = req.state().data.read().unwrap();
-	let mut accessible_fields = String::from("<html><body><table>");
-	let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
-	let session = sessions.get(&session_id).unwrap();
+//fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
+	//let sessions = req.state().sessions.read().unwrap();
+	//let data = req.state().data.read().unwrap();
+	//let mut accessible_fields = String::from("<html><body><table>");
+	//let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
+	//let session = sessions.get(&session_id).unwrap();
 
-	for accessible_dataset in &session.userinfo.timeseries_with_access {
-		let mut dataset_fields = String::new();
-		let id = accessible_dataset.id;
-		for field in data.sets.get(&id).unwrap().metadata.fields.iter() {
-			dataset_fields.push_str(&format!("<td>{}</td>",&field.name));
-		}
-		accessible_fields.push_str(&format!("<tr>{}</tr>",&dataset_fields));
-	}
-	accessible_fields.push_str("</table></body></html>");
-	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(accessible_fields)
-}
+	//for (dataset_id, authorized_fields) in &session.userinfo.timeseries_with_access {
+		//let mut dataset_fields = String::new();
+		//let id = accessible_dataset.id;
+		//for field in data.sets.get(&id).unwrap().metadata.fields.iter() {
+			//dataset_fields.push_str(&format!("<td>{}</td>",&field.name));
+		//}
+		//accessible_fields.push_str(&format!("<tr>{}</tr>",&dataset_fields));
+	//}
+	//accessible_fields.push_str("</table></body></html>");
+	//HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(accessible_fields)
+//}
 
 fn logout(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	req.forget();
@@ -154,7 +154,7 @@ fn login_get_and_check(
         .body("incorrect password or username"));
 	}
 	//copy userinfo into new session
-	let mut userinfo = passw_db.get_userdata(params.u.as_str().as_bytes());
+	let mut userinfo = passw_db.get_userdata(&params.u);
 	userinfo.last_login = Utc::now();
 	
 	passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
@@ -306,7 +306,8 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsDataSession {
 
 pub fn start(signed_cert: &Path, private_key: &Path, 
      data: Arc<RwLock<timeseries_interface::Data>>, 
-     passw_db: Arc<RwLock<PasswordDatabase>>) -> (DataHandle, ServerHandle) {
+     passw_db: Arc<RwLock<PasswordDatabase>>,
+     sessions: Arc<RwLock<HashMap<u16,Session>>>) -> (DataHandle, ServerHandle) {
 	// load ssl keys
 
 	//if ::std::env::var("RUST_LOG").is_err() {
@@ -325,7 +326,6 @@ pub fn start(signed_cert: &Path, private_key: &Path,
 
 	let (tx, rx) = mpsc::channel();
 
-    let sessions = Arc::new(RwLock::new(HashMap::new()));
     let free_session_ids = Arc::new(AtomicUsize::new(0));
 
 	let mut cookie_private_key = [0u8; 32];
@@ -366,7 +366,7 @@ pub fn start(signed_cert: &Path, private_key: &Path,
                 .resource("/index", |r| r.f(index))
                 .resource("/", |r| r.f(index))
                 .resource(r"/newdata", |r| r.method(Method::POST).f(newdata))
-                .resource(r"/list_data.html", |r| r.method(Method::GET).f(list_data))
+                //.resource(r"/list_data.html", |r| r.method(Method::GET).f(list_data))
                 .resource(r"/login/{tail:.*}", |r| {
                         r.method(http::Method::POST).with(login_get_and_check);
                         r.method(http::Method::GET).f(login_page);

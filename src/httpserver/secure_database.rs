@@ -25,7 +25,7 @@ pub struct User {
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
-	pub timeseries_with_access: Vec<timeseries_interface::Access>,
+	pub timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorised_field>>,
 	pub last_login: DateTime<Utc>, 
 	pub username: String,
 }
@@ -134,7 +134,8 @@ impl PasswordDatabase {
 }
 
 impl PasswordDatabase {
-	pub fn get_userdata(&mut self, username: &[u8]) -> UserInfo {
+	pub fn get_userdata<T: AsRef<str>>(&mut self, username: T) -> UserInfo {
+		let username = username.as_ref().as_bytes();
 		match self.storage.get(username) {
 			Some(user) => user.user_data.clone(),
 			None => panic!("User database corrupt!"),

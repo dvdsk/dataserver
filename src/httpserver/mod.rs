@@ -50,6 +50,7 @@ pub mod timeseries_interface;
 mod websocket_dataserver;
 pub mod secure_database;
 use self::secure_database::{PasswordDatabase};
+use timeseries_interface::Authorisation;
 
 pub struct Session {//TODO deprecate 
     userinfo: secure_database::UserInfo,
@@ -85,24 +86,29 @@ fn index(req: &HttpRequest<WebServerData>) -> String {
 	format!("Hello {}", req.identity().unwrap_or("Anonymous".to_owned()))
 }
 
-//fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
-	//let sessions = req.state().sessions.read().unwrap();
-	//let data = req.state().data.read().unwrap();
-	//let mut accessible_fields = String::from("<html><body><table>");
-	//let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
-	//let session = sessions.get(&session_id).unwrap();
+fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
+	let mut accessible_fields = String::from("<html><body><table>");
+	
+	let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
+	let sessions = req.state().sessions.read().unwrap();
+	let session = sessions.get(&session_id).unwrap();
 
-	//for (dataset_id, authorized_fields) in &session.userinfo.timeseries_with_access {
-		//let mut dataset_fields = String::new();
-		//let id = accessible_dataset.id;
-		//for field in data.sets.get(&id).unwrap().metadata.fields.iter() {
-			//dataset_fields.push_str(&format!("<td>{}</td>",&field.name));
-		//}
-		//accessible_fields.push_str(&format!("<tr>{}</tr>",&dataset_fields));
-	//}
-	//accessible_fields.push_str("</table></body></html>");
-	//HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(accessible_fields)
-//}
+	let data = req.state().data.read().unwrap();
+	for (dataset_id, authorized_fields) in &session.userinfo.timeseries_with_access {
+		let mut dataset_fields = String::new();
+		
+		let fields = &data.sets.get(&dataset_id).unwrap().metadata.fields;
+		for field in authorized_fields{
+			match field{
+				Authorisation::Owner(id) => dataset_fields.push_str(&format!("<td><p><i>{}</i></p></td>", fields[*id as usize].name)),
+				Authorisation::Reader(id) => dataset_fields.push_str(&format!("<td>{}</td>",fields[*id as usize].name)),
+			};
+		}
+		accessible_fields.push_str(&format!("<tr>{}</tr>",&dataset_fields));
+	}
+	accessible_fields.push_str("</table></body></html>");
+	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(accessible_fields)
+}
 
 fn logout(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	req.forget();
@@ -366,7 +372,7 @@ pub fn start(signed_cert: &Path, private_key: &Path,
                 .resource("/index", |r| r.f(index))
                 .resource("/", |r| r.f(index))
                 .resource(r"/newdata", |r| r.method(Method::POST).f(newdata))
-                //.resource(r"/list_data.html", |r| r.method(Method::GET).f(list_data))
+                .resource(r"/list_data.html", |r| r.method(Method::GET).f(list_data))
                 .resource(r"/login/{tail:.*}", |r| {
                         r.method(http::Method::POST).with(login_get_and_check);
                         r.method(http::Method::GET).f(login_page);

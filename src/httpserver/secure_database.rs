@@ -25,7 +25,7 @@ pub struct User {
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
-	pub timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorised_field>>,
+	pub timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
 	pub last_login: DateTime<Utc>, 
 	pub username: String,
 }

@@ -91,7 +91,6 @@ fn main() {
 			_ => println!("unhandled"),
 		};
 	}
-
 	println!("shutting down");
 	httpserver::stop(web_handle);
 }
@@ -105,13 +104,16 @@ mod tests {
 
 	#[test]
 	fn put_new_data() {
+		let passw_db = Arc::new(RwLock::new(PasswordDatabase::load().unwrap()));
+		let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("data")).unwrap())); 
+		let sessions = Arc::new(RwLock::new(HashMap::new()));
+		
 		let (data_handle, web_handle) =
-			httpserver::start(Path::new("keys/cert.key"), Path::new("keys/cert.cert"));
+		httpserver::start(Path::new("keys/cert.key"), Path::new("keys/cert.cert"), data.clone(), passw_db.clone(), sessions.clone());
 		let client = reqwest::Client::builder()
 			.danger_accept_invalid_certs(true)
 			.build()
 			.unwrap();
-
 		let node_id: u16 = 2233;
 		let temp: f32 = 20.34;
 		let humidity: f32 = 53.12;
@@ -125,6 +127,7 @@ mod tests {
 			.write_u16::<NativeEndian>((humidity * 100.) as u16)
 			.unwrap();
 
+		println!("sending post request");
 		let res = client
 			.post("https://www.deviousd.duckdns.org:8080/newdata")
 			.body(data_string)

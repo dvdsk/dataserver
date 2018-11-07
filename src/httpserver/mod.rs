@@ -123,6 +123,10 @@ impl<S> middleware::Middleware<S> for CheckLogin {
             //check if valid session
 			return Ok(middleware::Started::Done);
 		} else {
+			if req.path() == r"/newdata" { 
+				//newdata is authenticated through other means
+				return Ok(middleware::Started::Done);
+			}
 			// Don't forward to /login if we are already on /login
 			if req.path().starts_with("/login") {
 				return Ok(middleware::Started::Done);
@@ -180,15 +184,20 @@ fn login_get_and_check(
 	   .finish())
 }
 
-fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
+fn newdata(req: & HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
+	
 	println!("funct start");
-
+	let now = Utc::now();
+	let data = req.state().data.clone();
+	
 	req.body()
 		.from_err()
 		.and_then(move |bytes: Bytes| {
-			timeseries_interface::store_new_data(&bytes);
-			println!("Body: {:?}", bytes);
-			Ok(HttpResponse::Ok().status(StatusCode::ACCEPTED).finish())
+			let res = data.write().unwrap().store_new_data(&bytes, now);
+			match res {
+				Ok(_) => Ok(HttpResponse::Ok().status(StatusCode::OK).finish()),
+				Err(_) => Ok(HttpResponse::Ok().status(StatusCode::FORBIDDEN).finish()),
+			}
 		}).responder()
 }
 

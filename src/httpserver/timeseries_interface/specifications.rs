@@ -3,15 +3,13 @@ extern crate serde_yaml;
 
 use std::fs;
 use std::io;
-use std::io::{Write,Read};
 use std::path::Path;
-use std::path::PathBuf;
 
 use super::{Field, FieldId, MetaData};
 use super::super::{rand, rand::{FromEntropy, Rng}};
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-struct FieldLength {
+pub struct FieldLength {
 	name: String,
 	min_value: f32,
 	max_value: f32,
@@ -19,7 +17,7 @@ struct FieldLength {
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-struct FieldSigDigits {
+pub struct FieldSigDigits {
 	name: String,
 	min_value: f32,
 	max_value: f32,
@@ -27,16 +25,16 @@ struct FieldSigDigits {
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-enum FieldSpec{
+pub enum FieldSpec{
 	BitLength(FieldLength),
 	SigDigits(FieldSigDigits),
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-struct MetaDataSpec {
-	name: String,
-	description: String,
-	fields: Vec<FieldSpec>,//must be sorted lowest id to highest
+pub struct MetaDataSpec {
+	pub name: String,
+	pub description: String,
+	pub fields: Vec<FieldSpec>,//must be sorted lowest id to highest
 }
 
 impl Into<MetaData> for MetaDataSpec {
@@ -80,7 +78,7 @@ impl Into<MetaData> for MetaDataSpec {
         MetaData {
 			name: self.name,
 			description: self.description,
-			remote_key: rng.gen(),
+			key: rng.gen(),
 			fields: fields,//must be sorted lowest id to highest
 		}
     }

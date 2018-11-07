@@ -114,26 +114,40 @@ mod tests {
 			.danger_accept_invalid_certs(true)
 			.build()
 			.unwrap();
-		let node_id: u16 = 2233;
+		
+		let key: u64 = 0;
+		let node_id: u16 = 0;
 		let temp: f32 = 20.34;
 		let humidity: f32 = 53.12;
 
 		let mut data_string: Vec<u8> = Vec::new();
 		data_string.write_u16::<NativeEndian>(node_id).unwrap();
-		data_string
-			.write_u16::<NativeEndian>(((temp + 20.) * 100.) as u16)
-			.unwrap();
-		data_string
-			.write_u16::<NativeEndian>((humidity * 100.) as u16)
-			.unwrap();
+		data_string.write_u64::<NativeEndian>(key).unwrap();
+		data_string.write_u16::<NativeEndian>(((temp + 20.) * 100.) as u16).unwrap();
+		data_string.write_u16::<NativeEndian>((humidity * 100.) as u16).unwrap();
 
 		println!("sending post request");
-		let res = client
+		let resp = client
 			.post("https://www.deviousd.duckdns.org:8080/newdata")
 			.body(data_string)
 			.send()
 			.unwrap();
-		println!("res: {:?}", res);
+		assert_eq!(resp.status(), reqwest::StatusCode::FORBIDDEN);
+		
+		let key: u64 = 1229643887935463488;
+		let mut data_string: Vec<u8> = Vec::new();
+		data_string.write_u16::<NativeEndian>(node_id).unwrap();
+		data_string.write_u64::<NativeEndian>(key).unwrap();
+		data_string.write_u16::<NativeEndian>(((temp + 20.) * 100.) as u16).unwrap();
+		data_string.write_u16::<NativeEndian>((humidity * 100.) as u16).unwrap();
+		
+		let resp = client
+			.post("https://www.deviousd.duckdns.org:8080/newdata")
+			.body(data_string)
+			.send()
+			.unwrap();
+		assert_eq!(resp.status(), reqwest::StatusCode::OK);
+		
 		pause();
 		httpserver::stop(web_handle);
 	}

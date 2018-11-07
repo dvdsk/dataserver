@@ -3,22 +3,23 @@ extern crate bytes;
 extern crate minimal_timeseries;
 extern crate walkdir;
 extern crate serde_yaml;
+extern crate chrono;
 
 use self::byteorder::{ByteOrder, NativeEndian};
 use self::bytes::Bytes;
 
 use std::fs;
+use std::fs::File;
 use std::io;
-use std::io::{Write,Read};
 use std::path::Path;
 use std::path::PathBuf;
+use chrono::prelude::*;
 
 use self::minimal_timeseries::Timeseries;
 use self::walkdir::{DirEntry, WalkDir};
 use std::collections::HashMap;
 
 use super::secure_database::{PasswordDatabase, UserInfo};
-use super::Session;
 
 mod specifications;
 mod compression;
@@ -54,10 +55,16 @@ where T: std::ops::Add+std::ops::SubAssign+std::ops::DivAssign {
 pub struct MetaData {
 	pub name: String,
 	pub description: String,
-	pub remote_key: u64,
-	pub fields: Vec<Field::<f32>>,//must be sorted lowest id to highest
+	pub key: u64,
+	pub fields: Vec<Field<f32>>,//must be sorted lowest id to highest
 }
 
+impl MetaData {
+	pub fn fieldsum(&self) -> u16 {
+		let field = self.fields.last().unwrap();
+		field.offset as u16 + field.length as u16
+	}
+}
 
 pub type DatasetId = u16;
 pub struct DataSet {
@@ -149,13 +156,11 @@ impl Data {
 		metadata_path.push(file_name);
 		metadata_path.set_extension("yaml");
 		
-		let mut metadata_buffer = Vec::new();
-		let mut f = fs::OpenOptions::new().read(true).write(false).create(false).open(metadata_path)?;
-		f.read_to_end(&mut metadata_buffer)?;
-		
-		if let Ok(metadata) = serde_yaml::from_slice::<MetaData>(&metadata_buffer) {
+		let f = fs::OpenOptions::new().read(true).write(false).create(false).open(metadata_path)?;
+		if let Ok(metadata) = serde_yaml::from_reader::<File, specifications::MetaDataSpec>(f) {
+			let metadata: MetaData = metadata.into();
 			let name = metadata.name.clone();
-			let line_size: u16 = metadata.fields.iter().map(|field| field.length as u16).sum();
+			let line_size: u16 = metadata.fieldsum();
 			let dataset_id = self.free_dataset_id;
 			self.free_dataset_id += 1;
 			let mut datafile_path = self.dir.clone();
@@ -165,10 +170,9 @@ impl Data {
 				timeseries: Timeseries::open(&datafile_path, line_size as usize)?,
 				metadata: metadata,
 			};
-			println!("reallyyyyyyy");
-			datafile_path.set_extension(".yaml");
+			datafile_path.set_extension("yaml");
 			let mut f = fs::File::create(datafile_path)?;
-			f.write_all(&metadata_buffer)?;
+			serde_yaml::to_writer(f, &set.metadata).unwrap();
 			
 			self.sets.insert(dataset_id, set);
 			println!("added timeseries: {} under id: {}",name, dataset_id);
@@ -181,7 +185,7 @@ impl Data {
 }
 
 impl PasswordDatabase {
-	pub fn add_owner(&mut self, id: DatasetId, fields: &Vec<Field::<f32>>, mut userinfo: UserInfo){
+	pub fn add_owner(&mut self, id: DatasetId, fields: &Vec<Field<f32>>, mut userinfo: UserInfo){
 		let auth_fields: Vec<Authorisation> = fields.into_iter().map(|field| Authorisation::Owner(field.id)).collect();
 		userinfo.timeseries_with_access.insert(id, auth_fields);
 		
@@ -190,8 +194,19 @@ impl PasswordDatabase {
 	}
 }
 
-pub fn store_new_data(data_string: &Bytes) -> Result<(), ()> {
-	let node_id = NativeEndian::read_u16(&data_string[..2]);
-	//if node_id
-	Ok(())
+impl Data {
+	pub fn store_new_data(&mut self, data_string: &Bytes, time: DateTime<Utc>) -> Result<(), ()> {
+		let node_id = NativeEndian::read_u16(&data_string[..2]);
+		let key = NativeEndian::read_u64(&data_string[2..10]);
+		if let Some(set) = self.sets.get_mut(&node_id){
+			if set.metadata.key == key {
+				set.timeseries.append(time, &data_string[10..]);
+				return Ok(()) 
+			}
+		} else {
+			println!("could not find dataset");
+		}
+		
+		Err(())
+	}
 }

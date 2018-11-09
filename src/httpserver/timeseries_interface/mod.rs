@@ -94,28 +94,26 @@ pub fn init(dir: PathBuf) -> Result<Data, io::Error> {
 	let mut sets: HashMap<DatasetId, DataSet> = HashMap::new();
 
 	fn is_datafile(entry: &DirEntry) -> bool {
+		//println!("hellloooaaa: {:?}",entry.unwrap().path());
 		entry
-			.file_name()
+			.path()
 			.to_str()
-			.map(|s| s.ends_with(".data"))
+			.map(|s| s.ends_with(".dat"))
 			.unwrap_or(false)
 	}
-
-	for datafile in WalkDir::new(&dir)
-		.into_iter()
-		.filter_entry(|e| is_datafile(e))
-		.filter_map(Result::ok)
-	{
-		let path = datafile.path();
-		if let Ok(data_id) = path
-		.file_stem()
-		.unwrap()
-		.to_str()
-		.unwrap()
-		.parse::<DatasetId>()
-		{
-			if data_id> free_dataset_id {free_dataset_id = data_id; }
-			load_data(&mut sets, path, data_id); 
+	for entry in WalkDir::new(&dir).into_iter().filter_map(Result::ok) {
+		if is_datafile(&entry) {
+			let path = entry.path();
+			if let Ok(data_id) = path
+			.file_stem()
+			.unwrap()
+			.to_str()
+			.unwrap()
+			.parse::<DatasetId>()
+			{
+				if data_id+1 > free_dataset_id {free_dataset_id = data_id+1; }
+				load_data(&mut sets, path, data_id); 
+			}
 		}
 	}
 
@@ -127,12 +125,14 @@ pub fn init(dir: PathBuf) -> Result<Data, io::Error> {
 }
 
 pub fn load_data(data: &mut HashMap<DatasetId,DataSet>, datafile_path: &Path, data_id: DatasetId) {
+	
 	let mut info_path = datafile_path.to_owned();
-	info_path.set_extension(".yaml");
-	if let Ok(metadata_file) = fs::OpenOptions::new().read(true).write(false).create(false).open(info_path) {
+	info_path.set_extension("yaml");
+	if let Ok(metadata_file) = fs::OpenOptions::new().read(true).write(false).create(false).open(&info_path) {
 		if let Ok(metadata) = serde_yaml::from_reader::<std::fs::File, MetaData>(metadata_file) {
 			let line_size: u16 = metadata.fields.iter().map(|field| field.length as u16).sum();
 			if let Ok(mut timeserie) = Timeseries::open(datafile_path, line_size as usize){
+				println!("loaded dataset with id: {}", &data_id);
 				data.insert(data_id, 
 					DataSet{
 						timeseries: timeserie,
@@ -140,8 +140,8 @@ pub fn load_data(data: &mut HashMap<DatasetId,DataSet>, datafile_path: &Path, da
 					}
 				);
 			} 
-		}
-	}
+		} else { println!("could not deserialise: {:?}", info_path);}
+	} else { println!("could not open: {:?} for reading", info_path);}
 }
 
 impl Data {
@@ -198,11 +198,14 @@ impl Data {
 	pub fn store_new_data(&mut self, data_string: &Bytes, time: DateTime<Utc>) -> Result<(), ()> {
 		let node_id = NativeEndian::read_u16(&data_string[..2]);
 		let key = NativeEndian::read_u64(&data_string[2..10]);
+		println!("key: {}, {}", key, node_id);
+		println!("sets: {:?}", self.sets.keys());
 		if let Some(set) = self.sets.get_mut(&node_id){
 			if set.metadata.key == key {
+				println!("data_str: {:?}", &data_string[10..]);
 				set.timeseries.append(time, &data_string[10..]);
 				return Ok(()) 
-			}
+			} else { println!("invalid key on store new data"); }
 		} else {
 			println!("could not find dataset");
 		}

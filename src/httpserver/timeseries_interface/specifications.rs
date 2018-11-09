@@ -25,9 +25,18 @@ pub struct FieldSigDigits {
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub struct FieldManual {
+	name: String,
+    length: u8,
+    decode_scale: f32,
+    decode_add: f32,
+}
+
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub enum FieldSpec{
 	BitLength(FieldLength),
 	SigDigits(FieldSigDigits),
+	Manual(FieldManual),
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -47,7 +56,8 @@ impl Into<MetaData> for MetaDataSpec {
             let (decode_scale, length, name, decode_add) = match field {
 				FieldSpec::BitLength(field) => {
 					let max_storable = 2_u32.pow(field.numb_of_bits as u32) as f32;
-					let decode_scale = (field.max_value - field.min_value)/max_storable;
+					let decode_scale = ((field.max_value - field.min_value)/max_storable).ceil() ;
+					
 					let length = field.numb_of_bits;
 					let name = field.name;
 					let decode_add = field.min_value;
@@ -55,15 +65,21 @@ impl Into<MetaData> for MetaDataSpec {
 				}
 				FieldSpec::SigDigits(field) => {
 					let normalised_range = (field.max_value - field.min_value)/field.max_value;
-					let decode_scale = -10_f32.powf( field.number_of_digits as f32 -field.max_value.log10() );
 					let needed_range = 10_u32.pow(field.number_of_digits) as f32 *normalised_range;
 					let length = needed_range.log2().ceil() as u8;
+					let decode_scale = 10_f32.powf( -1.0*(field.number_of_digits as f32 -field.max_value.log10()) );
 					let name = field.name;
 					let decode_add = field.min_value;
 					(decode_scale, length, name, decode_add)
 				}
+				FieldSpec::Manual(field) => {
+					let length = field.length;
+					let decode_scale = field.decode_scale;
+					let name = field.name;
+					let decode_add = field.decode_add;
+					(decode_scale, length, name, decode_add)
+				}
 			};
-            start_bit += length;
             fields.push(Field::<f32> {
                 id: id as FieldId,
                 name: name,
@@ -72,6 +88,7 @@ impl Into<MetaData> for MetaDataSpec {
                 decode_scale: decode_scale,
                 decode_add: decode_add,
             });
+            start_bit += length;
         }
         //set the security key to a random value
         let mut rng = rand::StdRng::from_entropy();
@@ -96,6 +113,12 @@ pub fn write_template() -> io::Result<()> {
 		min_value: 0f32,
 		max_value: 100f32,
 		number_of_digits: 8u32,
+	});
+	let template_field_2 = FieldSpec::Manual( FieldManual {
+		name: String::from("template field name3"),
+		length: 10,
+		decode_scale: 0.1,
+		decode_add: -40f32,
 	});
 	let metadata = MetaDataSpec {
 		name: String::from("template dataset name"),

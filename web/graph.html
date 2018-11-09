@@ -1,11 +1,16 @@
+ <!DOCTYPE html>
+  <meta charset="utf-8" />
+
 <head>
   <!-- Plotly.js -->
-   <script src="plotly-latest.min.js"></script>
+   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 
 <body>
   <div id="myDiv"><!-- Plotly chart will be drawn inside this DIV --></div>
   <script>
+	var wsUri = 'wss://deviousd.duckdns.org:8080/ws/';
+	  
 	(function() {
 	var d3 = Plotly.d3;
 
@@ -63,7 +68,7 @@
     function initPlot(evt){
 		if (webSocketCounter==0){
 			numbOfMessagesPerInit = (new Int16Array(evt.data))[0];
-			//console.log(numbOfMessagesPerInit);
+			console.log(numbOfMessagesPerInit);
 		} else if (webSocketCounter == 1){
 			data[0].y = Array.from(new Float32Array(evt.data));
 		} else if (webSocketCounter <= numbOfMessagesPerInit){
@@ -90,7 +95,7 @@
 		webSocketCounter++;
 	}
 	
-	ws = new WebSocket("ws://deviousd.duckdns.org:3012/ws")
+	ws = new WebSocket(wsUri);
 	ws.binaryType = 'arraybuffer';
 	
 	ws.onmessage = initPlot;

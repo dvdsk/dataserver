@@ -95,13 +95,13 @@ fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
 
 	let data = req.state().data.read().unwrap();
 	for (dataset_id, authorized_fields) in &session.userinfo.timeseries_with_access {
-		let mut dataset_fields = String::new();
+		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
+		let mut dataset_fields = format!("<th>{}</th>", &metadata.name);
 		
-		let fields = &data.sets.get(&dataset_id).unwrap().metadata.fields;
 		for field in authorized_fields{
 			match field{
-				Authorisation::Owner(id) => dataset_fields.push_str(&format!("<td><p><i>{}</i></p></td>", fields[*id as usize].name)),
-				Authorisation::Reader(id) => dataset_fields.push_str(&format!("<td>{}</td>",fields[*id as usize].name)),
+				Authorisation::Owner(id) => dataset_fields.push_str(&format!("<td><p><i>{}</i></p></td>", metadata.fields[*id as usize].name)),
+				Authorisation::Reader(id) => dataset_fields.push_str(&format!("<td>{}</td>",metadata.fields[*id as usize].name)),
 			};
 		}
 		accessible_fields.push_str(&format!("<tr>{}</tr>",&dataset_fields));
@@ -116,33 +116,34 @@ fn logout(req: &HttpRequest<WebServerData>) -> HttpResponse {
 }
 
 pub struct CheckLogin;
-impl<S> middleware::Middleware<S> for CheckLogin {
+impl middleware::Middleware<WebServerData> for CheckLogin {
 	// We only need to hook into the `start` for this middleware.
-	fn start(&self, req: &HttpRequest<S>) -> wResult<middleware::Started> {
+	fn start(&self, req: &HttpRequest<WebServerData>) -> wResult<middleware::Started> {
 		if let Some(id) = req.identity() {
             //check if valid session
-			return Ok(middleware::Started::Done);
-		} else {
-			if req.path() == r"/newdata" { 
-				//newdata is authenticated through other means
+            if req.state().sessions.read().unwrap().contains_key(&id.parse().unwrap()) {
 				return Ok(middleware::Started::Done);
 			}
-			// Don't forward to /login if we are already on /login
-			if req.path().starts_with("/login") {
-				return Ok(middleware::Started::Done);
-			}
-
-			let path = req.path();
-			Ok(middleware::Started::Response(
-				HttpResponse::Found()
-					.header(http::header::LOCATION, "/login".to_owned() + path)
-					.finish(),
-			))
 		}
+		if req.path() == r"/newdata" { 
+			//newdata is authenticated through other means
+			return Ok(middleware::Started::Done);
+		}
+		// Don't forward to /login if we are already on /login
+		if req.path().starts_with("/login") {
+			return Ok(middleware::Started::Done);
+		}
+
+		let path = req.path();
+		Ok(middleware::Started::Response(
+			HttpResponse::Found()
+				.header(http::header::LOCATION, "/login".to_owned() + path)
+				.finish(),
+		))
 	}
 }
 
-fn login_page(req: &HttpRequest<WebServerData>) -> HttpResponse {
+fn login_page(_req: &HttpRequest<WebServerData>) -> HttpResponse {
 	let page = include_str!("static_webpages/login.html");
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
@@ -166,8 +167,8 @@ fn login_get_and_check(
 	//copy userinfo into new session
 	let mut userinfo = passw_db.get_userdata(&params.u);
 	userinfo.last_login = Utc::now();
-	
 	passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
+	
     let session = Session {
 		userinfo: userinfo,
 	};
@@ -186,7 +187,6 @@ fn login_get_and_check(
 
 fn newdata(req: & HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 	
-	println!("funct start");
 	let now = Utc::now();
 	let data = req.state().data.clone();
 	

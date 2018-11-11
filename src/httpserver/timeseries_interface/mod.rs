@@ -130,7 +130,7 @@ pub fn load_data(data: &mut HashMap<DatasetId,DataSet>, datafile_path: &Path, da
 	info_path.set_extension("yaml");
 	if let Ok(metadata_file) = fs::OpenOptions::new().read(true).write(false).create(false).open(&info_path) {
 		if let Ok(metadata) = serde_yaml::from_reader::<std::fs::File, MetaData>(metadata_file) {
-			let line_size: u16 = metadata.fields.iter().map(|field| field.length as u16).sum();
+			let line_size: u16 = metadata.fields.iter().map(|field| field.length as u16).sum::<u16>() / 8;
 			if let Ok(mut timeserie) = Timeseries::open(datafile_path, line_size as usize){
 				println!("loaded dataset with id: {}", &data_id);
 				data.insert(data_id, 
@@ -198,18 +198,18 @@ impl Data {
 	pub fn store_new_data(&mut self, data_string: &Bytes, time: DateTime<Utc>) -> Result<(), ()> {
 		let node_id = NativeEndian::read_u16(&data_string[..2]);
 		let key = NativeEndian::read_u64(&data_string[2..10]);
-		println!("key: {}, {}", key, node_id);
-		println!("sets: {:?}", self.sets.keys());
 		if let Some(set) = self.sets.get_mut(&node_id){
+			println!("key: {}",set.metadata.key);
 			if set.metadata.key == key {
-				println!("data_str: {:?}", &data_string[10..]);
-				set.timeseries.append(time, &data_string[10..]);
-				return Ok(()) 
+				if let Err(error) = set.timeseries.append(time, &data_string[10..]){
+					println!("error on data append: {:?}",error);
+				} else {
+					return Ok(())
+				} 
 			} else { println!("invalid key on store new data"); }
 		} else {
 			println!("could not find dataset");
 		}
-		
 		Err(())
 	}
 }

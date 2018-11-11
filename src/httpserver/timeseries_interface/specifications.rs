@@ -114,7 +114,7 @@ pub fn write_template() -> io::Result<()> {
 		max_value: 100f32,
 		number_of_digits: 8u32,
 	});
-	let template_field_2 = FieldSpec::Manual( FieldManual {
+	let template_field_3 = FieldSpec::Manual( FieldManual {
 		name: String::from("template field name3"),
 		length: 10,
 		decode_scale: 0.1,
@@ -123,7 +123,7 @@ pub fn write_template() -> io::Result<()> {
 	let metadata = MetaDataSpec {
 		name: String::from("template dataset name"),
 		description: String::from("This is a template it is not to be used for storing data, please copy this file and edit it. Then use the new file for creating new datasets"),
-		fields: vec!(template_field_1, template_field_2),
+		fields: vec!(template_field_1, template_field_2, template_field_3),
 	};
 	
 	if !Path::new("specs").exists() {fs::create_dir("specs")? }

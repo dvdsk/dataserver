@@ -254,7 +254,7 @@ pub fn generate_and_sign_keys(
 	Ok(())
 }
 
-#[test]
-pub fn netflix_test() {
-	netflix(Path::new("tests/ee.der"), Path::new("tests/inter.der"));
-}
+//#[test]
+//pub fn netflix_test() {
+	//netflix(Path::new("tests/ee.der"), Path::new("tests/inter.der"));
+//}

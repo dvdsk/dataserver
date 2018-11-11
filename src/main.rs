@@ -108,7 +108,7 @@ mod tests {
 		let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("data")).unwrap())); 
 		let sessions = Arc::new(RwLock::new(HashMap::new()));
 		
-		let (data_handle, web_handle) =
+		let (_, web_handle) =
 		httpserver::start(Path::new("keys/cert.key"), Path::new("keys/cert.cert"), data.clone(), passw_db.clone(), sessions.clone());
 		let client = reqwest::Client::builder()
 			.danger_accept_invalid_certs(true)
@@ -134,7 +134,7 @@ mod tests {
 			.unwrap();
 		assert_eq!(resp.status(), reqwest::StatusCode::FORBIDDEN);
 		
-		let key: u64 = 1229643887935463488;
+		let key: u64 = 12161562457820830035;
 		let mut data_string: Vec<u8> = Vec::new();
 		data_string.write_u16::<NativeEndian>(node_id).unwrap();
 		data_string.write_u64::<NativeEndian>(key).unwrap();
@@ -148,7 +148,6 @@ mod tests {
 			.unwrap();
 		assert_eq!(resp.status(), reqwest::StatusCode::OK);
 		
-		pause();
 		httpserver::stop(web_handle);
 	}
 }

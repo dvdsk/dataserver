@@ -195,16 +195,16 @@ impl PasswordDatabase {
 }
 
 impl Data {
-	pub fn store_new_data(&mut self, data_string: &Bytes, time: DateTime<Utc>) -> Result<(), ()> {
-		let node_id = NativeEndian::read_u16(&data_string[..2]);
+	pub fn store_new_data(&mut self, data_string: &Bytes, time: DateTime<Utc>) -> Result<DatasetId, ()> {
+		let dataset_id = NativeEndian::read_u16(&data_string[..2]);
 		let key = NativeEndian::read_u64(&data_string[2..10]);
-		if let Some(set) = self.sets.get_mut(&node_id){
+		if let Some(set) = self.sets.get_mut(&dataset_id){
 			println!("key: {}",set.metadata.key);
 			if set.metadata.key == key {
 				if let Err(error) = set.timeseries.append(time, &data_string[10..]){
 					println!("error on data append: {:?}",error);
 				} else {
-					return Ok(())
+					return Ok(dataset_id)
 				} 
 			} else { println!("invalid key on store new data"); }
 		} else {

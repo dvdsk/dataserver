@@ -47,19 +47,22 @@ use std::time::Duration;
 use self::chrono::{Utc};
 
 pub mod timeseries_interface;
-mod websocket_dataserver;
 pub mod secure_database;
+
+mod websocket_data_router;
+mod websocket_client_handler;
+
 use self::secure_database::{PasswordDatabase};
-use timeseries_interface::Authorisation;
+use timeseries_interface::{Authorisation,DatasetId};
 
 pub struct Session {//TODO deprecate 
     userinfo: secure_database::UserInfo,
     //add more temporary user specific data as needed
 }
 
-struct WebServerData {
+pub struct WebServerData {
 	passw_db: Arc<RwLock<PasswordDatabase>>,
-	websocket_addr: Addr<websocket_dataserver::DataServer>,
+	websocket_addr: Addr<websocket_data_router::DataServer>,
 	data: Arc<RwLock<timeseries_interface::Data>>,
 	sessions: Arc<RwLock<HashMap<u16,Session>>> ,
 	free_session_ids: Arc<AtomicUsize>,
@@ -72,7 +75,7 @@ struct Logindata {
 }
 
 type ServerHandle = self::actix::Addr<actix_net::server::Server>;
-type DataHandle = self::actix::Addr<websocket_dataserver::DataServer>;
+type DataHandle = self::actix::Addr<websocket_data_router::DataServer>;
 
 fn serve_file(req: &HttpRequest<WebServerData>) -> wResult<NamedFile> {
 	let file_name: String = req.match_info().query("tail")?;
@@ -206,117 +209,10 @@ fn goodby(_req: &HttpRequest<WebServerData>) -> impl Responder {
 }
 
 /// do websocket handshake and start `MyWebSocket` actor
-fn ws_index(r: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
+fn ws_index(req: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
 	println!("websocket connected");
-	ws::start(r, WsDataSession { id: 0 })
-}
-
-// store data in here, it can then be accessed using self
-struct WsDataSession {
-	/// unique session id
-	id: usize,
-}
-
-impl Actor for WsDataSession {
-	type Context = ws::WebsocketContext<Self, WebServerData>;
-
-	fn started(&mut self, ctx: &mut Self::Context) {
-		// register self in chat server. `AsyncContext::wait` register
-		// future within context, but context waits until this future resolves
-		// before processing any other events.
-		// HttpContext::state() is instance of WsChatSessionState, state is shared
-		// across all routes within application
-
-		println!("TEST");
-
-		let addr = ctx.address();
-		ctx.state()
-            .websocket_addr
-            .send(websocket_dataserver::Connect {
-                addr: addr.recipient(),
-            })
-            //wait for response
-            .into_actor(self)
-            //process response in closure
-            .then(|res, act, ctx| {
-                match res {
-                    Ok(res) => act.id = res,
-                    // something is wrong with chat server
-                    _ => ctx.stop(),
-                }
-                fut::ok(())
-            })
-            .wait(ctx);
-	}
-
-	fn stopping(&mut self, ctx: &mut Self::Context) -> Running {
-		// notify chat server
-		ctx.state()
-			.websocket_addr
-			.do_send(websocket_dataserver::Disconnect { id: self.id });
-		Running::Stop
-	}
-}
-
-/// send messages to server if requested by dataserver
-impl Handler<websocket_dataserver::ClientMessage> for WsDataSession {
-	type Result = ();
-
-	fn handle(&mut self, msg: websocket_dataserver::ClientMessage, ctx: &mut Self::Context) {
-		println!("websocket");
-		ctx.text(msg.0);
-	}
-}
-
-/// Handler for `ws::Message`
-impl StreamHandler<ws::Message, ws::ProtocolError> for WsDataSession {
-	fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
-		// process websocket messages
-		println!("WS: {:?}", msg);
-		match msg {
-			ws::Message::Text(text) => {
-				let m = text.trim();
-				if m.starts_with('/') {
-					let v: Vec<&str> = m.splitn(2, ' ').collect();
-					match v[0] {
-						"/Sub" => {
-							if let Ok(source) = websocket_dataserver::source_string_to_enum(v[1]) {
-								ctx.state()
-									.websocket_addr
-									.do_send(websocket_dataserver::SubscribeToSource {
-										id: self.id,
-										source: source,
-									});
-							} else {
-								warn!("unknown source: {}", v[1]);
-							}
-						}
-						"/join" => {
-							//if v.len() == 2 {
-							//self.room = v[1].to_owned();
-							//ctx.state().addr.do_send(server::Join {
-							//id: self.id,
-							//name: self.room.clone(),
-							//});
-
-							//ctx.text("joined");
-							//} else {
-							//ctx.text("!!! room name is required");
-							//}
-						}
-						"/name" => {}
-						_ => ctx.text(format!("!!! unknown command: {:?}", m)),
-					}
-				}
-			} //handle other websocket commands
-			ws::Message::Ping(msg) => ctx.pong(&msg),
-			ws::Message::Binary(bin) => ctx.binary(bin),
-			ws::Message::Close(_) => {
-				ctx.stop();
-			}
-			_ => (),
-		}
-	}
+	let session_id = req.identity().unwrap().parse::<u16>().unwrap();
+	ws::start(req, websocket_client_handler::WsSession { session_id: session_id })
 }
 
 pub fn start(signed_cert: &Path, private_key: &Path, 
@@ -350,7 +246,7 @@ pub fn start(signed_cert: &Path, private_key: &Path,
 	thread::spawn(move || {
 		// Start data server actor in separate thread
 		let sys = actix::System::new("http-server");
-		let data_server = Arbiter::start(|_| websocket_dataserver::DataServer::default());
+		let data_server = Arbiter::start(|_| websocket_data_router::DataServer::default());
 		let data_server_clone = data_server.clone();
 
 		let web_server = server::new(move || {
@@ -407,9 +303,9 @@ pub fn stop(handle: ServerHandle) {
 		.timeout(Duration::from_secs(5)); // <- Send `StopServer` message to server.
 }
 
-pub fn send_newdata(handle: DataHandle) {
-	handle.do_send(websocket_dataserver::NewData {
-		from: websocket_dataserver::DataSource::Light,
+pub fn signal_newdata(handle: DataHandle, set_id: timeseries_interface::DatasetId) {
+	handle.do_send(websocket_data_router::NewData {
+		from: set_id,
 	});
 	println!("send signal there is new data");
 	//.timeout(Duration::from_secs(5));

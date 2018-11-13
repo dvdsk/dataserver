@@ -166,7 +166,8 @@ fn login_get_and_check(
 		return Ok(HttpResponse::build(http::StatusCode::UNAUTHORIZED)
         .content_type("text/plain")
         .body("incorrect password or username"));
-	}
+	} else { println!("user logged in");}
+	
 	//copy userinfo into new session
 	let mut userinfo = passw_db.get_userdata(&params.u);
 	userinfo.last_login = Utc::now();
@@ -188,17 +189,19 @@ fn login_get_and_check(
 	   .finish())
 }
 
-fn newdata(req: & HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
+fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 	
 	let now = Utc::now();
 	let data = req.state().data.clone();
-	
+	let websocket_addr = req.state().websocket_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
 	req.body()
 		.from_err()
 		.and_then(move |bytes: Bytes| {
-			let res = data.write().unwrap().store_new_data(&bytes, now);
+			let res = data.write().unwrap().store_new_data(bytes, now);
 			match res {
-				Ok(_) => Ok(HttpResponse::Ok().status(StatusCode::OK).finish()),
+				Ok((set_id, data_string)) => {
+					websocket_addr.do_send(websocket_data_router::NewData {from: set_id, data: data_string.to_vec()}); 
+					Ok(HttpResponse::Ok().status(StatusCode::OK).finish()) },
 				Err(_) => Ok(HttpResponse::Ok().status(StatusCode::FORBIDDEN).finish()),
 			}
 		}).responder()
@@ -306,6 +309,7 @@ pub fn stop(handle: ServerHandle) {
 pub fn signal_newdata(handle: DataHandle, set_id: timeseries_interface::DatasetId) {
 	handle.do_send(websocket_data_router::NewData {
 		from: set_id,
+		data: vec!(5,10,3,4),
 	});
 	println!("send signal there is new data");
 	//.timeout(Duration::from_secs(5));

@@ -21,6 +21,8 @@ use super::WebServerData;
 pub struct WsSession {
 	/// unique session id
 	pub session_id: u16,
+	subscribed_fields: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::FieldId>>,
+	timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
 }
 
 impl Actor for WsSession {
@@ -64,8 +66,42 @@ impl Handler<websocket_data_router::NewData> for WsSession {
 	type Result = ();
 
 	fn handle(&mut self, msg: websocket_data_router::NewData, ctx: &mut Self::Context) {
-		println!("websocket");
-		//ctx.text(msg.0);
+		println!("client handler recieved signal there is new data");
+		let custom_data = timeseries_interface::select_authorised();
+		ctx.binary();
+	}
+}
+
+impl WsSession {
+	fn attempt_subscribe(&self, args: &str, ctx: &mut WsSession::Context){
+		if let Ok(set_id) = args[1].parse::<timeseries_interface::DatasetId>() {
+			//check if user has access to the requested dataset
+			if let Some(fields_with_access) = self.timeseries_with_access.get(&set_id){
+				//get info on valid fields in this database
+				let max_field_id = ctx.state()
+				    .data.read().unwrap()
+				    .sets.get(fields_with_access).unwrap()
+				    .metadata.fields.len()
+				//parse requested fields
+				if let Ok(fields) = args[2..]
+					.into_iter()
+					.map(|arg| arg.parse::<timeseries_interface::FieldId>())
+					.map(|field_id| if field_id => max_field_id { Err(()) } else { field_id }) //TODO CHECK IF FIELD EXISTS AND USER IS AUTHORISED
+					.collect() {//TODO check if field exists??? (depends on further implementation)
+					
+					
+					//all good, subscribe 
+					subscribed_fields.insert(set_id, fields);
+					ctx.state() //subscribe to dataset at datarouter
+						.websocket_addr
+						.do_send(websocket_data_router::SubscribeToSource {
+							session_id: self.session_id,
+							set_id: set_id,
+						});
+					return;
+				} else { warn!("invalid field requested") };
+			}
+		} else { warn!("no access to dataset"); }
 	}
 }
 
@@ -78,20 +114,9 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
 			ws::Message::Text(text) => {
 				let m = text.trim();
 				if m.starts_with('/') {
-					let v: Vec<&str> = m.splitn(2, ' ').collect();
-					match v[0] {
-						"/Sub" => {
-							if let Ok(source) = v[1].parse::<timeseries_interface::DatasetId>() {
-								ctx.state()
-									.websocket_addr
-									.do_send(websocket_data_router::SubscribeToSource {
-										session_id: self.session_id,
-										set_id: 0,
-									});
-							} else {
-								warn!("unknown source: {}", v[1]);
-							}
-						}
+					let args: Vec<&str> = m.splitn(2, ' ').collect();
+					match args[0] {
+						"/sub" => attempt_subscribe(&args, &mut ctx),
 						"/name" => {}
 						_ => ctx.text(format!("!!! unknown command: {:?}", m)),
 					}
@@ -100,6 +125,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
 			ws::Message::Ping(msg) => ctx.pong(&msg),
 			ws::Message::Binary(bin) => ctx.binary(bin),
 			ws::Message::Close(_) => {
+				ctx.state().websocket_addr.do_send(websocket_data_router::Disconnect {session_id: self.session_id,});
 				ctx.stop();
 			}
 			_ => (),

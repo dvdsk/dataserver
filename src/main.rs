@@ -84,7 +84,7 @@ fn main() {
 		let mut input = String::new();
 		stdin().read_line(&mut input).unwrap();
 		match input.as_str() {
-			"t\n" => httpserver::signal_newdata(data_handle.clone(),1),
+			"t\n" => httpserver::signal_newdata(data_handle.clone(),0),
 			"n\n" => add_user(& passw_db),
 			"a\n" => add_dataset(&passw_db, &data),
 			"q\n" => break,
@@ -103,7 +103,8 @@ mod tests {
 	use self::byteorder::{NativeEndian, WriteBytesExt};
 
 	#[test]
-	fn put_new_data() {
+	fn check_server_security() {
+		//check if putting data works
 		let passw_db = Arc::new(RwLock::new(PasswordDatabase::load().unwrap()));
 		let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("data")).unwrap())); 
 		let sessions = Arc::new(RwLock::new(HashMap::new()));
@@ -147,6 +148,28 @@ mod tests {
 			.send()
 			.unwrap();
 		assert_eq!(resp.status(), reqwest::StatusCode::OK);
+		
+		////now check if the login logout sys works
+		//let mut params = HashMap::new();
+		//params.insert("p", "test");
+		//params.insert("u", "test");
+		
+		//let resp = client
+			//.post("https://www.deviousd.duckdns.org:8080/login/index")
+			//.form(&params)
+			//.send()
+			//.unwrap();
+		//println!("resp: {:?}",resp);
+		////auth-cookie=n+ccl97c+dPXu8fn0kXBQMx230NXtoP+hkFPdi4=; HttpOnly; Secure; Path=/; Domain=deviousd.duckdns.org
+		//let login_cookie = resp.headers().get("set-cookie").unwrap().to_str().unwrap().trim_end_matches("; HttpOnly; Secure; Path=/; Domain=deviousd.duckdns.org");
+		
+		//let resp = client
+			//.post("https://www.deviousd.duckdns.org:8080/logout")
+			//.header(reqwest::header::COOKIE, login_cookie)
+			//.send()
+			//.unwrap();
+		//let logout_cookie = resp.headers().get("set-cookie").unwrap().to_str().unwrap().trim_end_matches("; HttpOnly; Secure; Path=/; Domain=deviousd.duckdns.org");
+		//assert_eq!(logout_cookie, "auth-cookie=");
 		
 		httpserver::stop(web_handle);
 	}

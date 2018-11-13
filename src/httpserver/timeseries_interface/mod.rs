@@ -195,7 +195,7 @@ impl PasswordDatabase {
 }
 
 impl Data {
-	pub fn store_new_data(&mut self, data_string: &Bytes, time: DateTime<Utc>) -> Result<DatasetId, ()> {
+	pub fn store_new_data(&mut self, data_string: Bytes, time: DateTime<Utc>) -> Result<(DatasetId,&[u8]), ()> {
 		let dataset_id = NativeEndian::read_u16(&data_string[..2]);
 		let key = NativeEndian::read_u64(&data_string[2..10]);
 		if let Some(set) = self.sets.get_mut(&dataset_id){
@@ -204,7 +204,7 @@ impl Data {
 				if let Err(error) = set.timeseries.append(time, &data_string[10..]){
 					println!("error on data append: {:?}",error);
 				} else {
-					return Ok(dataset_id)
+					return Ok((dataset_id, &data_string[10..]))
 				} 
 			} else { println!("invalid key on store new data"); }
 		} else {
@@ -213,3 +213,4 @@ impl Data {
 		Err(())
 	}
 }
+

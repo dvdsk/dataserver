@@ -15,6 +15,11 @@ use timeseries_interface::{DatasetId};
 //pub struct Connect {
 //pub addr: Recipient<Message>,
 //}
+pub struct DataServer {
+	sessions: HashMap<u16, Clientinfo>,
+	subs: HashMap<DatasetId, HashSet<u16>>,
+	rng: RefCell<ThreadRng>,
+}
 
 #[derive(Message)]
 pub struct ClientMessage(pub String);
@@ -22,6 +27,7 @@ pub struct ClientMessage(pub String);
 #[derive(Message)]
 pub struct NewData {
 	pub from: DatasetId,
+	pub data: Vec<u8>,
 }
 
 impl Handler<NewData> for DataServer {
@@ -29,15 +35,16 @@ impl Handler<NewData> for DataServer {
 
 	fn handle(&mut self, msg: NewData, _: &mut Context<Self>) -> Self::Result {
 		println!("NewData, subs: {:?}", self.subs);
-		println!("there is new data");
 		let updated_dataset_id = msg.from;
 		//get a list of clients connected to the datasource with new data
 		if let Some(subs) = self.subs.get(&updated_dataset_id){
+			println!("subs: {:?}", subs);
 			for client_session_id in subs.iter() {
+				println!("sending signal");
 				// foward new data message to actor that maintains the
 				// websocket connection with this client.
 				let client_websocket_handler = &self.sessions.get(client_session_id).unwrap().addr;
-				client_websocket_handler.do_send(NewData{from: updated_dataset_id});//FIXME //TODO
+				client_websocket_handler.do_send(msg);
 			}
 		}
 	}
@@ -109,6 +116,7 @@ impl Handler<SubscribeToSource> for DataServer {
 		let client_info = self.sessions.get_mut(&session_id).unwrap();
 		client_info.subs.push(set_id);
 
+		println!("subscribing to source: {:?}",set_id);
 		//fix when non lexical borrow checker arrives
 		if let Some(subscribers) = self.subs.get_mut(&set_id) {
 			subscribers.insert(session_id);
@@ -126,13 +134,6 @@ impl Handler<SubscribeToSource> for DataServer {
 pub struct Clientinfo {
 	addr: Recipient<NewData>,
 	subs: Vec<DatasetId>,
-}
-
-pub struct DataServer {
-	sessions: HashMap<u16, Clientinfo>,
-	subs: HashMap<DatasetId, HashSet<u16>>,
-
-	rng: RefCell<ThreadRng>,
 }
 
 impl Default for DataServer {

@@ -50,7 +50,7 @@ fn add_dataset(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<tim
 		
 		let fields = &data.sets.get(&dataset_id).unwrap().metadata.fields;		
 		let mut passw_db = passw_db.write().unwrap();
-		let userdata = passw_db.get_userdata(username);
+		let userdata = passw_db.get_userdata(username).clone();
 		passw_db.add_owner(dataset_id, fields, userdata);
 	} else {
 		//destroy files

@@ -24,7 +24,7 @@ use super::secure_database::{PasswordDatabase, UserInfo};
 mod specifications;
 mod compression;
 
-type FieldId = u8;
+pub type FieldId = u8;
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Field<T> {
 	id: FieldId,//check if we can remove this
@@ -76,6 +76,15 @@ pub struct DataSet {
 pub enum Authorisation{
 	Owner(FieldId),
 	Reader(FieldId),
+}
+
+impl AsRef<FieldId>  for Authorisation{
+	fn as_ref(&self) -> &FieldId {
+		match self{
+			Authorisation::Owner(id) => id,
+			Authorisation::Reader(id) => id,
+		}
+	}
 }
 
 pub struct Data {
@@ -190,7 +199,7 @@ impl PasswordDatabase {
 		userinfo.timeseries_with_access.insert(id, auth_fields);
 		
 		let username = userinfo.username.as_str().as_bytes();
-		self.set_userdata(username, userinfo.clone() );
+		self.set_userdata(username, userinfo );
 	}
 }
 

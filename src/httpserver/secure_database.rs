@@ -134,10 +134,10 @@ impl PasswordDatabase {
 }
 
 impl PasswordDatabase {
-	pub fn get_userdata<T: AsRef<str>>(&mut self, username: T) -> UserInfo {
+	pub fn get_userdata<T: AsRef<str>>(&mut self, username: T) -> &mut UserInfo {
 		let username = username.as_ref().as_bytes();
 		match self.storage.get(username) {
-			Some(user) => user.user_data.clone(),
+			Some(user) => &mut user.user_data,
 			None => panic!("User database corrupt!"),
 		}
 	}

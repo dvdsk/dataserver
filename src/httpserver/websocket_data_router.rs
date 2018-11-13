@@ -3,7 +3,7 @@ extern crate actix_web;
 extern crate rand;
 use self::actix::prelude::*;
 
-use self::rand::{Rng, ThreadRng};
+use self::rand::{ThreadRng};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 

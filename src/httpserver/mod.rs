@@ -44,7 +44,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-use self::chrono::{Utc};
+use self::chrono::{DateTime, Utc};
 
 pub mod timeseries_interface;
 pub mod secure_database;
@@ -53,10 +53,12 @@ mod websocket_data_router;
 mod websocket_client_handler;
 
 use self::secure_database::{PasswordDatabase};
-use timeseries_interface::{Authorisation,DatasetId};
+use timeseries_interface::{Authorisation};
 
 pub struct Session {//TODO deprecate 
-    userinfo: secure_database::UserInfo,
+    timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
+	username: String,
+	last_login: DateTime<Utc>,
     //add more temporary user specific data as needed
 }
 
@@ -97,7 +99,7 @@ fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	let session = sessions.get(&session_id).unwrap();
 
 	let data = req.state().data.read().unwrap();
-	for (dataset_id, authorized_fields) in &session.userinfo.timeseries_with_access {
+	for (dataset_id, authorized_fields) in session.timeseries_with_access.read().unwrap().iter() {
 		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
 		let mut dataset_fields = format!("<th>{}</th>", &metadata.name);
 		
@@ -169,12 +171,14 @@ fn login_get_and_check(
 	} else { println!("user logged in");}
 	
 	//copy userinfo into new session
-	let mut userinfo = passw_db.get_userdata(&params.u);
+	let userinfo = passw_db.get_userdata(&params.u);
 	userinfo.last_login = Utc::now();
-	passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
+	//passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
 	
     let session = Session {
-		userinfo: userinfo,
+		timeseries_with_access: Arc::new(RwLock::new(userinfo.timeseries_with_access.clone())),
+		username: userinfo.username.clone(),
+		last_login: userinfo.last_login.clone(),
 	};
 	//find free session_numb, set new session number and store new session
 	let session_id = state.free_session_ids.fetch_add(1, Ordering::Acquire);
@@ -215,7 +219,16 @@ fn goodby(_req: &HttpRequest<WebServerData>) -> impl Responder {
 fn ws_index(req: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
 	println!("websocket connected");
 	let session_id = req.identity().unwrap().parse::<u16>().unwrap();
-	ws::start(req, websocket_client_handler::WsSession { session_id: session_id })
+	let session = req.state().sessions.read().unwrap().get(&session_id).unwrap();
+	
+	let timeseries_with_access = session.timeseries_with_access;
+	let subscribed_fields = HashMap::new();
+	
+	ws::start(req, websocket_client_handler::WsSession { 
+		session_id: session_id,  
+		subscribed_fields: subscribed_fields,
+		timeseries_with_access: timeseries_with_access,
+	})
 }
 
 pub fn start(signed_cert: &Path, private_key: &Path, 

@@ -68,7 +68,7 @@ impl Handler<websocket_data_router::NewData> for WsSession {
 
 impl WsSession {
 	
-	fn attempt_subscribe(&self, args: Vec<&str>, websocket_addr: &mut Addr<websocket_data_router::DataServer>){
+	fn attempt_subscribe(&mut self, args: Vec<&str>, websocket_addr: &Addr<websocket_data_router::DataServer>){
 		if let Ok(set_id) = args[1].parse::<timeseries_interface::DatasetId>() {
 			//check if user has access to the requested dataset
 			if let Some(fields_with_access) = self.timeseries_with_access.read().unwrap().get(&set_id){
@@ -78,7 +78,7 @@ impl WsSession {
 					.map(|arg| arg.parse::<timeseries_interface::FieldId>())
 					.collect::<Result<Vec<timeseries_interface::FieldId>,std::num::ParseIntError>>(){
 					
-					let fields = Vec::with_capacity(args[2..].len());
+					let mut fields = Vec::with_capacity(args[2..].len());
 					for field_id in field_ids { 
 						if fields_with_access.binary_search_by(|auth| auth.as_ref().cmp(&field_id)).is_ok() { 
 							fields.push(field_id);
@@ -112,7 +112,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
 				if m.starts_with('/') {
 					let args: Vec<&str> = m.splitn(2, ' ').collect();
 					match args[0] {
-						"/sub" => self.attempt_subscribe(args, &mut ctx.state().websocket_addr),
+						"/sub" => self.attempt_subscribe(args, &ctx.state().websocket_addr),
 						"/name" => {}
 						_ => ctx.text(format!("!!! unknown command: {:?}", m)),
 					}

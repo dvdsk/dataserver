@@ -140,7 +140,7 @@ pub fn load_data(data: &mut HashMap<DatasetId,DataSet>, datafile_path: &Path, da
 	if let Ok(metadata_file) = fs::OpenOptions::new().read(true).write(false).create(false).open(&info_path) {
 		if let Ok(metadata) = serde_yaml::from_reader::<std::fs::File, MetaData>(metadata_file) {
 			let line_size: u16 = metadata.fields.iter().map(|field| field.length as u16).sum::<u16>() / 8;
-			if let Ok(mut timeserie) = Timeseries::open(datafile_path, line_size as usize){
+			if let Ok(timeserie) = Timeseries::open(datafile_path, line_size as usize){
 				println!("loaded dataset with id: {}", &data_id);
 				data.insert(data_id, 
 					DataSet{
@@ -180,7 +180,7 @@ impl Data {
 				metadata: metadata,
 			};
 			datafile_path.set_extension("yaml");
-			let mut f = fs::File::create(datafile_path)?;
+			let f = fs::File::create(datafile_path)?;
 			serde_yaml::to_writer(f, &set.metadata).unwrap();
 			
 			self.sets.insert(dataset_id, set);
@@ -198,13 +198,13 @@ impl PasswordDatabase {
 		let auth_fields: Vec<Authorisation> = fields.into_iter().map(|field| Authorisation::Owner(field.id)).collect();
 		userinfo.timeseries_with_access.insert(id, auth_fields);
 		
-		let username = userinfo.username.as_str().as_bytes();
-		self.set_userdata(username, userinfo );
+		let username = userinfo.username.clone();
+		self.set_userdata(username.as_str().as_bytes(), userinfo );
 	}
 }
 
 impl Data {
-	pub fn store_new_data(&mut self, data_string: Bytes, time: DateTime<Utc>) -> Result<(DatasetId,&[u8]), ()> {
+	pub fn store_new_data(&mut self, data_string: Bytes, time: DateTime<Utc>) -> Result<(DatasetId, Vec<u8>), ()> {
 		let dataset_id = NativeEndian::read_u16(&data_string[..2]);
 		let key = NativeEndian::read_u64(&data_string[2..10]);
 		if let Some(set) = self.sets.get_mut(&dataset_id){
@@ -213,7 +213,7 @@ impl Data {
 				if let Err(error) = set.timeseries.append(time, &data_string[10..]){
 					println!("error on data append: {:?}",error);
 				} else {
-					return Ok((dataset_id, &data_string[10..]))
+					return Ok((dataset_id, data_string[10..].to_vec()))
 				} 
 			} else { println!("invalid key on store new data"); }
 		} else {

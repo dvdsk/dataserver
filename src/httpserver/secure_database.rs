@@ -2,7 +2,7 @@ extern crate ring;
 extern crate chrono;
 extern crate bincode;
 
-use httpserver::timeseries_interface;
+use crate::timeseries_interface;
 
 use self::bincode::{deserialize_from,serialize_into};
 
@@ -136,7 +136,7 @@ impl PasswordDatabase {
 impl PasswordDatabase {
 	pub fn get_userdata<T: AsRef<str>>(&mut self, username: T) -> &mut UserInfo {
 		let username = username.as_ref().as_bytes();
-		match self.storage.get(username) {
+		match self.storage.get_mut(username) {
 			Some(user) => &mut user.user_data,
 			None => panic!("User database corrupt!"),
 		}

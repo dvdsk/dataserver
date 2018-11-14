@@ -53,7 +53,7 @@ mod websocket_data_router;
 mod websocket_client_handler;
 
 use self::secure_database::{PasswordDatabase};
-use timeseries_interface::{Authorisation};
+use crate::timeseries_interface::{Authorisation};
 
 pub struct Session {//TODO deprecate 
     timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
@@ -201,10 +201,10 @@ fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 	req.body()
 		.from_err()
 		.and_then(move |bytes: Bytes| {
-			let res = data.write().unwrap().store_new_data(bytes, now);
-			match res {
+			let mut data = data.write().unwrap();
+			match data.store_new_data(bytes, now) {
 				Ok((set_id, data_string)) => {
-					websocket_addr.do_send(websocket_data_router::NewData {from: set_id, data: data_string.to_vec()}); 
+					websocket_addr.do_send(websocket_data_router::NewData {from: set_id, data: data_string}); 
 					Ok(HttpResponse::Ok().status(StatusCode::OK).finish()) },
 				Err(_) => Ok(HttpResponse::Ok().status(StatusCode::FORBIDDEN).finish()),
 			}
@@ -219,9 +219,10 @@ fn goodby(_req: &HttpRequest<WebServerData>) -> impl Responder {
 fn ws_index(req: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
 	println!("websocket connected");
 	let session_id = req.identity().unwrap().parse::<u16>().unwrap();
-	let session = req.state().sessions.read().unwrap().get(&session_id).unwrap();
+	let sessions = req.state().sessions.read().unwrap();
+	let session = sessions.get(&session_id).unwrap();
 	
-	let timeseries_with_access = session.timeseries_with_access;
+	let timeseries_with_access = session.timeseries_with_access.clone();
 	let subscribed_fields = HashMap::new();
 	
 	ws::start(req, websocket_client_handler::WsSession { 

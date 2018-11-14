@@ -7,24 +7,15 @@ use self::rand::{ThreadRng};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use timeseries_interface::{DatasetId};
+use crate::timeseries_interface::{DatasetId};
 
-///// New chat session is created
-//#[derive(Message)]
-//#[rtype(usize)]
-//pub struct Connect {
-//pub addr: Recipient<Message>,
-//}
 pub struct DataServer {
 	sessions: HashMap<u16, Clientinfo>,
 	subs: HashMap<DatasetId, HashSet<u16>>,
-	rng: RefCell<ThreadRng>,
 }
 
-#[derive(Message)]
-pub struct ClientMessage(pub String);
 
-#[derive(Message)]
+#[derive(Message, Clone)]
 pub struct NewData {
 	pub from: DatasetId,
 	pub data: Vec<u8>,
@@ -44,7 +35,7 @@ impl Handler<NewData> for DataServer {
 				// foward new data message to actor that maintains the
 				// websocket connection with this client.
 				let client_websocket_handler = &self.sessions.get(client_session_id).unwrap().addr;
-				client_websocket_handler.do_send(msg);
+				client_websocket_handler.do_send(msg.clone());
 			}
 		}
 	}
@@ -147,8 +138,6 @@ impl Default for DataServer {
 		DataServer {
 			sessions: HashMap::new(),
 			subs: subs,
-
-			rng: RefCell::new(rand::thread_rng()),
 		}
 	}
 }

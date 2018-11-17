@@ -4,9 +4,11 @@ extern crate minimal_timeseries;
 extern crate walkdir;
 extern crate serde_yaml;
 extern crate chrono;
+extern crate smallvec;
 
 use self::byteorder::{ByteOrder, NativeEndian};
 use self::bytes::Bytes;
+use self::smallvec::SmallVec;
 
 use std::fs;
 use std::fs::File;
@@ -71,6 +73,48 @@ pub struct DataSet {
 	timeseries: Timeseries, //custom file format
 	pub metadata: MetaData, //is stored by serde
 }
+
+impl DataSet {
+	//TODO rewrite timeseries lib to allow local set bound info and passing
+	//that info to the read funct
+	//TODO rewrite timeseries lib to allow async access when async is introduced into rust
+	fn get_compressed_datavec(&mut self, t_start: DateTime<Utc>, t_end: DateTime<Utc>, field_ids: Vec<FieldId>){
+		//determine recoding params
+		let mut recoded_line_size = 0;
+		let mut pos_in_dataset = SmallVec::<[u8; 8]>::new();
+		let mut length = SmallVec::<[u8; 8]>::new();
+		for id in field_ids {
+			let field = &self.metadata.fields[id as usize];
+			pos_in_dataset.push(field.offset);
+			length.push(field.length);
+			recoded_line_size += field.length;
+		}
+		let recoded_line_size =  (recoded_line_size as f32 /8.0).ceil() as u8; //convert to bytes
+		
+		//read from the dataset
+		self.timeseries.set_bounds(t_start, t_end);
+		let (timestamps, line_data) = self.timeseries.decode_sequential_time_only(100).unwrap();
+		
+		//shift into recoded line for transmission
+		let mut recoded: Vec<u8> = Vec::with_capacity(timestamps.len()*recoded_line_size as usize);
+        for line in line_data.chunks(self.timeseries.line_size) {
+            for (pos, len) in pos_in_dataset.iter().zip(length.iter()){
+				recode_line(line, &mut recoded, *pos, *len);
+			}
+        }
+		recoded 
+	}
+}
+
+//TODO complete algoritme
+//TODO //FIXME look at what vars can be defined for a line and move them out.
+fn recode_line(input: &[u8], out: &mut Vec<u8>, pos: u8, bitlen: u8){
+	let pos_bytes = pos/8;
+	let pos_bits = pos%8;
+	
+	
+}
+
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub enum Authorisation{

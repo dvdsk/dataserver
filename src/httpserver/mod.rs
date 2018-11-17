@@ -195,6 +195,7 @@ fn login_get_and_check(
 
 fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 	
+	println!{"newdata"};
 	let now = Utc::now();
 	let data = req.state().data.clone();
 	let websocket_addr = req.state().websocket_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
@@ -223,11 +224,10 @@ fn ws_index(req: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
 	let session = sessions.get(&session_id).unwrap();
 	
 	let timeseries_with_access = session.timeseries_with_access.clone();
-	let subscribed_fields = HashMap::new();
 	
 	ws::start(req, websocket_client_handler::WsSession { 
 		session_id: session_id,  
-		subscribed_fields: subscribed_fields,
+		subscribed_data: Vec::new(),
 		timeseries_with_access: timeseries_with_access,
 	})
 }

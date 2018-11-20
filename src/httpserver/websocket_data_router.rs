@@ -3,8 +3,6 @@ extern crate actix_web;
 extern crate rand;
 use self::actix::prelude::*;
 
-use self::rand::{ThreadRng};
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use crate::timeseries_interface::{DatasetId};
@@ -35,7 +33,7 @@ impl Handler<NewData> for DataServer {
 				// foward new data message to actor that maintains the
 				// websocket connection with this client.
 				let client_websocket_handler = &self.sessions.get(client_session_id).unwrap().addr;
-				client_websocket_handler.do_send(msg.clone());
+				client_websocket_handler.do_send(msg.clone()).unwrap();
 			}
 		}
 	}

@@ -22,6 +22,7 @@ use self::walkdir::{DirEntry, WalkDir};
 use std::collections::HashMap;
 
 use super::secure_database::{PasswordDatabase, UserInfo};
+use super::websocket_client_handler::SetSliceDecodeInfo;
 
 mod specifications;
 mod compression;
@@ -74,46 +75,79 @@ pub struct DataSet {
 	pub metadata: MetaData, //is stored by serde
 }
 
+
+
 impl DataSet {
 	//TODO rewrite timeseries lib to allow local set bound info and passing
 	//that info to the read funct
 	//TODO rewrite timeseries lib to allow async access when async is introduced into rust
-	fn get_compressed_datavec(&mut self, t_start: DateTime<Utc>, t_end: DateTime<Utc>, field_ids: Vec<FieldId>){
+	pub fn get_compressed_datavec(&mut self, t_start: DateTime<Utc>, t_end: DateTime<Utc>, field_ids: &Vec<FieldId>)
+	-> Result<(Vec<u64>, Vec<u8>, SetSliceDecodeInfo), std::io::Error> {
 		//determine recoding params
 		let mut recoded_line_size = 0;
-		let mut pos_in_dataset = SmallVec::<[u8; 8]>::new();
-		let mut length = SmallVec::<[u8; 8]>::new();
+		let mut offset_in_dataset = SmallVec::<[u8; 8]>::new();
+		let mut lengths = SmallVec::<[u8; 8]>::new();
+		let mut offset_in_recoded = SmallVec::<[u8; 8]>::new();
+		
+		let mut recoded_offset = 0;
 		for id in field_ids {
-			let field = &self.metadata.fields[id as usize];
-			pos_in_dataset.push(field.offset);
-			length.push(field.length);
+			let field = &self.metadata.fields[*id as usize];
+			offset_in_dataset.push(field.offset);
+			lengths.push(field.length);
+			offset_in_recoded.push(recoded_offset);
+			recoded_offset += field.length;
 			recoded_line_size += field.length;
 		}
 		let recoded_line_size =  (recoded_line_size as f32 /8.0).ceil() as u8; //convert to bytes
 		
 		//read from the dataset
-		self.timeseries.set_bounds(t_start, t_end);
+		self.timeseries.set_bounds(t_start, t_end)?;
 		let (timestamps, line_data) = self.timeseries.decode_sequential_time_only(100).unwrap();
 		
 		//shift into recoded line for transmission
 		let mut recoded: Vec<u8> = Vec::with_capacity(timestamps.len()*recoded_line_size as usize);
-        for line in line_data.chunks(self.timeseries.line_size) {
-            for (pos, len) in pos_in_dataset.iter().zip(length.iter()){
-				recode_line(line, &mut recoded, *pos, *len);
+		for line in line_data.chunks(self.timeseries.line_size) {
+			let mut recoded_line: SmallVec<[u8; 16]> = smallvec::smallvec![0; recoded_line_size as usize];
+			
+			for ((offset, len),recoded_offset) in offset_in_dataset.iter().zip(lengths.iter()).zip(offset_in_recoded.iter()){
+				let decoded: u32 = compression::decode(line, *offset, *len);
+				compression::encode(decoded, &mut recoded_line, *recoded_offset, *len);
 			}
-        }
-		recoded 
+			recoded.extend(recoded_line.drain());
+		}
+		 {
+		let decode_info =  SetSliceDecodeInfo {
+			field_lenghts: lengths.into_vec(),
+			field_offsets: offset_in_recoded.into_vec(), 
+			data_is_little_endian: cfg!(target_endian = "little"),};
+		Ok((timestamps, recoded, decode_info))
+		}
 	}
 }
 
-//TODO complete algoritme
-//TODO //FIXME look at what vars can be defined for a line and move them out.
-fn recode_line(input: &[u8], out: &mut Vec<u8>, pos: u8, bitlen: u8){
-	let pos_bytes = pos/8;
-	let pos_bits = pos%8;
+//fn divide_ceil(x: u8, y: u8) -> u8{
+	//(x + y - 1) / y
+//}
+
+
+//fn recode_line(recoded: &mut Vec<u8>, line: &[u8], pos: u8, recoded_line_size: u8, 
+               //pos_in_dataset: &SmallVec::<[u8; 8]>, length: &SmallVec::<[u8; 8]>) 
+               //-> SmallVec<[u8; 16]> {
 	
+	//let mut recoded_pos = 0;
+	//let mut recoded_offset = 0;
 	
-}
+	//let mut recoded_line: SmallVec<[u8; 16]> = smallvec::smallvec![0; recoded_line_size as usize];
+	//let mut recoded_pos = 0;
+	//for (pos, len) in pos_in_dataset.iter().zip(length.iter()){
+		//let pos_bytes = divide_ceil(*pos,8);
+		//let pos_offset = pos%8;
+		//let len_bytes = divide_ceil(*len,8);
+		
+		
+	//}
+	//recoded_line
+//}
 
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]

@@ -5,13 +5,17 @@ extern crate actix;
 extern crate actix_net;
 extern crate actix_web;
 extern crate actix_web_httpauth;
+extern crate chrono;
+extern crate smallvec;
+extern crate bincode;
+extern crate serde_derive;
 
 use self::actix_web::{Binary,ws};
+use self::chrono::{Utc, Duration};
 use super::futures::Future;
 
 use std::sync::{Arc,RwLock};
 use std::collections::HashMap;
-
 
 use super::timeseries_interface;
 use super::websocket_data_router;
@@ -57,7 +61,7 @@ impl Actor for WsSession {
                 addr: addr.recipient(),
                 session_id: self.session_id,
             })
-            .wait();
+            .wait().unwrap();
 	}
 
 	fn stopping(&mut self, ctx: &mut Self::Context) -> Running {
@@ -135,14 +139,39 @@ impl WsSession {
 		json
 	}
 	
-	//TODO find out what this should do 
-	fn send_encoding(&mut self, data: &Arc<RwLock<timeseries_interface::Data>>){
-		//let data = data.read().unwrap();
-		
-		//for (dataset_id, fields) in self.subscribed_fields.iter() {
-			//let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
-		//}
+	//fn send_data(&mut self, data: &Arc<RwLock<timeseries_interface::Data>>, ){
+	fn send_data(&mut self, ctx: &mut ws::WebsocketContext<Self, WebServerData>){
+		println!("loading data");
+		let now = Utc::now();
+		let t_start= now - Duration::days(1);
+		let t_end = Utc::now();
+		for set in &self.subscribed_data {
+			let mut data = ctx.state().data.write().unwrap();
+			let dataset = data.sets.get_mut(&set.dataset_id).unwrap();
+			println!("got here");
+			if let Ok((timestamps, recoded, decode_info)) = dataset.get_compressed_datavec(t_start,t_end,&set.field_ids){
+				std::mem::drop(data);
+				
+				let decode_info = bincode::serialize(&decode_info).unwrap();
+				ctx.binary(Binary::from(decode_info ));
+				let timestamps: Vec<u8> = unsafe { std::mem::transmute(timestamps) };
+				ctx.binary(Binary::from(timestamps));
+				ctx.binary(Binary::from(recoded));
+				println!("send data");
+			} else {
+				//TODO tell client something went wrong
+				println!("could not get data");
+				warn!("could not get data");
+			}
+		}
 	}
+}
+
+#[derive(Serialize)]
+pub struct SetSliceDecodeInfo {
+	pub field_lenghts: Vec<u8>,
+	pub field_offsets: Vec<u8>,
+	pub data_is_little_endian: bool,
 }
 
 /// Handler for `ws::Message`
@@ -160,6 +189,9 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
 					match args[0] {
 						"/sub" => self.attempt_subscribe(args, &ctx.state().websocket_addr),
 						"/meta" => ctx.text(self.send_metadata(&ctx.state().data)),
+						"/data" => self.send_data(ctx),
+						
+						
 						"/plotData" => ctx.binary(Binary::from(self.send_metadata(&ctx.state().data))),
 						_ => ctx.text(format!("!!! unknown command: {:?}", m)),
 					}

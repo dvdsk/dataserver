@@ -54,6 +54,8 @@ where T: std::ops::Add+std::ops::SubAssign+std::ops::DivAssign {
 	}
 }
 
+
+
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct MetaData {
 	pub name: String,
@@ -62,16 +64,21 @@ pub struct MetaData {
 	pub fields: Vec<Field<f32>>,//must be sorted lowest id to highest
 }
 
+#[inline] fn devide_up(t: u16, n: u16) -> u16 {
+	(t + (n-1))/n
+}
+
 impl MetaData {
-	pub fn fieldsum(&self) -> u16 {
+	fn fieldsum(&self) -> u16 {
 		let field = self.fields.last().unwrap();
-		field.offset as u16 + field.length as u16
+		let bits = field.offset as u16 + field.length as u16;
+		devide_up(bits, 8) //make this do int devide
 	}
 }
 
 pub type DatasetId = u16;
 pub struct DataSet {
-	timeseries: Timeseries, //custom file format
+	pub timeseries: Timeseries, //custom file format
 	pub metadata: MetaData, //is stored by serde
 }
 
@@ -253,6 +260,7 @@ impl Data {
 			let mut datafile_path = self.dir.clone();
 			datafile_path.push(dataset_id.to_string());
 			
+			println!("{}",line_size);
 			let set = DataSet {
 				timeseries: Timeseries::open(&datafile_path, line_size as usize)?,
 				metadata: metadata,
@@ -283,21 +291,32 @@ impl PasswordDatabase {
 
 impl Data {
 	pub fn store_new_data(&mut self, data_string: Bytes, time: DateTime<Utc>) -> Result<(DatasetId, Vec<u8>), ()> {
+		if data_string.len() < 11 {
+			println!("data_string size to small for key, datasetid and any data");
+			return Err(());
+		}
+		
 		let dataset_id = NativeEndian::read_u16(&data_string[..2]);
 		let key = NativeEndian::read_u64(&data_string[2..10]);
 		if let Some(set) = self.sets.get_mut(&dataset_id){
 			println!("key: {}",set.metadata.key);
-			if set.metadata.key == key {
-				if let Err(error) = set.timeseries.append(time, &data_string[10..]){
-					println!("error on data append: {:?}",error);
-				} else {
-					return Ok((dataset_id, data_string[10..].to_vec()))
-				} 
-			} else { println!("invalid key on store new data"); }
+			if data_string.len() != set.metadata.fieldsum() as usize +10  {
+				println!("datastring has invalid length ({}) for node (id: {})", data_string.len(), dataset_id);
+				return Err(());
+			} else if key != set.metadata.key {
+				println!("invalid key on store new data");
+				return Err(());
+			}
+			
+			if let Err(error) = set.timeseries.append(time, &data_string[10..]){
+				println!("error on data append: {:?}",error);
+				return Err(());
+			}
+			return Ok((dataset_id, data_string[10..].to_vec()))
 		} else {
 			println!("could not find dataset");
+			return Err(());
 		}
-		Err(())
 	}
 }
 

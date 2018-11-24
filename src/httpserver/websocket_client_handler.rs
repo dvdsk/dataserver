@@ -26,14 +26,8 @@ pub struct WsSession {
 	/// unique session id
 	pub session_id: u16,
 	//pub subscribed_fields: HashMap<timeseries_interface::DatasetId, Vec<SubbedField>>,
-	pub subscribed_data: Vec<SubbedSet>,
+	pub subscribed_data: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::FieldId>>,
 	pub timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
-}
-
-pub struct SubbedSet {
-	dataset_id: timeseries_interface::DatasetId,
-	field_ids: Vec<timeseries_interface::FieldId>,
-	
 }
 
 #[derive(Serialize, Deserialize)]
@@ -77,8 +71,15 @@ impl Actor for WsSession {
 impl Handler<websocket_data_router::NewData> for WsSession {
 	type Result = ();
 
-	fn handle(&mut self, _msg: websocket_data_router::NewData, _ctx: &mut Self::Context) {
+	fn handle(&mut self, msg: websocket_data_router::NewData, ctx: &mut Self::Context) {
 		println!("client handler recieved signal there is new data");
+		//recode data for this user
+		let websocket_data_router::NewData{from, data} = msg;
+		//let 
+		
+		ctx.state().data.read().unwrap();
+		
+		//let 
 		
 		//ctx.binary();
 	}
@@ -108,10 +109,10 @@ impl WsSession {
 							return;
 						}
 					}
-					self.subscribed_data.push(SubbedSet {dataset_id: set_id, field_ids: subbed_fields });
+					self.subscribed_data.insert(set_id, subbed_fields);
 					websocket_addr.do_send( websocket_data_router::SubscribeToSource {
-							session_id: self.session_id,
-							set_id: set_id,
+						session_id: self.session_id,
+						set_id: set_id,
 					})
 				} else { warn!("invalid field requested") };
 			} else { warn!("invalid dataset id"); }
@@ -123,11 +124,11 @@ impl WsSession {
 		let data = data.read().unwrap();
 		let mut client_plot_metadata = Vec::with_capacity(self.subscribed_data.len());
 		
-		for SubbedSet {dataset_id, field_ids} in self.subscribed_data.drain(..) {
+		for (dataset_id, field_ids) in &self.subscribed_data {
 			println!("dataset_id: {}, field_ids: {:?}",&dataset_id, &field_ids);
 			let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
 			for field_id in field_ids {
-				let field = &metadata.fields[field_id as usize];
+				let field = &metadata.fields[*field_id as usize];
 				client_plot_metadata.push( Line {
 					r#type: "scattergl".to_string(),
 					name: field.name.to_owned(),
@@ -145,15 +146,15 @@ impl WsSession {
 		let now = Utc::now();
 		let t_start= now - Duration::days(1);
 		let t_end = Utc::now();
-		for set in &self.subscribed_data {
+		for (dataset_id, field_ids) in &self.subscribed_data {
 			let mut data = ctx.state().data.write().unwrap();
-			let dataset = data.sets.get_mut(&set.dataset_id).unwrap();
-			println!("got here");
-			if let Ok((timestamps, recoded, decode_info)) = dataset.get_compressed_datavec(t_start,t_end,&set.field_ids){
+			let dataset = data.sets.get_mut(dataset_id).unwrap();
+			println!("got here: {:?}",dataset.timeseries.line_size);
+			if let Ok((timestamps, recoded, decode_info)) = dataset.get_compressed_datavec(t_start,t_end, field_ids){
 				std::mem::drop(data);
 				
 				let decode_info = bincode::serialize(&decode_info).unwrap();
-				ctx.binary(Binary::from(decode_info ));
+				ctx.binary(Binary::from(decode_info));
 				let timestamps: Vec<u8> = unsafe { std::mem::transmute(timestamps) };
 				ctx.binary(Binary::from(timestamps));
 				ctx.binary(Binary::from(recoded));

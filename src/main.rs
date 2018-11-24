@@ -135,9 +135,10 @@ mod tests {
 			.unwrap();
 		assert_eq!(resp.status(), reqwest::StatusCode::FORBIDDEN);
 		
-		let key: u64 = 12161562457820830035;
+		let key: u64 = 10393625186546148273;
 		let mut data_string: Vec<u8> = Vec::new();
 		data_string.write_u16::<NativeEndian>(node_id).unwrap();
+		data_string.write_u64::<NativeEndian>(key).unwrap();
 		data_string.write_u64::<NativeEndian>(key).unwrap();
 		data_string.write_u16::<NativeEndian>(((temp + 20.) * 100.) as u16).unwrap();
 		data_string.write_u16::<NativeEndian>((humidity * 100.) as u16).unwrap();

@@ -6,7 +6,6 @@ extern crate actix_web_httpauth;
 extern crate bytes;
 extern crate futures;
 
-extern crate env_logger;
 extern crate rustls;
 extern crate rand;
 extern crate chrono;
@@ -195,14 +194,17 @@ fn login_get_and_check(
 
 fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 	
-	trace!{"newdata"};
+	trace!("newdata");
 	let now = Utc::now();
 	let data = req.state().data.clone();
 	let websocket_addr = req.state().websocket_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
+	trace!("got addr");
 	req.body()
 		.from_err()
 		.and_then(move |bytes: Bytes| {
+			trace!("trying to get data");
 			let mut data = data.write().unwrap();
+			trace!("got data");
 			match data.store_new_data(bytes, now) {
 				Ok((set_id, data_string)) => {
 					websocket_addr.do_send(websocket_data_router::NewData {from: set_id, data: data_string}); 

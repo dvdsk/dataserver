@@ -6,6 +6,9 @@ extern crate serde_derive;
 extern crate text_io;
 extern crate chrono;
 
+extern crate fern;
+use fern::colors::{Color, ColoredLevelConfig};
+
 mod certificate_manager;
 mod httpserver;
 
@@ -58,6 +61,68 @@ fn add_dataset(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<tim
 	}
 }
 
+//fn setup_logging(verbosity: u8) -> Result<(), fern::InitError> {
+	//let mut base_config = fern::Dispatch::new();
+	//let colors = ColoredLevelConfig::new()
+	             //.info(Color::Green)
+	             //.debug(Color::Yellow)
+	             //.warn(Color::Magenta);
+
+	//base_config = match verbosity {
+		//0 =>
+			//// Let's say we depend on something which whose "info" level messages are too
+			//// verbose to include in end-user output. If we don't need them,
+			//// let's not include them.
+			//base_config
+					//.level(log::LevelFilter::Info)
+					//.level_for("tokio_core::reactor", log::LevelFilter::Off)
+					//.level_for("tokio_reactor", log::LevelFilter::Off)
+					//.level_for("hyper", log::LevelFilter::Off)
+					//.level_for("reqwest", log::LevelFilter::Off),
+		//1 => base_config
+			//.level(log::LevelFilter::Debug)
+			//.level_for("tokio_core::reactor", log::LevelFilter::Off)
+			//.level_for("tokio_reactor", log::LevelFilter::Off)
+			//.level_for("hyper", log::LevelFilter::Off)
+			//.level_for("reqwest", log::LevelFilter::Off),
+		//2 => base_config
+			//.level(log::LevelFilter::Trace)
+			//.level_for("tokio_core::reactor", log::LevelFilter::Off)
+			//.level_for("tokio_reactor", log::LevelFilter::Off)
+			//.level_for("hyper", log::LevelFilter::Off)
+			//.level_for("reqwest", log::LevelFilter::Off),
+		//_3_or_more => base_config.level(log::LevelFilter::Trace),
+	//};
+
+	//// Separate file config so we can include year, month and day in file logs
+	//let file_config = fern::Dispatch::new()
+		//.format(|out, message, record| {
+			//out.finish(format_args!(
+				//"{}[{}][{}] {}",
+				//chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+				//record.target(),
+				//record.level(),
+				//message
+			//))
+		//})
+		//.chain(fern::log_file("program.log")?);
+
+	//let stdout_config = fern::Dispatch::new()
+		//.format(move |out, message, record| {
+				//out.finish(format_args!(
+						//"[{}][{}][{}] {}",
+					//chrono::Local::now().format("%H:%M"),
+					//record.target(),
+					//colors.color(record.level()),
+					//message
+				//))
+		//})
+		//.chain(std::io::stdout());
+
+	//base_config.chain(file_config).chain(stdout_config).apply()?;
+	//Ok(())
+//}
+
 fn main() {
 	//https://www.deviousd.duckdns.org:8080/index.html
 	//only do if certs need update
@@ -103,12 +168,80 @@ mod tests {
 	use self::byteorder::{NativeEndian, WriteBytesExt};
 	use crate::httpserver::timeseries_interface::compression::encode;
 
+	fn setup_debug_logging(verbosity: u8) -> Result<(), fern::InitError> {
+		let mut base_config = fern::Dispatch::new();
+		let colors = ColoredLevelConfig::new()
+		             .info(Color::Green)
+		             .debug(Color::Yellow)
+		             .warn(Color::Magenta);
+	
+		base_config = match verbosity {
+			0 =>
+				// Let's say we depend on something which whose "info" level messages are too
+				// verbose to include in end-user output. If we don't need them,
+				// let's not include them.
+				base_config
+						.level(log::LevelFilter::Info)
+						.level_for("tokio_core::reactor", log::LevelFilter::Off)
+						.level_for("tokio_reactor", log::LevelFilter::Off)
+						.level_for("hyper", log::LevelFilter::Off)
+						.level_for("reqwest", log::LevelFilter::Off),
+			1 => base_config
+				.level(log::LevelFilter::Debug)
+				.level_for("tokio_core::reactor", log::LevelFilter::Off)
+				.level_for("tokio_reactor", log::LevelFilter::Off)
+				.level_for("hyper", log::LevelFilter::Off)
+				.level_for("reqwest", log::LevelFilter::Off),
+			2 => base_config
+				.level(log::LevelFilter::Trace)
+				.level_for("tokio_core::reactor", log::LevelFilter::Off)
+				.level_for("tokio_reactor", log::LevelFilter::Off)
+				.level_for("hyper", log::LevelFilter::Off)
+				.level_for("reqwest", log::LevelFilter::Off)
+				.level_for("mio", log::LevelFilter::Off)
+				.level_for("actix_web", log::LevelFilter::Off)
+				.level_for("rustls", log::LevelFilter::Off)
+				.level_for("actix_net", log::LevelFilter::Off)
+				.level_for("want", log::LevelFilter::Off),
+			_3_or_more => base_config.level(log::LevelFilter::Trace),
+		};
+	
+		// Separate file config so we can include year, month and day in file logs
+		let file_config = fern::Dispatch::new()
+			.format(|out, message, record| {
+				out.finish(format_args!(
+					"{}[{}][{}] {}",
+					chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+					record.target(),
+					record.level(),
+					message
+				))
+			})
+			.chain(fern::log_file("program.log")?);
+	
+		let stdout_config = fern::Dispatch::new()
+			.format(move |out, message, record| {
+					out.finish(format_args!(
+							"[{}][{}][{}] {}",
+						chrono::Local::now().format("%H:%M"),
+						record.target(),
+						colors.color(record.level()),
+						message
+					))
+			})
+			.chain(std::io::stdout());
+	
+		base_config.chain(file_config).chain(stdout_config).apply()?;
+		Ok(())
+	}
+
 	fn divide_ceil(x: u8, y: u8) -> u8{
 		(x + y - 1) / y
 	}
 
 	#[test]
 	fn check_server_security() {
+		setup_debug_logging(2).unwrap();
 		//check if putting data works
 		let passw_db = Arc::new(RwLock::new(PasswordDatabase::load().unwrap()));
 		let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("data")).unwrap())); 
@@ -157,6 +290,7 @@ mod tests {
 			println!("hello field");
 			encode(test_value, &mut data_string[10..], field.offset, field.length);
 		}
+		std::mem::drop(datasets);//unlock rwlock
 		println!("formatted body: {:?}", &data_string);
 		let resp = client
 			.post("https://www.deviousd.duckdns.org:8080/newdata")

@@ -19,7 +19,6 @@ futures = "0.1.25"
 bytes = "0.4.10"
 walkdir = "2.2.5"
 
-env_logger = "0.5.13"
 acme-client = "0.5.3"
 
 webpki = "0.18.1"
@@ -28,7 +27,10 @@ untrusted = "0.6.2"
 
 chrono = { version = "0.4.6", features = ["serde"] }
 rand = "0.5.5"
+
 log = "0.4.5"
+fern = { version = "0.5.6", features = ["colored"] }
+
 bincode = "1.0.1"
 text_io = "0.1.7"
 

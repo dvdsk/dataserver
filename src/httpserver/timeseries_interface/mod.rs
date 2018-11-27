@@ -25,7 +25,7 @@ use super::secure_database::{PasswordDatabase, UserInfo};
 use super::websocket_client_handler::SetSliceDecodeInfo;
 
 mod specifications;
-mod compression;
+pub mod compression;
 
 pub type FieldId = u8;
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -33,8 +33,8 @@ pub struct Field<T> {
 	id: FieldId,//check if we can remove this
 	pub name: String,
 	
-	offset: u8, //bits
-	length: u8, //bits (max 32 bit variables)
+	pub offset: u8, //bits
+	pub length: u8, //bits (max 32 bit variables)
 	
 	decode_scale: T,
 	decode_add: T,
@@ -69,7 +69,7 @@ pub struct MetaData {
 }
 
 impl MetaData {
-	fn fieldsum(&self) -> u16 {
+	pub fn fieldsum(&self) -> u16 {
 		let field = self.fields.last().unwrap();
 		let bits = field.offset as u16 + field.length as u16;
 		devide_up(bits, 8) //make this do int devide
@@ -226,7 +226,7 @@ pub fn load_data(data: &mut HashMap<DatasetId,DataSet>, datafile_path: &Path, da
 		if let Ok(metadata) = serde_yaml::from_reader::<std::fs::File, MetaData>(metadata_file) {
 			let line_size: u16 = metadata.fields.iter().map(|field| field.length as u16).sum::<u16>() / 8;
 			if let Ok(timeserie) = Timeseries::open(datafile_path, line_size as usize){
-				println!("loaded dataset with id: {}", &data_id);
+				info!("loaded dataset with id: {}", &data_id);
 				data.insert(data_id, 
 					DataSet{
 						timeseries: timeserie,
@@ -234,8 +234,8 @@ pub fn load_data(data: &mut HashMap<DatasetId,DataSet>, datafile_path: &Path, da
 					}
 				);
 			} 
-		} else { println!("could not deserialise: {:?}", info_path);}
-	} else { println!("could not open: {:?} for reading", info_path);}
+		} else { warn!("could not deserialise: {:?}", info_path);}
+	} else { warn!("could not open: {:?} for reading", info_path);}
 }
 
 impl Data {
@@ -260,7 +260,6 @@ impl Data {
 			let mut datafile_path = self.dir.clone();
 			datafile_path.push(dataset_id.to_string());
 			
-			println!("{}",line_size);
 			let set = DataSet {
 				timeseries: Timeseries::open(&datafile_path, line_size as usize)?,
 				metadata: metadata,
@@ -270,10 +269,10 @@ impl Data {
 			serde_yaml::to_writer(f, &set.metadata).unwrap();
 			
 			self.sets.insert(dataset_id, set);
-			println!("added timeseries: {} under id: {}",name, dataset_id);
+			info!("added timeseries: {} under id: {}",name, dataset_id);
 			Ok(dataset_id)
 		} else {
-			println!("could not parse specification");
+			warn!("could not parse specification");
 			Err(io::Error::new(io::ErrorKind::InvalidData, "could not parse specification"))
 		}
 	}
@@ -292,29 +291,28 @@ impl PasswordDatabase {
 impl Data {
 	pub fn store_new_data(&mut self, data_string: Bytes, time: DateTime<Utc>) -> Result<(DatasetId, Vec<u8>), ()> {
 		if data_string.len() < 11 {
-			println!("data_string size to small for key, datasetid and any data");
+			warn!("data_string size to small for key, datasetid and any data");
 			return Err(());
 		}
 		
 		let dataset_id = NativeEndian::read_u16(&data_string[..2]);
 		let key = NativeEndian::read_u64(&data_string[2..10]);
 		if let Some(set) = self.sets.get_mut(&dataset_id){
-			println!("key: {}",set.metadata.key);
 			if data_string.len() != set.metadata.fieldsum() as usize +10  {
-				println!("datastring has invalid length ({}) for node (id: {})", data_string.len(), dataset_id);
+				warn!("datastring has invalid length ({}) for node (id: {})", data_string.len(), dataset_id);
 				return Err(());
 			} else if key != set.metadata.key {
-				println!("invalid key on store new data");
+				warn!("invalid key on store new data");
 				return Err(());
 			}
 			
 			if let Err(error) = set.timeseries.append(time, &data_string[10..]){
-				println!("error on data append: {:?}",error);
+				warn!("error on data append: {:?}",error);
 				return Err(());
 			}
 			return Ok((dataset_id, data_string[10..].to_vec()))
 		} else {
-			println!("could not find dataset");
+			warn!("could not find dataset");
 			return Err(());
 		}
 	}

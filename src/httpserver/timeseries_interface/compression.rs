@@ -16,7 +16,7 @@
             bits_read+= 8;
         }
     //}
-    println!("{}, {}, {:?}",bit_offset,length,line);
+    //println!("{}, {}, {:?}",bit_offset,length,line);
     decoded |= ((line[stop_byte] & stop_mask) as u32) << bits_read;
     
     decoded

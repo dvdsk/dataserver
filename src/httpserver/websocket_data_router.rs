@@ -23,13 +23,13 @@ impl Handler<NewData> for DataServer {
 	type Result = ();
 
 	fn handle(&mut self, msg: NewData, _: &mut Context<Self>) -> Self::Result {
-		println!("NewData, subs: {:?}", self.subs);
+		//println!("NewData, subs: {:?}", self.subs);
 		let updated_dataset_id = msg.from;
 		//get a list of clients connected to the datasource with new data
 		if let Some(subs) = self.subs.get(&updated_dataset_id){
-			println!("subs: {:?}", subs);
+			//println!("subs: {:?}", subs);
 			for client_session_id in subs.iter() {
-				println!("sending signal");
+				//println!("sending signal");
 				// foward new data message to actor that maintains the
 				// websocket connection with this client.
 				let client_websocket_handler = &self.sessions.get(client_session_id).unwrap().addr;
@@ -51,7 +51,6 @@ impl Handler<Connect> for DataServer {
 	type Result = u16;
 
 	fn handle(&mut self, msg: Connect, _: &mut Context<Self>) -> Self::Result {
-		println!("Someone joined");
 		// register session with random id
 		let id = msg.session_id;
 		self.sessions.insert(
@@ -77,13 +76,12 @@ impl Handler<Disconnect> for DataServer {
 	type Result = ();
 
 	fn handle(&mut self, msg: Disconnect, _: &mut Context<Self>) {
-		println!("Someone disconnected");
 		// remove address
 		if let Some(client_info) = self.sessions.remove(&msg.session_id) {
 			for sub in client_info.subs {
 				if let Some(subbed_clients) = self.subs.get_mut(&sub) {
 					subbed_clients.remove(&msg.session_id);
-					println!("removed client from: sub:{:?} ", sub);
+					trace!("removed client from: sub:{:?} ", sub);
 				}
 			}
 		}
@@ -105,11 +103,11 @@ impl Handler<SubscribeToSource> for DataServer {
 		let client_info = self.sessions.get_mut(&session_id).unwrap();
 		client_info.subs.push(set_id);
 
-		println!("subscribing to source: {:?}",set_id);
+		trace!("subscribing to source: {:?}",set_id);
 		//fix when non lexical borrow checker arrives
 		if let Some(subscribers) = self.subs.get_mut(&set_id) {
 			subscribers.insert(session_id);
-			println!("added new id to subs");
+			//println!("added new id to subs");
 			return ();
 		}
 

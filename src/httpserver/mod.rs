@@ -158,17 +158,17 @@ fn login_get_and_check(
     (req, params): (HttpRequest<WebServerData>, Form<Logindata>),
 ) -> wResult<HttpResponse> {
 	
-	println!("checking login");
+	trace!("checking login");
     //if login valid (check passwdb) load userinfo
     let state = req.state();
     let mut passw_db = state.passw_db.write().unwrap();
     
     if passw_db.verify_password(params.u.as_str().as_bytes(), params.p.as_str().as_bytes()).is_err(){
-		println!("incorrect password");
+		warn!("incorrect password");
 		return Ok(HttpResponse::build(http::StatusCode::UNAUTHORIZED)
         .content_type("text/plain")
         .body("incorrect password or username"));
-	} else { println!("user logged in");}
+	} else { info!("user logged in");}
 	
 	//copy userinfo into new session
 	let userinfo = passw_db.get_userdata(&params.u);
@@ -195,7 +195,7 @@ fn login_get_and_check(
 
 fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 	
-	println!{"newdata"};
+	trace!{"newdata"};
 	let now = Utc::now();
 	let data = req.state().data.clone();
 	let websocket_addr = req.state().websocket_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
@@ -218,7 +218,7 @@ fn goodby(_req: &HttpRequest<WebServerData>) -> impl Responder {
 
 /// do websocket handshake and start `MyWebSocket` actor
 fn ws_index(req: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
-	println!("websocket connected");
+	trace!("websocket connected");
 	let session_id = req.identity().unwrap().parse::<u16>().unwrap();
 	let sessions = req.state().sessions.read().unwrap();
 	let session = sessions.get(&session_id).unwrap();
@@ -325,6 +325,6 @@ pub fn signal_newdata(handle: DataHandle, set_id: timeseries_interface::DatasetI
 		from: set_id,
 		data: vec!(5,10,3,4),
 	});
-	println!("send signal there is new data");
+	trace!("send signal there is new data");
 	//.timeout(Duration::from_secs(5));
 }

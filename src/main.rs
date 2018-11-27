@@ -101,6 +101,11 @@ mod tests {
 	extern crate byteorder;
 	extern crate reqwest;
 	use self::byteorder::{NativeEndian, WriteBytesExt};
+	use crate::httpserver::timeseries_interface::compression::encode;
+
+	fn divide_ceil(x: u8, y: u8) -> u8{
+		(x + y - 1) / y
+	}
 
 	#[test]
 	fn check_server_security() {
@@ -135,14 +140,24 @@ mod tests {
 			.unwrap();
 		assert_eq!(resp.status(), reqwest::StatusCode::FORBIDDEN);
 		
-		let key: u64 = 10393625186546148273;
+		println!("lala");
+		let mut datasets = data.write().unwrap();
+		let dataset = datasets.sets.get(&node_id).unwrap();
+		let metadata = &dataset.metadata;
+		println!("yoyo");
+		let key = metadata.key;
 		let mut data_string: Vec<u8> = Vec::new();
 		data_string.write_u16::<NativeEndian>(node_id).unwrap();
 		data_string.write_u64::<NativeEndian>(key).unwrap();
-		data_string.write_u64::<NativeEndian>(key).unwrap();
-		data_string.write_u16::<NativeEndian>(((temp + 20.) * 100.) as u16).unwrap();
-		data_string.write_u16::<NativeEndian>((humidity * 100.) as u16).unwrap();
-		
+		let test_value = 10;
+		println!("for loopy one");
+		for _ in 0..metadata.fieldsum(){ data_string.push(0); }
+		println!("hello loop");
+		for field in &metadata.fields {
+			println!("hello field");
+			encode(test_value, &mut data_string[10..], field.offset, field.length);
+		}
+		println!("formatted body: {:?}", &data_string);
 		let resp = client
 			.post("https://www.deviousd.duckdns.org:8080/newdata")
 			.body(data_string)

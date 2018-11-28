@@ -6,7 +6,7 @@ extern crate serde_yaml;
 extern crate chrono;
 extern crate smallvec;
 
-use self::byteorder::{ByteOrder, NativeEndian};
+use self::byteorder::{ByteOrder, NativeEndian, NetworkEndian, WriteBytesExt};
 use self::bytes::Bytes;
 use self::smallvec::SmallVec;
 
@@ -85,10 +85,38 @@ pub struct DataSet {
 
 
 impl DataSet {
+	pub fn get_update(&self, line: Vec<u8>, timestamp: i64, allowed_fields: &Vec<Authorisation>, setid: DatasetId) 
+	-> Vec<u8>{
+		let mut recoded_line_size = 0;
+		let mut offset_in_dataset = SmallVec::<[u8; 8]>::new();
+		let mut lengths = SmallVec::<[u8; 8]>::new();
+		let mut offset_in_recoded = SmallVec::<[u8; 8]>::new();
+		
+		let mut recoded_offset = 0;
+		for id in allowed_fields {
+			let field = &self.metadata.fields[*id.as_ref() as usize];
+			offset_in_dataset.push(field.offset);
+			lengths.push(field.length);
+			offset_in_recoded.push(recoded_offset);
+			recoded_offset += field.length;
+			recoded_line_size += field.length;
+		}
+		let recoded_line_size =  (recoded_line_size as f32 /8.0).ceil() as u8; //convert to bytes
+		let mut recoded_line: SmallVec<[u8; 24]> = smallvec::smallvec![0; recoded_line_size as usize + 8];
+		
+		recoded_line.write_u16::<NetworkEndian>(setid).unwrap();
+		recoded_line.write_i64::<NetworkEndian>(timestamp).unwrap();
+		for ((offset, len),recoded_offset) in offset_in_dataset.iter().zip(lengths.iter()).zip(offset_in_recoded.iter()){
+			let decoded: u32 = compression::decode(&line, *offset, *len);
+			compression::encode(decoded, &mut recoded_line, *recoded_offset, *len);
+		}
+		recoded_line.to_vec()
+	}
+	
 	//TODO rewrite timeseries lib to allow local set bound info and passing
 	//that info to the read funct
 	//TODO rewrite timeseries lib to allow async access when async is introduced into rust
-	pub fn get_compressed_datavec(&mut self, t_start: DateTime<Utc>, t_end: DateTime<Utc>, field_ids: &Vec<FieldId>)
+	pub fn get_initdata(&mut self, t_start: DateTime<Utc>, t_end: DateTime<Utc>, field_ids: &Vec<FieldId>)
 	-> Result<(Vec<u64>, Vec<u8>, SetSliceDecodeInfo), std::io::Error> {
 		//determine recoding params
 		let mut recoded_line_size = 0;
@@ -163,7 +191,7 @@ pub enum Authorisation{
 	Reader(FieldId),
 }
 
-impl AsRef<FieldId>  for Authorisation{
+impl AsRef<FieldId> for Authorisation{
 	fn as_ref(&self) -> &FieldId {
 		match self{
 			Authorisation::Owner(id) => id,

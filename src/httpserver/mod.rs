@@ -207,7 +207,7 @@ fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 			trace!("got data");
 			match data.store_new_data(bytes, now) {
 				Ok((set_id, data_string)) => {
-					websocket_addr.do_send(websocket_data_router::NewData {from: set_id, data: data_string}); 
+					websocket_addr.do_send(websocket_data_router::NewData {from_id: set_id, line: data_string, timestamp: now.timestamp()}); 
 					Ok(HttpResponse::Ok().status(StatusCode::OK).finish()) },
 				Err(_) => Ok(HttpResponse::Ok().status(StatusCode::FORBIDDEN).finish()),
 			}
@@ -322,11 +322,11 @@ pub fn stop(handle: ServerHandle) {
 		.timeout(Duration::from_secs(5)); // <- Send `StopServer` message to server.
 }
 
-pub fn signal_newdata(handle: DataHandle, set_id: timeseries_interface::DatasetId) {
-	handle.do_send(websocket_data_router::NewData {
-		from: set_id,
-		data: vec!(5,10,3,4),
-	});
-	trace!("send signal there is new data");
-	//.timeout(Duration::from_secs(5));
-}
+//pub fn signal_newdata(handle: DataHandle, set_id: timeseries_interface::DatasetId) {
+	//handle.do_send(websocket_data_router::NewData {
+		//from: set_id,
+		//data: vec!(5,10,3,4),
+	//});
+	//trace!("send signal there is new data");
+	////.timeout(Duration::from_secs(5));
+//}

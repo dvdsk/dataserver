@@ -73,14 +73,18 @@ impl Handler<websocket_data_router::NewData> for WsSession {
 	fn handle(&mut self, msg: websocket_data_router::NewData, ctx: &mut Self::Context) {
 		trace!("client handler recieved signal there is new data");
 		//recode data for this user
-		let websocket_data_router::NewData{from, data} = msg;
+		let websocket_data_router::NewData{from_id, line, timestamp} = msg;
 		//let 
-		
-		ctx.state().data.read().unwrap();
-		
-		//let 
-		
-		//ctx.binary();
+
+		let timeseries_with_access = self.timeseries_with_access.read().unwrap();
+		let fields = timeseries_with_access.get(&from_id).unwrap();
+		let data = ctx.state().data.read().unwrap();
+		//let mut data = ctx.state().data.write().unwrap();
+		let dataset = data.sets.get(&from_id).unwrap();
+		let line = dataset.get_update(line, timestamp, fields, from_id);
+		std::mem::drop(data);
+		//send update
+		ctx.binary(Binary::from(line));
 	}
 }
 
@@ -143,7 +147,7 @@ impl WsSession {
 		for (dataset_id, field_ids) in &self.subscribed_data {
 			let mut data = ctx.state().data.write().unwrap();
 			let dataset = data.sets.get_mut(dataset_id).unwrap();
-			if let Ok((timestamps, recoded, decode_info)) = dataset.get_compressed_datavec(t_start,t_end, field_ids){
+			if let Ok((timestamps, recoded, decode_info)) = dataset.get_initdata(t_start,t_end, field_ids){
 				std::mem::drop(data);
 				
 				let decode_info = bincode::serialize(&decode_info).unwrap();

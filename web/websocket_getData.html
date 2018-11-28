@@ -67,13 +67,19 @@
   
   function decodeTimestamps(evt)
   {
-	websocket.onmessage = function(evt) { decodeData(evt) };
+	websocket.onmessage = function(evt) { initData(evt) };
     writeToScreen('<span style="color: blue;">RESPONSE: ' + "got timestamps"+'</span>');
   }
   
-  function decodeData(evt)
+  function initData(evt)
   {
-    writeToScreen('<span style="color: blue;">RESPONSE: ' + "got data"+'</span>');
+	websocket.onmessage = function(evt) { updateData(evt) };
+    writeToScreen('<span style="color: blue;">RESPONSE: ' + "got init data"+'</span>');
+  }
+
+  function updateData(evt)
+  {
+    writeToScreen('<span style="color: blue;">RESPONSE: ' + "got new data"+'</span>');
   }
 
   function onClose(evt)

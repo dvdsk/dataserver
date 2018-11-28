@@ -73,7 +73,7 @@ fn send_test_data(data: Arc<RwLock<timeseries_interface::Data>>){
 	.build()
 	.unwrap();
 	
-	let mut datasets = data.write().unwrap();
+	let datasets = data.write().unwrap();
 	let dataset = datasets.sets.get(&node_id).unwrap();
 	let metadata = &dataset.metadata;
 	let key = metadata.key;
@@ -88,7 +88,7 @@ fn send_test_data(data: Arc<RwLock<timeseries_interface::Data>>){
 		encode(test_value, &mut data_string[10..], field.offset, field.length);
 	}
 	std::mem::drop(datasets);//unlock rwlock
-	let resp = client
+	let _ = client
 		.post("https://www.deviousd.duckdns.org:8080/newdata")
 		.body(data_string)
 		.send()
@@ -165,7 +165,7 @@ fn main() {
 	let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("data")).unwrap())); 
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 
-	let (data_handle, web_handle) =
+	let (_data_handle, web_handle) =
 	httpserver::start(Path::new("keys/cert.key"), Path::new("keys/cert.cert"), data.clone(), passw_db.clone(), sessions.clone());
 	println!("press: t to send test data, n: to add a new user, q to quit, a to add new dataset");
 	loop {
@@ -173,7 +173,7 @@ fn main() {
 		stdin().read_line(&mut input).unwrap();
 		match input.as_str() {
 			"t\n" => send_test_data(data.clone()),
-			"x\n" => httpserver::signal_newdata(data_handle.clone(),0),
+			//"x\n" => httpserver::signal_newdata(data_handle.clone(),0),
 			"n\n" => add_user(& passw_db),
 			"a\n" => add_dataset(&passw_db, &data),
 			"q\n" => break,

@@ -15,8 +15,9 @@ pub struct DataServer {
 
 #[derive(Message, Clone)]
 pub struct NewData {
-	pub from: DatasetId,
-	pub data: Vec<u8>,
+	pub from_id: DatasetId,
+	pub line: Vec<u8>,
+	pub timestamp: i64,
 }
 
 impl Handler<NewData> for DataServer {
@@ -24,7 +25,7 @@ impl Handler<NewData> for DataServer {
 
 	fn handle(&mut self, msg: NewData, _: &mut Context<Self>) -> Self::Result {
 		//println!("NewData, subs: {:?}", self.subs);
-		let updated_dataset_id = msg.from;
+		let updated_dataset_id = msg.from_id;
 		//get a list of clients connected to the datasource with new data
 		if let Some(subs) = self.subs.get(&updated_dataset_id){
 			//println!("subs: {:?}", subs);

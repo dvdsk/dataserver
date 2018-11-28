@@ -136,13 +136,13 @@ impl WsSession {
 	
 	//fn send_data(&mut self, data: &Arc<RwLock<timeseries_interface::Data>>, ){
 	fn send_data(&mut self, ctx: &mut ws::WebsocketContext<Self, WebServerData>){
+		trace!("sending data to client");
 		let now = Utc::now();
 		let t_start= now - Duration::days(1);
 		let t_end = Utc::now();
 		for (dataset_id, field_ids) in &self.subscribed_data {
 			let mut data = ctx.state().data.write().unwrap();
 			let dataset = data.sets.get_mut(dataset_id).unwrap();
-			//println!("got here: {:?}",dataset.timeseries.line_size);
 			if let Ok((timestamps, recoded, decode_info)) = dataset.get_compressed_datavec(t_start,t_end, field_ids){
 				std::mem::drop(data);
 				
@@ -151,7 +151,6 @@ impl WsSession {
 				let timestamps: Vec<u8> = unsafe { std::mem::transmute(timestamps) };
 				ctx.binary(Binary::from(timestamps));
 				ctx.binary(Binary::from(recoded));
-				//println!("send data");
 			} else {
 				//TODO tell client something went wrong
 				warn!("could not get data");

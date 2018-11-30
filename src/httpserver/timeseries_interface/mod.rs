@@ -85,7 +85,30 @@ pub struct DataSet {
 
 
 impl DataSet {
-	pub fn get_update(&self, line: Vec<u8>, timestamp: i64, allowed_fields: &Vec<Authorisation>, setid: DatasetId) 
+	pub fn get_decode_info(&self, allowed_fields: &Vec<FieldId>) -> SetSliceDecodeInfo {
+		let mut recoded_line_size = 0;
+		let mut offset_in_dataset = SmallVec::<[u8; 8]>::new();
+		let mut lengths = SmallVec::<[u8; 8]>::new();
+		let mut offset_in_recoded = SmallVec::<[u8; 8]>::new();
+		
+		let mut recoded_offset = 0;
+		for id in allowed_fields {
+			let field = &self.metadata.fields[*id as usize];
+			offset_in_dataset.push(field.offset);
+			lengths.push(field.length);
+			offset_in_recoded.push(recoded_offset);
+			recoded_offset += field.length;
+			recoded_line_size += field.length;
+		}
+		
+		SetSliceDecodeInfo {
+			field_lenghts: lengths.into_vec(),
+			field_offsets: offset_in_recoded.into_vec(), 
+			data_is_little_endian: cfg!(target_endian = "little"),
+		}
+	}
+	
+	pub fn get_update(&self, line: Vec<u8>, timestamp: i64, allowed_fields: &Vec<FieldId>, setid: DatasetId) 
 	-> Vec<u8>{
 		let mut recoded_line_size = 0;
 		let mut offset_in_dataset = SmallVec::<[u8; 8]>::new();
@@ -94,7 +117,7 @@ impl DataSet {
 		
 		let mut recoded_offset = 0;
 		for id in allowed_fields {
-			let field = &self.metadata.fields[*id.as_ref() as usize];
+			let field = &self.metadata.fields[*id as usize];
 			offset_in_dataset.push(field.offset);
 			lengths.push(field.length);
 			offset_in_recoded.push(recoded_offset);
@@ -116,7 +139,7 @@ impl DataSet {
 	//TODO rewrite timeseries lib to allow local set bound info and passing
 	//that info to the read funct
 	//TODO rewrite timeseries lib to allow async access when async is introduced into rust
-	pub fn get_initdata(&mut self, t_start: DateTime<Utc>, t_end: DateTime<Utc>, field_ids: &Vec<FieldId>)
+	pub fn get_initdata(&mut self, t_start: DateTime<Utc>, t_end: DateTime<Utc>, allowed_fields: &Vec<FieldId>)
 	-> Result<(Vec<u64>, Vec<u8>, SetSliceDecodeInfo), std::io::Error> {
 		//determine recoding params
 		let mut recoded_line_size = 0;
@@ -125,7 +148,7 @@ impl DataSet {
 		let mut offset_in_recoded = SmallVec::<[u8; 8]>::new();
 		
 		let mut recoded_offset = 0;
-		for id in field_ids {
+		for id in allowed_fields {
 			let field = &self.metadata.fields[*id as usize];
 			offset_in_dataset.push(field.offset);
 			lengths.push(field.length);

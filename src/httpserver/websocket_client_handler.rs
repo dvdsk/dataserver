@@ -74,10 +74,8 @@ impl Handler<websocket_data_router::NewData> for WsSession {
 		trace!("client handler recieved signal there is new data");
 		//recode data for this user
 		let websocket_data_router::NewData{from_id, line, timestamp} = msg;
-		//let 
 
-		let timeseries_with_access = self.timeseries_with_access.read().unwrap();
-		let fields = timeseries_with_access.get(&from_id).unwrap();
+		let fields = self.subscribed_data.get(&from_id).unwrap();
 		let data = ctx.state().data.read().unwrap();
 		//let mut data = ctx.state().data.write().unwrap();
 		let dataset = data.sets.get(&from_id).unwrap();
@@ -138,6 +136,19 @@ impl WsSession {
 		json
 	}
 	
+	fn send_decode_info(&self, set_id: timeseries_interface::DatasetId, ctx: &mut ws::WebsocketContext<Self, WebServerData>) {
+		if let Some(fields) = self.subscribed_data.get(&set_id){
+			let data = ctx.state().data.read().unwrap();
+			let dataset = data.sets.get(&set_id).unwrap();
+			let decode_info = dataset.get_decode_info(fields);
+			std::mem::drop(data);
+			let decode_info = bincode::serialize(&decode_info).unwrap();
+			ctx.binary(Binary::from(decode_info));
+		} else {
+			warn!("tried access to unautorised or non existing dataset");
+		}
+	}
+
 	//fn send_data(&mut self, data: &Arc<RwLock<timeseries_interface::Data>>, ){
 	fn send_data(&mut self, ctx: &mut ws::WebsocketContext<Self, WebServerData>){
 		trace!("sending data to client");

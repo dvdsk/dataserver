@@ -229,7 +229,7 @@ fn ws_index(req: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
 	
 	ws::start(req, websocket_client_handler::WsSession { 
 		session_id: session_id,  
-		subscribed_data: HashMap::new(),
+		selected_data: HashMap::new(),
 		timeseries_with_access: timeseries_with_access,
 	})
 }

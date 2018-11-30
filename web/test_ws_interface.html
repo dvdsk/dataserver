@@ -42,7 +42,7 @@
   function subscribe()
   {
     websocket.onmessage = function(evt) { getMeta(evt) };
-    doSend("/sub 0 0 1");
+    doSend("/select 0 0 1");
     getMeta();
   }
 
@@ -54,33 +54,43 @@
 
   function getData(evt)
   {
-	writeToScreen('<span style="color: blue;">RESPONSE: ' + evt.data+'</span>');
+    writeToScreen('<span style="color: blue;">RESPONSE: ' + evt.data+'</span>');
     websocket.onmessage = function(evt) { decodeDecodeInfo(evt) };
     doSend("/data");
   }
 
   function decodeDecodeInfo(evt)
   {
-	websocket.onmessage = function(evt) { decodeTimestamps(evt) };
+    websocket.onmessage = function(evt) { decodeTimestamps(evt) };
     writeToScreen('<span style="color: blue;">RESPONSE: ' + "got decode info"+'</span>');
   }
-  
+
   function decodeTimestamps(evt)
   {
-  websocket.onmessage = function(evt) { initData(evt) };
+    websocket.onmessage = function(evt) { initData(evt) };
     writeToScreen('<span style="color: blue;">RESPONSE: ' + "got timestamps"+'</span>');
   }
-  
+
   function initData(evt)
   {
-	  websocket.onmessage = function(evt) { updateData(evt) };
+    websocket.onmessage = function(evt) { gotExtraDecodeInfo(evt) };
     writeToScreen('<span style="color: blue;">RESPONSE: ' + "got init data"+'</span>');
+    doSend("/decode_info 0");
+  }
+
+  function gotExtraDecodeInfo(evt)
+  {
+    websocket.onmessage = function(evt) { updateData(evt) };
+    writeToScreen('<span style="color: blue;">RESPONSE: ' + "got extra decode info"+'</span>');
+    doSend("/sub")
   }
 
   function updateData(evt)
   {
     writeToScreen('<span style="color: blue;">RESPONSE: ' + "got new data"+'</span>');
   }
+
+
 
   function onClose(evt)
   {

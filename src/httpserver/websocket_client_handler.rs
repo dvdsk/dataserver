@@ -26,7 +26,7 @@ pub struct WsSession {
 	/// unique session id
 	pub session_id: u16,
 	//pub subscribed_fields: HashMap<timeseries_interface::DatasetId, Vec<SubbedField>>,
-	pub subscribed_data: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::FieldId>>,
+	pub selected_data: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::FieldId>>,
 	pub timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
 }
 
@@ -75,7 +75,7 @@ impl Handler<websocket_data_router::NewData> for WsSession {
 		//recode data for this user
 		let websocket_data_router::NewData{from_id, line, timestamp} = msg;
 
-		let fields = self.subscribed_data.get(&from_id).unwrap();
+		let fields = self.selected_data.get(&from_id).unwrap();
 		let data = ctx.state().data.read().unwrap();
 		//let mut data = ctx.state().data.write().unwrap();
 		let dataset = data.sets.get(&from_id).unwrap();
@@ -88,7 +88,8 @@ impl Handler<websocket_data_router::NewData> for WsSession {
 
 impl WsSession {
 	
-	fn attempt_subscribe(&mut self, args: Vec<&str>, websocket_addr: &Addr<websocket_data_router::DataServer>){
+	fn select_data(&mut self, args: Vec<&str>, websocket_addr: &Addr<websocket_data_router::DataServer>){
+		if args.len() < 3 {return }
 		if let Ok(set_id) = args[1].parse::<timeseries_interface::DatasetId>() {
 			//check if user has access to the requested dataset
 			if let Some(fields_with_access) = self.timeseries_with_access.read().unwrap().get(&set_id){
@@ -107,7 +108,7 @@ impl WsSession {
 							return;
 						}
 					}
-					self.subscribed_data.insert(set_id, subbed_fields);
+					self.selected_data.insert(set_id, subbed_fields);
 					websocket_addr.do_send( websocket_data_router::SubscribeToSource {
 						session_id: self.session_id,
 						set_id: set_id,
@@ -117,12 +118,25 @@ impl WsSession {
 		} else { warn!("no access to dataset"); }
 	}
 
-	//TODO find out what this should do 
+	fn subscribe(&mut self, websocket_addr: &Addr<websocket_data_router::DataServer>){
+		for set_id in self.selected_data.keys(){
+			websocket_addr.do_send( websocket_data_router::SubscribeToSource {
+				session_id: self.session_id,
+				set_id: *set_id,
+			});
+		}
+	}
+
+	//TODO implement unsubscribe command
+	fn unsubscribe(&mut self, _websocket_addr: &Addr<websocket_data_router::DataServer>){
+		unimplemented!();
+	}
+
 	fn send_metadata(&mut self, data: &Arc<RwLock<timeseries_interface::Data>>) -> String{
 		let data = data.read().unwrap();
-		let mut client_plot_metadata = Vec::with_capacity(self.subscribed_data.len());
+		let mut client_plot_metadata = Vec::with_capacity(self.selected_data.len());
 		
-		for (dataset_id, field_ids) in &self.subscribed_data {
+		for (dataset_id, field_ids) in &self.selected_data {
 			let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
 			for field_id in field_ids {
 				let field = &metadata.fields[*field_id as usize];
@@ -136,16 +150,20 @@ impl WsSession {
 		json
 	}
 	
-	fn send_decode_info(&self, set_id: timeseries_interface::DatasetId, ctx: &mut ws::WebsocketContext<Self, WebServerData>) {
-		if let Some(fields) = self.subscribed_data.get(&set_id){
-			let data = ctx.state().data.read().unwrap();
-			let dataset = data.sets.get(&set_id).unwrap();
-			let decode_info = dataset.get_decode_info(fields);
-			std::mem::drop(data);
-			let decode_info = bincode::serialize(&decode_info).unwrap();
-			ctx.binary(Binary::from(decode_info));
-		} else {
-			warn!("tried access to unautorised or non existing dataset");
+	fn send_decode_info(&self, args: Vec<&str>, ctx: &mut ws::WebsocketContext<Self, WebServerData>) {
+		trace!("sending decode info to client");
+		if args.len() < 2 {warn!("can not send decode info without setid"); return; }
+		if let Ok(set_id) = args[1].parse::<timeseries_interface::DatasetId>() {
+			if let Some(fields) = self.selected_data.get(&set_id){
+				let data = ctx.state().data.read().unwrap();
+				let dataset = data.sets.get(&set_id).unwrap();
+				let decode_info = dataset.get_decode_info(fields);
+				std::mem::drop(data);
+				let decode_info = bincode::serialize(&decode_info).unwrap();
+				ctx.binary(Binary::from(decode_info));
+			} else {
+				warn!("tried access to unautorised or non existing dataset");
+			}
 		}
 	}
 
@@ -155,7 +173,7 @@ impl WsSession {
 		let now = Utc::now();
 		let t_start= now - Duration::days(1);
 		let t_end = Utc::now();
-		for (dataset_id, field_ids) in &self.subscribed_data {
+		for (dataset_id, field_ids) in &self.selected_data {
 			let mut data = ctx.state().data.write().unwrap();
 			let dataset = data.sets.get_mut(dataset_id).unwrap();
 			if let Ok((timestamps, recoded, decode_info)) = dataset.get_initdata(t_start,t_end, field_ids){
@@ -194,12 +212,12 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
 					let args: Vec<&str> = m.split_whitespace().collect();
 					//println!("args: {:?}",args);
 					match args[0] {
-						"/sub" => self.attempt_subscribe(args, &ctx.state().websocket_addr),
+						"/select" => self.select_data(args, &ctx.state().websocket_addr),
 						"/meta" => ctx.text(self.send_metadata(&ctx.state().data)),
 						"/data" => self.send_data(ctx),
+						"/decode_info" => self.send_decode_info(args, ctx),
+						"/sub" => self.subscribe(&ctx.state().websocket_addr),
 						
-						
-						"/plotData" => ctx.binary(Binary::from(self.send_metadata(&ctx.state().data))),
 						_ => ctx.text(format!("!!! unknown command: {:?}", m)),
 					}
 				}

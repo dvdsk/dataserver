@@ -15,7 +15,6 @@
   var output;
 
   var lines;
-  var id_info;
   var id_map = new Map();
 
 	var layout = {
@@ -47,23 +46,23 @@
   {
     showMessage(evt);
 
+    var id_info;
     ({id_info, lines} = JSON.parse(evt.data));
-    console.log(id_info);
 
     var i = 0;
     while (i < id_info.length) {
       var set_id =  id_info[i].dataset_id;
       field_list = [];
       do {
-        field_list.push({field_id: id_info[i].field_id, line_numb: i});
+        field_list.push({field_id: id_info[i].field_id, trace_numb: i});
+        lines[i].x = new Array(); lines[i].y = new Array();
         i++;
       } while(i < id_info.length && id_info[i].dataset_id == set_id)
       id_map.set(set_id, field_list);
     }
 
-    console.log(id_map);
     Plotly.newPlot('plot', lines, layout, {responsive: true});
-    //TODO (store metadata)
+
 
     websocket.onmessage = function(evt) { gotUpdate(evt) };
     doSend("/sub 0 0 1");
@@ -71,19 +70,27 @@
 
   function gotUpdate(evt)
   {
-    view = new DataView(evt.data);
-    setid = view.getInt16();
-    timestamp = view.getFloat64();
+    data = new DataView(evt.data);
+    setid = data.getInt16();
+    timestamp = data.getFloat64(2, true);
 
-
+    fields_to_lines = id_map.get(setid);
     //TODO rethink metadata ordening (use nested list)
-    lines[i].x = timestamp;
-    //lines[i].y =
-    console.log(setid);
-    //magic
+
+    var x_update = [];
+    var y_update = [];
+    var updated_traces = [];
+    for (var i=0; i < fields_to_lines.length; i++) {
+      var trace_numb = fields_to_lines[i].trace_numb;
+      updated_traces.push(trace_numb);
+      x_update.push([timestamp]);
+      y_update.push([data.getFloat32(4*i+10, true)]);
+    }
+    Plotly.extendTraces("plot", {x: x_update, y: y_update}, [0,1]);
+    Plotly.extendTraces("plot", {x: x_update, y: y_update}, updated_traces);
 
     writeToScreen("Got Update");
-    console.log(evt.data);
+
   }
 
 

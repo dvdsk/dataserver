@@ -18,6 +18,7 @@ actix = "0.7.5"
 futures = "0.1.25"
 bytes = "0.4.10"
 walkdir = "2.2.5"
+num = "0.2.0"
 
 acme-client = "0.5.3"
 

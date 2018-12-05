@@ -45,7 +45,7 @@ impl Handler<NewData> for DataServer {
 #[rtype(u16)]
 pub struct Connect {
 	pub addr: Recipient<NewData>,
-	pub session_id: u16,
+	pub ws_session_id: u16,
 }
 
 impl Handler<Connect> for DataServer {
@@ -53,7 +53,7 @@ impl Handler<Connect> for DataServer {
 
 	fn handle(&mut self, msg: Connect, _: &mut Context<Self>) -> Self::Result {
 		// register session with random id
-		let id = msg.session_id;
+		let id = msg.ws_session_id;
 		self.sessions.insert(
 			id,
 			Clientinfo {
@@ -69,7 +69,7 @@ impl Handler<Connect> for DataServer {
 
 #[derive(Message)]
 pub struct Disconnect {
-	pub session_id: u16,
+	pub ws_session_id: u16,
 }
 
 /// Handler for Disconnect message.
@@ -78,10 +78,10 @@ impl Handler<Disconnect> for DataServer {
 
 	fn handle(&mut self, msg: Disconnect, _: &mut Context<Self>) {
 		// remove address
-		if let Some(client_info) = self.sessions.remove(&msg.session_id) {
+		if let Some(client_info) = self.sessions.remove(&msg.ws_session_id) {
 			for sub in client_info.subs {
 				if let Some(subbed_clients) = self.subs.get_mut(&sub) {
-					subbed_clients.remove(&msg.session_id);
+					subbed_clients.remove(&msg.ws_session_id);
 					trace!("removed client from: sub:{:?} ", sub);
 				}
 			}
@@ -92,7 +92,7 @@ impl Handler<Disconnect> for DataServer {
 /// New chat session is created
 #[derive(Message)]
 pub struct SubscribeToSource {
-	pub session_id: u16,
+	pub ws_session_id: u16,
 	pub set_id: DatasetId,
 }
 
@@ -100,20 +100,20 @@ impl Handler<SubscribeToSource> for DataServer {
 	type Result = ();
 
 	fn handle(&mut self, msg: SubscribeToSource, _: &mut Context<Self>) -> Self::Result {
-		let SubscribeToSource { session_id, set_id } = msg;
-		let client_info = self.sessions.get_mut(&session_id).unwrap();
+		let SubscribeToSource { ws_session_id, set_id } = msg;
+		let client_info = self.sessions.get_mut(&ws_session_id).unwrap();
 		client_info.subs.push(set_id);
 
 		trace!("subscribing to source: {:?}",set_id);
 		//fix when non lexical borrow checker arrives
 		if let Some(subscribers) = self.subs.get_mut(&set_id) {
-			subscribers.insert(session_id);
+			subscribers.insert(ws_session_id);
 			//println!("added new id to subs");
 			return ();
 		}
 
 		let mut subscribers = HashSet::new();
-		subscribers.insert(session_id);
+		subscribers.insert(ws_session_id);
 		self.subs.insert(set_id, subscribers);
 		()
 	}

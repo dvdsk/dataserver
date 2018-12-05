@@ -85,8 +85,12 @@ fn send_test_data(data: Arc<RwLock<timeseries_interface::Data>>){
 	let test_value = 10;
 	for _ in 0..metadata.fieldsum(){ data_string.push(0); }
 	for field in &metadata.fields {
+		println!("offset: {}, length: {}, {}, {}",field.offset, field.length, field.decode_scale, field.decode_add);
 		encode(test_value, &mut data_string[10..], field.offset, field.length);
+		use crate::httpserver::timeseries_interface::compression::decode;
+		println!("decoded: {}", decode(&data_string[10..], field.offset, field.length));
 	}
+	println!("datastring: {:?}",data_string);
 	std::mem::drop(datasets);//unlock rwlock
 	let _ = client
 		.post("https://www.deviousd.duckdns.org:8080/newdata")
@@ -221,12 +225,7 @@ mod tests {
 				.level_for("tokio_core::reactor", log::LevelFilter::Off)
 				.level_for("tokio_reactor", log::LevelFilter::Off)
 				.level_for("hyper", log::LevelFilter::Off)
-				.level_for("reqwest", log::LevelFilter::Off)
-				.level_for("mio", log::LevelFilter::Off)
-				.level_for("actix_web", log::LevelFilter::Off)
-				.level_for("rustls", log::LevelFilter::Off)
-				.level_for("actix_net", log::LevelFilter::Off)
-				.level_for("want", log::LevelFilter::Off),
+				.level_for("reqwest", log::LevelFilter::Off),
 			_3_or_more => base_config.level(log::LevelFilter::Trace),
 		};
 	
@@ -265,7 +264,7 @@ mod tests {
 
 	#[test]
 	fn check_server_security() {
-		setup_debug_logging(2).unwrap();
+		//setup_debug_logging(2).unwrap();
 		//check if putting data works
 		let passw_db = Arc::new(RwLock::new(PasswordDatabase::load().unwrap()));
 		let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("data")).unwrap())); 

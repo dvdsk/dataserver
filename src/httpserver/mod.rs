@@ -67,6 +67,7 @@ pub struct WebServerData {
 	data: Arc<RwLock<timeseries_interface::Data>>,
 	sessions: Arc<RwLock<HashMap<u16,Session>>> ,
 	free_session_ids: Arc<AtomicUsize>,
+	free_ws_session_ids: Arc<AtomicUsize>,
 }
 
 #[derive(Deserialize)]
@@ -207,7 +208,12 @@ fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 			trace!("got data");
 			match data.store_new_data(bytes, now) {
 				Ok((set_id, data_string)) => {
-					websocket_addr.do_send(websocket_data_router::NewData {from_id: set_id, line: data_string, timestamp: now.timestamp()}); 
+					println!("data_string: {:?}",data_string);
+					websocket_addr.do_send(websocket_data_router::NewData {
+						from_id: set_id,
+						line: data_string,
+						timestamp: now.timestamp()
+					});
 					Ok(HttpResponse::Ok().status(StatusCode::OK).finish()) },
 				Err(_) => Ok(HttpResponse::Ok().status(StatusCode::FORBIDDEN).finish()),
 			}
@@ -226,10 +232,13 @@ fn ws_index(req: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
 	let session = sessions.get(&session_id).unwrap();
 	
 	let timeseries_with_access = session.timeseries_with_access.clone();
+	let ws_session_id = req.state().free_session_ids.fetch_add(1, Ordering::Acquire);
 	
 	ws::start(req, websocket_client_handler::WsSession { 
-		session_id: session_id,  
+		http_session_id: session_id,
+		ws_session_id: ws_session_id  as u16,
 		selected_data: HashMap::new(),
+		compression_enabled: true,
 		timeseries_with_access: timeseries_with_access,
 	})
 }
@@ -256,7 +265,8 @@ pub fn start(signed_cert: &Path, private_key: &Path,
 
 	let (tx, rx) = mpsc::channel();
 
-    let free_session_ids = Arc::new(AtomicUsize::new(0));
+  let free_session_ids = Arc::new(AtomicUsize::new(0));
+	let free_ws_session_ids = Arc::new(AtomicUsize::new(0));
 
 	let mut cookie_private_key = [0u8; 32];
 	let mut rng = rand::StdRng::from_entropy();
@@ -276,6 +286,7 @@ pub fn start(signed_cert: &Path, private_key: &Path,
                 data: data.clone(), 
                 sessions: sessions.clone(),
                 free_session_ids: free_session_ids.clone(),
+                free_ws_session_ids: free_ws_session_ids.clone(),
             };
             
 			App::with_state(state)
@@ -300,8 +311,8 @@ pub fn start(signed_cert: &Path, private_key: &Path,
                 .resource(r"/login/{tail:.*}", |r| {
                         r.method(http::Method::POST).with(login_get_and_check);
                         r.method(http::Method::GET).f(login_page);
-            })
-            .resource(r"/{tail:.*}", |r| r.f(serve_file)) 
+            		})
+            		.resource(r"/{tail:.*}", |r| r.f(serve_file))
         })
         .bind_rustls("0.0.0.0:8080", config).unwrap()
         //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)

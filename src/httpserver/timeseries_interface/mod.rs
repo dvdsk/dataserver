@@ -5,8 +5,9 @@ extern crate walkdir;
 extern crate serde_yaml;
 extern crate chrono;
 extern crate smallvec;
+extern crate num;
 
-use self::byteorder::{ByteOrder, NativeEndian, NetworkEndian, WriteBytesExt};
+use self::byteorder::{ByteOrder, NativeEndian, NetworkEndian, LittleEndian, WriteBytesExt};
 use self::bytes::Bytes;
 use self::smallvec::SmallVec;
 
@@ -36,25 +37,29 @@ pub struct Field<T> {
 	pub offset: u8, //bits
 	pub length: u8, //bits (max 32 bit variables)
 	
-	decode_scale: T,
-	decode_add: T,
+	pub decode_scale: T,
+	pub decode_add: T,
 }
 
-impl<T> Field<T> 
-where T: std::ops::Add+std::ops::SubAssign+std::ops::DivAssign {
-	fn decode<D>(self, line: &[u8]) -> D 
-	where D: From<T>+From<u32>+From<u16>+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::ops::AddAssign{
+//TODO do away with generics in favor for speeeeed
+impl<T> Field<T>
+where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::marker::Copy {
+	fn decode<D>(&self, line: &[u8]) -> D
+	where D: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::ops::AddAssign{
+	//where D: From<T>+From<u32>+From<u16>+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::ops::AddAssign{
 		let int_repr: u32 = compression::decode(line, self.offset, self.length);
-		let mut decoded = D::from(int_repr);
+		println!("int regr: {}", int_repr);
+		let mut decoded: D = num::cast(int_repr).unwrap();
 		
-		decoded += D::from(self.decode_add);
-		decoded /= D::from(self.decode_scale);
+		println!("add: {}", self.decode_add);
+		println!("scale: {}", self.decode_scale);
+
+		decoded += num::cast(self.decode_add).unwrap();
+		decoded /= num::cast(self.decode_scale).unwrap();
 	
 		decoded
 	}
 }
-
-
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct MetaData {
@@ -110,6 +115,8 @@ impl DataSet {
 	
 	pub fn get_update(&self, line: Vec<u8>, timestamp: i64, allowed_fields: &Vec<FieldId>, setid: DatasetId) 
 	-> Vec<u8>{
+		trace!("get_update");
+
 		let mut recoded_line_size = 0;
 		let mut offset_in_dataset = SmallVec::<[u8; 8]>::new();
 		let mut lengths = SmallVec::<[u8; 8]>::new();
@@ -136,6 +143,26 @@ impl DataSet {
 		recoded_line.to_vec()
 	}
 	
+	pub fn get_update_uncompressed(&self, line: Vec<u8>, timestamp: i64, allowed_fields: &Vec<FieldId>, setid: DatasetId)
+	-> Vec<u8>{
+		trace!("get_update_uncompressed");
+
+		let mut recoded_line = SmallVec::<[u8; 64]>::new(); // initialize an empty vector
+
+		//browsers tend to use little endian, thus present all data little endian
+		recoded_line.write_u16::<LittleEndian>(setid).unwrap();
+		recoded_line.write_f64::<LittleEndian>(timestamp as f64).unwrap();
+		for field in allowed_fields.into_iter().map(|id| &self.metadata.fields[*id as usize]) {
+			println!("field: {:?}",field);
+			println!("line: {:?}",line);
+			let decoded: f32 = field.decode::<f32>(&line);
+			println!("decoded: {}", decoded);
+			recoded_line.write_f32::<LittleEndian>(decoded).unwrap();
+		}
+		recoded_line.to_vec()
+	}
+
+
 	//TODO rewrite timeseries lib to allow local set bound info and passing
 	//that info to the read funct
 	//TODO rewrite timeseries lib to allow async access when async is introduced into rust
@@ -340,7 +367,7 @@ impl PasswordDatabase {
 }
 
 impl Data {
-	pub fn store_new_data(&mut self, data_string: Bytes, time: DateTime<Utc>) -> Result<(DatasetId, Vec<u8>), ()> {
+	pub fn store_new_data(&mut self, mut data_string: Bytes, time: DateTime<Utc>) -> Result<(DatasetId, Vec<u8>), ()> {
 		if data_string.len() < 11 {
 			warn!("data_string size to small for key, datasetid and any data");
 			return Err(());
@@ -361,7 +388,7 @@ impl Data {
 				warn!("error on data append: {:?}",error);
 				return Err(());
 			}
-			return Ok((dataset_id, data_string[10..].to_vec()))
+			return Ok((dataset_id, data_string.split_off(10).to_vec() ))
 		} else {
 			warn!("could not find dataset");
 			return Err(());

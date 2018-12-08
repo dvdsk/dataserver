@@ -83,6 +83,7 @@ fn serve_file(req: &HttpRequest<WebServerData>) -> wResult<NamedFile> {
 
 	let mut path: PathBuf = PathBuf::from("web/");
 	path.push(file_name);
+	println!("returning file: {:?}", &path);
 	Ok(NamedFile::open(path)?)
 }
 

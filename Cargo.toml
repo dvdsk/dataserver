@@ -5,11 +5,11 @@ authors = ["David Kleingeld <dskleingeld@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-actix-web = { version = "0.7.13", features = ["rust-tls"] }
+actix-web = { version = "0.7.15", features = ["rust-tls"] }
 
-actix-web-httpauth = "0.1.0"
+#actix-web-httpauth = "0.1.0"
 
-actix-net = "0.1.1"
+actix-net = "0.2.4"
 
 rustls = "0.14.0"
 ring = "0.13.2"

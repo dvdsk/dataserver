@@ -1,7 +1,6 @@
 extern crate actix;
 extern crate actix_net;
 extern crate actix_web;
-extern crate actix_web_httpauth;
 
 extern crate bytes;
 extern crate futures;

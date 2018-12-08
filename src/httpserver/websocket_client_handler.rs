@@ -4,7 +4,6 @@ use self::actix::*;
 extern crate actix;
 extern crate actix_net;
 extern crate actix_web;
-extern crate actix_web_httpauth;
 extern crate chrono;
 extern crate smallvec;
 extern crate bincode;
@@ -194,22 +193,43 @@ impl WsSession {
 		let now = Utc::now();
 		let t_start= now - Duration::days(1);
 		let t_end = Utc::now();
-		for (dataset_id, field_ids) in &self.selected_data {
-			let mut data = ctx.state().data.write().unwrap();
-			let dataset = data.sets.get_mut(dataset_id).unwrap();
-			if let Ok((timestamps, recoded, decode_info)) = dataset.get_initdata(t_start,t_end, field_ids){
-				std::mem::drop(data);
-				
-				let decode_info = bincode::serialize(&decode_info).unwrap();
-				ctx.binary(Binary::from(decode_info));
-				let timestamps: Vec<u8> = unsafe { std::mem::transmute(timestamps) };
-				ctx.binary(Binary::from(timestamps));
-				ctx.binary(Binary::from(recoded));
-			} else {
-				//TODO tell client something went wrong
-				warn!("could not get data");
+
+		if self.compression_enabled {
+			for (dataset_id, field_ids) in &self.selected_data {
+				let mut data = ctx.state().data.write().unwrap();
+				let dataset = data.sets.get_mut(dataset_id).unwrap();
+				if let Ok((timestamps, recoded, decode_info)) = dataset.get_initdata(t_start,t_end, field_ids){
+					std::mem::drop(data);
+
+					let mut timestamps: Vec<u8> = unsafe {std::mem::transmute(timestamps)};
+					unsafe {timestamps.set_len(timestamps.len()*8)};
+					ctx.binary(Binary::from(timestamps));
+					ctx.binary(Binary::from(recoded));
+				} else {
+					//TODO tell client something went wrong
+					warn!("could not get data");
+				}
 			}
-		}
+		} else {
+			for (dataset_id, field_ids) in &self.selected_data {
+				let mut data = ctx.state().data.write().unwrap();
+				let dataset = data.sets.get_mut(dataset_id).unwrap();
+				if let Ok((timestamps, recoded)) = dataset.get_initdata_uncompressed(t_start,t_end, field_ids){
+					std::mem::drop(data);
+					println!("timestamps: {:?}", timestamps.len());
+					println!("recoded: {:?}", recoded.len());
+					let mut timestamps: Vec<u8> = unsafe {std::mem::transmute(timestamps)};
+					unsafe {timestamps.set_len(timestamps.len()*8)};
+					println!("timestamps: {}",timestamps.len()); //TODO std::mem does not set the size of the vec right/ use slice
+					ctx.binary(Binary::from(timestamps ));
+					ctx.binary(Binary::from(recoded));
+				} else {
+					//TODO tell client something went wrong
+					warn!("could not get data");
+				}
+			}
+		};
+
 	}
 }
 

@@ -38,7 +38,7 @@
   {
     writeToScreen("CONNECTED");
     websocket.onmessage = function(evt) { gotMeta(evt) };
-    doSend("/select_uncompressed 0 0 1");
+    doSend("/select_uncompressed 0 0 1 2 3");
     doSend("/meta");
   }
 
@@ -61,11 +61,40 @@
       id_map.set(set_id, field_list);
     }
 
-    Plotly.newPlot('plot', lines, layout, {responsive: true});
+    websocket.onmessage = function(evt) { gotInitTimestamps(evt) };
+    doSend("/data");
+  }
 
+  function gotInitTimestamps(evt){
+    websocket.onmessage = function(evt) { gotInitData(evt) };
+    var len = evt.data.byteLength;
+    //console.log("len timestamps: "); console.log(len);
+    var timestamps = new Float64Array(evt.data, 0, len/8);
+    //console.log("timestamps: "); console.log(timestamps);
+    for (var i = 0; i < lines.length; i++) {
+      // Iterate over numeric indexes from 0 to 5, as everyone expects.
+      lines[i].x.push(timestamps);
+    }
+  }
 
+  function gotInitData(evt){
     websocket.onmessage = function(evt) { gotUpdate(evt) };
-    doSend("/sub 0 0 1");
+    var len = evt.data.byteLength;
+    var data = new Float32Array(evt.data, 0, len/4);
+    //console.log("len data: "); console.log(data.length);
+    //console.log(lines.length);
+    //console.log(data);
+    for (var i=0; i < data.length; i+=lines.length){
+      //console.log("test");
+      for (var j=0; j < lines.length; j++){
+        //console.log(j);
+        //console.log(i+j);
+        lines[j].y.push(data[i+j]);
+      }
+    }
+    console.log(lines);
+    Plotly.newPlot("plot", lines, layout, {responsive: true});
+    doSend("/sub");
   }
 
   function gotUpdate(evt)
@@ -74,19 +103,21 @@
     setid = data.getInt16();
     timestamp = data.getFloat64(2, true);
 
-    fields_to_lines = id_map.get(setid);
+    var fields_to_lines = id_map.get(setid);
     //TODO rethink metadata ordening (use nested list)
 
     var x_update = [];
     var y_update = [];
     var updated_traces = [];
-    for (var i=0; i < fields_to_lines.length; i++) {
+    //console.log(setid);
+    //console.log(id_map);
+    var len = fields_to_lines.length;
+    for (var i=0; i < len; i++) {
       var trace_numb = fields_to_lines[i].trace_numb;
       updated_traces.push(trace_numb);
       x_update.push([timestamp]);
       y_update.push([data.getFloat32(4*i+10, true)]);
     }
-    Plotly.extendTraces("plot", {x: x_update, y: y_update}, [0,1]);
     Plotly.extendTraces("plot", {x: x_update, y: y_update}, updated_traces);
 
     writeToScreen("Got Update");

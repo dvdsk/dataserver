@@ -7,7 +7,7 @@ extern crate chrono;
 extern crate smallvec;
 extern crate num;
 
-use self::byteorder::{ByteOrder, NativeEndian, NetworkEndian, LittleEndian, WriteBytesExt};
+use self::byteorder::{ByteOrder, BigEndian, NativeEndian, NetworkEndian, LittleEndian, WriteBytesExt};
 use self::bytes::Bytes;
 use self::smallvec::SmallVec;
 
@@ -48,11 +48,11 @@ where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+
 	where D: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::ops::AddAssign{
 	//where D: From<T>+From<u32>+From<u16>+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::ops::AddAssign{
 		let int_repr: u32 = compression::decode(line, self.offset, self.length);
-		println!("int regr: {}", int_repr);
+		//println!("int regr: {}", int_repr);
 		let mut decoded: D = num::cast(int_repr).unwrap();
 		
-		println!("add: {}", self.decode_add);
-		println!("scale: {}", self.decode_scale);
+		//println!("add: {}", self.decode_add);
+		//println!("scale: {}", self.decode_scale);
 
 		decoded += num::cast(self.decode_add).unwrap();
 		decoded /= num::cast(self.decode_scale).unwrap();
@@ -166,6 +166,47 @@ impl DataSet {
 	//TODO rewrite timeseries lib to allow local set bound info and passing
 	//that info to the read funct
 	//TODO rewrite timeseries lib to allow async access when async is introduced into rust
+	pub fn get_initdata_uncompressed(&mut self, t_start: DateTime<Utc>, t_end: DateTime<Utc>, allowed_fields: &Vec<FieldId>)
+	-> Result<(Vec<f64>, Vec<u8>), std::io::Error> {
+		//determine recoding params
+		let mut recoded_line_size = 0;
+		let mut offset_in_dataset = SmallVec::<[u8; 8]>::new();
+		let mut lengths = SmallVec::<[u8; 8]>::new();
+		let mut offset_in_recoded = SmallVec::<[u8; 8]>::new();
+
+		let mut recoded_offset = 0;
+		for id in allowed_fields {
+			let field = &self.metadata.fields[*id as usize];
+			offset_in_dataset.push(field.offset);
+			lengths.push(field.length);
+			offset_in_recoded.push(recoded_offset);
+			recoded_offset += field.length;
+			recoded_line_size += field.length;
+		}
+		let recoded_line_size = (recoded_line_size as f32 /8.0).ceil() as u8; //convert to bytes
+		let recoded_line_size = std::mem::size_of::<f32>() * allowed_fields.len(); //convert to bytes
+
+		//read from the dataset
+		self.timeseries.set_bounds(t_start, t_end)?;
+		let (timestamps, line_data) = self.timeseries.decode_sequential_time_only(100).unwrap();
+		let timestamps: Vec<f64> = timestamps.into_iter().map(|ts| ts as f64).collect();
+		//println!{"timestamps: {:?}",timestamps};
+
+
+		//shift into recoded line for transmission
+		let fields: Vec<&Field<f32>> = allowed_fields.into_iter().map(|id| &self.metadata.fields[*id as usize]).collect();
+		let mut recoded: Vec<u8> = Vec::with_capacity(timestamps.len()*recoded_line_size as usize);
+		//println!("line_size: {}", self.timeseries.line_size);
+		for line in line_data.chunks(self.timeseries.line_size) {
+			for field in &fields {
+				let decoded: f32 = field.decode::<f32>(&line);
+				println!("decoded: {:?}",decoded);
+				recoded.write_f32::<LittleEndian>(decoded).unwrap();
+			}
+		}
+		Ok((timestamps, recoded))
+	}
+
 	pub fn get_initdata(&mut self, t_start: DateTime<Utc>, t_end: DateTime<Utc>, allowed_fields: &Vec<FieldId>)
 	-> Result<(Vec<u64>, Vec<u8>, SetSliceDecodeInfo), std::io::Error> {
 		//determine recoding params
@@ -173,7 +214,7 @@ impl DataSet {
 		let mut offset_in_dataset = SmallVec::<[u8; 8]>::new();
 		let mut lengths = SmallVec::<[u8; 8]>::new();
 		let mut offset_in_recoded = SmallVec::<[u8; 8]>::new();
-		
+
 		let mut recoded_offset = 0;
 		for id in allowed_fields {
 			let field = &self.metadata.fields[*id as usize];
@@ -184,29 +225,28 @@ impl DataSet {
 			recoded_line_size += field.length;
 		}
 		let recoded_line_size =  (recoded_line_size as f32 /8.0).ceil() as u8; //convert to bytes
-		
+
 		//read from the dataset
 		self.timeseries.set_bounds(t_start, t_end)?;
 		let (timestamps, line_data) = self.timeseries.decode_sequential_time_only(100).unwrap();
-		
+
 		//shift into recoded line for transmission
 		let mut recoded: Vec<u8> = Vec::with_capacity(timestamps.len()*recoded_line_size as usize);
 		for line in line_data.chunks(self.timeseries.line_size) {
 			let mut recoded_line: SmallVec<[u8; 16]> = smallvec::smallvec![0; recoded_line_size as usize];
-			
+
 			for ((offset, len),recoded_offset) in offset_in_dataset.iter().zip(lengths.iter()).zip(offset_in_recoded.iter()){
 				let decoded: u32 = compression::decode(line, *offset, *len);
 				compression::encode(decoded, &mut recoded_line, *recoded_offset, *len);
 			}
 			recoded.extend(recoded_line.drain());
 		}
-		 {
+
 		let decode_info =  SetSliceDecodeInfo {
 			field_lenghts: lengths.into_vec(),
 			field_offsets: offset_in_recoded.into_vec(), 
 			data_is_little_endian: cfg!(target_endian = "little"),};
 		Ok((timestamps, recoded, decode_info))
-		}
 	}
 }
 
@@ -302,7 +342,10 @@ pub fn load_data(data: &mut HashMap<DatasetId,DataSet>, datafile_path: &Path, da
 	info_path.set_extension("yaml");
 	if let Ok(metadata_file) = fs::OpenOptions::new().read(true).write(false).create(false).open(&info_path) {
 		if let Ok(metadata) = serde_yaml::from_reader::<std::fs::File, MetaData>(metadata_file) {
-			let line_size: u16 = metadata.fields.iter().map(|field| field.length as u16).sum::<u16>() / 8;
+			//let line_size: u16 = metadata.fields.iter().map(|field| field.length as u16).sum::<u16>() / 8;
+
+			let line_size = metadata.fieldsum();
+
 			if let Ok(timeserie) = Timeseries::open(datafile_path, line_size as usize){
 				info!("loaded dataset with id: {}", &data_id);
 				data.insert(data_id, 

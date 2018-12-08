@@ -115,6 +115,27 @@ fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(accessible_fields)
 }
 
+fn plot_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
+	let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
+	let sessions = req.state().sessions.read().unwrap();
+	let session = sessions.get(&session_id).unwrap();
+
+	let before_form =include_str!("static_webpages/plot_A.html");
+	let after_form = include_str!("static_webpages/plot_B.html");
+
+	let mut page = String::from(before_form);
+	let data = req.state().data.read().unwrap();
+	for (dataset_id, authorized_fields) in session.timeseries_with_access.read().unwrap().iter() {
+		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
+		for field_id in authorized_fields{
+			let id = *field_id.as_ref() as usize;
+			page.push_str(&format!("<input type=\"checkbox\" value={},{} > {}<br>\n", dataset_id, id, metadata.fields[id].name));
+		}
+	}
+	page.push_str(after_form);
+	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
+}
+
 fn logout(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	req.forget();
 	HttpResponse::Found().finish()
@@ -307,6 +328,7 @@ pub fn start(signed_cert: &Path, private_key: &Path,
                 .resource("/index", |r| r.f(index))
                 .resource("/", |r| r.f(index))
                 .resource(r"/newdata", |r| r.method(Method::POST).f(newdata))
+                .resource("/plot", |r| r.f(plot_data))
                 .resource(r"/list_data.html", |r| r.method(Method::GET).f(list_data))
                 .resource(r"/login/{tail:.*}", |r| {
                         r.method(http::Method::POST).with(login_get_and_check);

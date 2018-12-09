@@ -48,7 +48,6 @@ function onOpen(evt){
     for (var i = 0; i < fields.length; i++ ) {
       s=s+" "+fields[i];
     }
-    console.log(s);
     doSend(s);
   }
 
@@ -81,12 +80,11 @@ function gotMeta(evt){
 function gotInitTimestamps(evt){
   websocket.onmessage = function(evt) { gotInitData(evt) };
   var len = evt.data.byteLength;
-  //console.log("len timestamps: "); console.log(len);
-  var timestamps = new Float64Array(evt.data, 0, len/8);
-  //console.log("timestamps: "); console.log(timestamps);
+  var floatarr = new Float64Array(evt.data, 0, len/8);
+  var timestamps = Array.from(floatarr);
+  var dates = timestamps.map(x => new Date(x*1000));
   for (var i = 0; i < lines.length; i++) {
-    // Iterate over numeric indexes from 0 to 5, as everyone expects.
-    lines[i].x = Array.from(timestamps);
+    lines[i].x = dates;
   }
 }
 
@@ -94,14 +92,8 @@ function gotInitData(evt){
   websocket.onmessage = function(evt) { gotUpdate(evt) };
   var len = evt.data.byteLength;
   var data = new Float32Array(evt.data, 0, len/4);
-  //console.log("len data: "); console.log(data.length);
-  //console.log(lines.length);
-  //console.log(data);
   for (var i=0; i < data.length; i+=lines.length){
-    //console.log("test");
     for (var j=0; j < lines.length; j++){
-      //console.log(j);
-      //console.log(i+j);
       lines[j].y.push(data[i+j]);
     }
   }
@@ -127,7 +119,7 @@ function gotUpdate(evt){
   for (var i=0; i < len; i++) {
     var trace_numb = fields_to_lines[i].trace_numb;
     updated_traces.push(trace_numb);
-    x_update.push([timestamp]);
+    x_update.push([new Date(timestamp*1000)]);
     y_update.push([data.getFloat32(4*i+10, true)]);
   }
   Plotly.extendTraces("plot", {x: x_update, y: y_update}, updated_traces);

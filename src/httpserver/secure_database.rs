@@ -20,7 +20,7 @@ pub type Credential = [u8; CREDENTIAL_LEN];
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct User {
 	password: Credential,
-	user_data: UserInfo,
+	pub user_data: UserInfo,
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -37,6 +37,7 @@ pub enum Error {
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct PasswordDatabase {
+    path: PathBuf,
     pub pbkdf2_iterations: u32,
     pub db_salt_component: [u8; 16],
 
@@ -46,30 +47,33 @@ pub struct PasswordDatabase {
 }
 
 impl PasswordDatabase {
-	pub fn load() -> Result<Self,ioError> {
-		let database_path = PathBuf::from("userdb.hm");
+	pub fn load<P: Into<PathBuf>>(root_path: P) -> Result<Self,ioError> {
+		let root_path: PathBuf = root_path.into();
+		let mut database_path = root_path.clone();
+		database_path.push("userdb.hm");
 		
 		if database_path.exists() {
 			if let Ok(f) = OpenOptions::new().read(true).write(true).open(&database_path) {
 				if let Ok(database) = deserialize_from::<File, PasswordDatabase>(f) {
 					println!("{:?}", database);
 					Ok(database)
-				} else { warn!("could not parse: {:?}", database_path); Self::new() }
-			} else { warn!("could not open file: {:?}", database_path); Self::new() }
-		} else { warn!("could not find the path: {:?}", database_path); Self::new() }
+				} else { warn!("could not parse: {:?}", database_path); Self::new(root_path) }
+			} else { warn!("could not open file: {:?}", database_path); Self::new(root_path) }
+		} else { warn!("could not find the path: {:?}", database_path); Self::new(root_path) }
 	}
 	
 	pub fn write(&mut self) {
-		let database_path = PathBuf::from("userdb.hm");
 		let f = OpenOptions::new().write(true).create(false).
-									             truncate(true).open(&database_path).unwrap();
+									             truncate(true).open(&self.path).unwrap();
 		serialize_into::<File, PasswordDatabase>(f, self).unwrap();		
 	}
 	
-	pub fn new() -> Result<Self,ioError> {
-		let database_path = PathBuf::from("userdb.hm");
+	pub fn new<P: Into<PathBuf>>(root_path: P) -> Result<Self,ioError> {
+		let mut database_path: PathBuf = root_path.into();
+		database_path.push("userdb.hm");
 		
 		let database = PasswordDatabase {
+			path: database_path.clone(),
 			pbkdf2_iterations: 100_000,
 			db_salt_component: [
 				// This value was generated from a secure PRNG. //TODO check this

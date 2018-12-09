@@ -25,8 +25,23 @@ use std::collections::HashMap;
 use super::secure_database::{PasswordDatabase, UserInfo};
 use super::websocket_client_handler::SetSliceDecodeInfo;
 
-mod specifications;
+pub mod specifications;
 pub mod compression;
+
+use std::f64;
+trait FloatIterExt {
+	  fn float_min(&mut self) -> f64;
+	  fn float_max(&mut self) -> f64;
+}
+
+impl<T> FloatIterExt for T where T: Iterator<Item=f64> {
+	  fn float_max(&mut self) -> f64 {
+	      self.fold(f64::NAN, f64::max)
+	  }
+	  fn float_min(&mut self) -> f64 {
+	     self.fold(f64::NAN, f64::min)
+	  }
+}
 
 pub type FieldId = u8;
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -43,7 +58,7 @@ pub struct Field<T> {
 
 //TODO do away with generics in favor for speeeeed
 impl<T> Field<T>
-where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::marker::Copy {
+where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::ops::MulAssign+std::marker::Copy {
 	fn decode<D>(&self, line: &[u8]) -> D
 	where D: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::ops::AddAssign{
 	//where D: From<T>+From<u32>+From<u16>+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::ops::AddAssign{
@@ -55,9 +70,19 @@ where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+
 		//println!("scale: {}", self.decode_scale);
 
 		decoded += num::cast(self.decode_add).unwrap();
-		decoded /= num::cast(self.decode_scale).unwrap();
+		decoded /= num::cast(self.decode_scale).unwrap();//FIXME flip decode scale / and *
 	
 		decoded
+	}
+	pub fn encode<D>(&self, mut numb: T, line: &mut [u8])
+	where D: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::AddAssign{
+
+		numb *= num::cast(self.decode_scale).unwrap();
+		numb -= num::cast(self.decode_add).unwrap();
+
+		let mut to_encode: u32 = num::cast(numb).unwrap();
+
+		compression::encode(to_encode, line, self.offset, self.length);
 	}
 }
 
@@ -153,15 +178,14 @@ impl DataSet {
 		recoded_line.write_u16::<LittleEndian>(setid).unwrap();
 		recoded_line.write_f64::<LittleEndian>(timestamp as f64).unwrap();
 		for field in allowed_fields.into_iter().map(|id| &self.metadata.fields[*id as usize]) {
-			println!("field: {:?}",field);
-			println!("line: {:?}",line);
+			//println!("field: {:?}",field);
+			//println!("line: {:?}",line);
 			let decoded: f32 = field.decode::<f32>(&line);
-			println!("decoded: {}", decoded);
+			//println!("decoded: {}", decoded);
 			recoded_line.write_f32::<LittleEndian>(decoded).unwrap();
 		}
 		recoded_line.to_vec()
 	}
-
 
 	//TODO rewrite timeseries lib to allow local set bound info and passing
 	//that info to the read funct
@@ -188,7 +212,7 @@ impl DataSet {
 
 		//read from the dataset
 		self.timeseries.set_bounds(t_start, t_end)?;
-		let (timestamps, line_data) = self.timeseries.decode_sequential_time_only(100).unwrap();
+		let (timestamps, line_data) = self.timeseries.decode_sequential_time_only(10000).unwrap();
 		let timestamps: Vec<f64> = timestamps.into_iter().map(|ts| ts as f64).collect();
 		//println!{"timestamps: {:?}",timestamps};
 
@@ -200,10 +224,13 @@ impl DataSet {
 		for line in line_data.chunks(self.timeseries.line_size) {
 			for field in &fields {
 				let decoded: f32 = field.decode::<f32>(&line);
-				println!("decoded: {:?}",decoded);
+				//println!("decoded: {:?}",decoded);
 				recoded.write_f32::<LittleEndian>(decoded).unwrap();
 			}
 		}
+
+		info!("timestamps: {:?}", timestamps);
+		info!("max timestamp: {:?}", timestamps.iter().cloned().float_max());
 		Ok((timestamps, recoded))
 	}
 
@@ -360,13 +387,8 @@ pub fn load_data(data: &mut HashMap<DatasetId,DataSet>, datafile_path: &Path, da
 }
 
 impl Data {
-	pub fn add_set(&mut self) -> io::Result<DatasetId>{
+	pub fn add_set(&mut self, file_name: String) -> io::Result<DatasetId>{
 		//create template file if it does not exist
-		if !Path::new("specs/template.yaml").exists() {
-			specifications::write_template()?;
-		}
-		println!("enter the name of the info file in the specs subfolder:");
-		let file_name: String = read!("{}\n");
 		let mut metadata_path = PathBuf::from("specs");
 		metadata_path.push(file_name);
 		metadata_path.set_extension("yaml");
@@ -397,6 +419,27 @@ impl Data {
 			Err(io::Error::new(io::ErrorKind::InvalidData, "could not parse specification"))
 		}
 	}
+	pub fn remove_set(&mut self, id: DatasetId) -> io::Result<()>{
+
+		if self.sets.remove(&id).is_none(){
+			warn!("set with id: {}, can not be removed as does not exist",id);
+			return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "dataset does not exist!"));
+		}
+
+		let mut datafile_path = self.dir.clone();
+		datafile_path.push(id.to_string());
+
+		datafile_path.set_extension("yaml");
+		fs::remove_file(&datafile_path)?;
+
+		datafile_path.set_extension("h");
+		fs::remove_file(&datafile_path)?;
+
+		datafile_path.set_extension("dat");
+		fs::remove_file(&datafile_path)?;
+
+		Ok(())
+	}
 }
 
 impl PasswordDatabase {
@@ -407,6 +450,12 @@ impl PasswordDatabase {
 		let username = userinfo.username.clone();
 		self.set_userdata(username.as_str().as_bytes(), userinfo );
 	}
+	// pub fn remove_owner(&mut self, id: DatasetId, &mut userinfo: UserInfo){
+	// 	userinfo.timeseries_with_access.remove(&id);
+
+	// 	let username = userinfo.username.clone();
+	// 	self.set_userdata(username.as_str().as_bytes(), userinfo );
+	// }
 }
 
 impl Data {

@@ -20,7 +20,7 @@
             bits_read+= 8;
         }
     //}
-    println!("stop_byte: {}",stop_byte);
+    //println!("stop_byte: {}",stop_byte);
     //println!("############################\nstop_byte: {}, \nstop_mask: {:b}\nbits_read: {}\nmasked line: {:b}\nraw line: {:b}\n//////////////////////",
     //stop_byte, stop_mask,bits_read,line[stop_byte] & stop_mask, line[stop_byte]);
     decoded |= ((line[stop_byte] & stop_mask) as u32) << (bits_read-(8-used_bits));

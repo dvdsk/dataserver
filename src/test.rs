@@ -76,11 +76,15 @@ fn divide_ceil(x: u8, y: u8) -> u8{
 
 #[test]
 fn check_server_security() {
+
+	println!("test!");
 	//setup_debug_logging(2).unwrap();
 	//check if putting data works
-	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load("").unwrap()));
-	let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("data")).unwrap()));
+	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load("test").unwrap()));
+	let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("test/data")).unwrap()));
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
+
+	println!("test!");
 
 	let (_, web_handle) =
 	httpserver::start(Path::new("keys/cert.key"), Path::new("keys/cert.cert"), data.clone(), passw_db.clone(), sessions.clone());
@@ -178,7 +182,7 @@ fn insert_test_set() {
 	let id = add_test_set(&passw_db, &data).unwrap();
 
 	let now = Utc::now();
-	let t_start= (now - Duration::days(1)).timestamp();
+	//let t_start= (now - Duration::days(1)).timestamp();
 	let t_start= (now - Duration::minutes(10)).timestamp();
 	let t_end = now.timestamp();
 	let mut datasets = data.write().unwrap();
@@ -195,7 +199,7 @@ fn insert_test_set() {
 	for (timestamp, fase) in (t_start..t_end).step_by(5).zip((0..100).cycle()) {
 		let angle = fase as f32 /100. * 3.1415;
 		let mut test_value = angle.sin();
-
+		println!("angle: {}, test_value: {}",angle,test_value);
 		let mut data_string: Vec<u8> = Vec::new();
 		data_string.write_u16::<NativeEndian>(id).unwrap();
 		data_string.write_u64::<NativeEndian>(key).unwrap();
@@ -204,6 +208,7 @@ fn insert_test_set() {
 		for field in &fields {
 			test_value+=1.;
 			field.encode::<u32>(test_value, &mut data_string[10..]);
+			println!("{}", field.decode::<f32>(&data_string[10..]) );
 		}
 		let now = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(timestamp, 0), Utc);
 		datasets.store_new_data(Bytes::from(data_string), now);

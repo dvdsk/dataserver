@@ -59,8 +59,8 @@ pub struct Field<T> {
 //TODO do away with generics in favor for speeeeed
 impl<T> Field<T>
 where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::ops::MulAssign+std::marker::Copy {
-	fn decode<D>(&self, line: &[u8]) -> D
-	where D: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::ops::AddAssign{
+	pub fn decode<D>(&self, line: &[u8]) -> D
+	where D: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::MulAssign+std::ops::AddAssign{
 	//where D: From<T>+From<u32>+From<u16>+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::ops::AddAssign{
 		let int_repr: u32 = compression::decode(line, self.offset, self.length);
 		//println!("int regr: {}", int_repr);
@@ -70,15 +70,17 @@ where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+
 		//println!("scale: {}", self.decode_scale);
 
 		decoded += num::cast(self.decode_add).unwrap();
-		decoded /= num::cast(self.decode_scale).unwrap();//FIXME flip decode scale / and *
+		decoded *= num::cast(self.decode_scale).unwrap();//FIXME flip decode scale / and *
 	
 		decoded
 	}
 	pub fn encode<D>(&self, mut numb: T, line: &mut [u8])
-	where D: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::AddAssign{
+	where D: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::AddAssign+std::ops::DivAssign{
 
-		numb *= num::cast(self.decode_scale).unwrap();
+		println!("org: {}",numb);
+		numb /= num::cast(self.decode_scale).unwrap();
 		numb -= num::cast(self.decode_add).unwrap();
+		println!("scale: {}, add: {}, numb: {}", self.decode_scale, self.decode_add, numb);
 
 		let mut to_encode: u32 = num::cast(numb).unwrap();
 

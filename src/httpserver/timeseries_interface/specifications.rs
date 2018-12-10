@@ -104,8 +104,8 @@ impl Into<MetaData> for MetaDataSpec {
 pub fn write_template() -> io::Result<()> {
 	let template_field_1 = FieldSpec::BitLength( FieldLength {
 		name: String::from("template field name1"),
-		min_value: 0f32,
-		max_value: 1000f32,
+		min_value: 0.01f32,
+		max_value: 10f32,
 		numb_of_bits: 10u8, //bits (max 32 bit variables)
 	});
 	let template_field_2 = FieldSpec::SigDigits( FieldSigDigits {

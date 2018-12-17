@@ -1,6 +1,6 @@
 #[inline] pub fn decode(line: &[u8], bit_offset: u8, length: u8) -> u32 {
     let start_byte = (bit_offset /8) as usize;
-    let stop_byte = ((bit_offset+length) /8) as usize;
+    let stop_byte = ((bit_offset+length) /8 ) as usize;
 
     let start_mask = !0 >> (bit_offset % 8);
     let used_bits = bit_offset+length - stop_byte as u8 *8;
@@ -23,18 +23,23 @@
     //println!("stop_byte: {}",stop_byte);
     //println!("############################\nstop_byte: {}, \nstop_mask: {:b}\nbits_read: {}\nmasked line: {:b}\nraw line: {:b}\n//////////////////////",
     //stop_byte, stop_mask,bits_read,line[stop_byte] & stop_mask, line[stop_byte]);
-    decoded |= ((line[stop_byte] & stop_mask) as u32) << (bits_read-(8-used_bits));
+    let stop_byte = div_up(bit_offset+length, 8) as usize;//starts at 0
+    decoded |= ((line[stop_byte-1] & stop_mask) as u32) << (bits_read-(8-used_bits));
     
     decoded
 }
 
+#[inline(always)] fn div_up(x: u8, y: u8) -> u8 {
+	(x+y-1)/y
+}
 
 #[inline] pub fn encode(to_encode: u32, line: &mut [u8], bit_offset: u8, length: u8) {
 
     let start_mask = !0 >> (bit_offset % 8);
     
     let start_byte = (bit_offset /8) as usize;
-    let stop_byte = ((bit_offset+length) /8) as usize;
+    let stop_byte = ((bit_offset+length) /8 ) as usize;
+    //println!("start_byte: {}, stop_byte: {}, bit_offset: {}, length: {}", start_byte, stop_byte, bit_offset, length);
 
     //encode first bit (never needs shifting (lowest part is used))
     line[start_byte] |= (to_encode as u8) & start_mask;
@@ -52,8 +57,10 @@
     //start_byte, stop_byte,bits_written,line[start_byte]);
 
     let used_bits = bit_offset+length  -stop_byte as u8 *8;
+    //let used_bits = bit_offset+length - bits_written;
     let stop_mask = !(!0 >> used_bits);
-    line[stop_byte] |= (to_encode >> (bits_written-(8-used_bits))) as u8 & stop_mask;
+    let stop_byte = div_up(bit_offset+length, 8) as usize;//starts at 0
+    line[stop_byte-1] |= (to_encode >> (bits_written-(8-used_bits))) as u8 & stop_mask;
 }
 
 
@@ -87,10 +94,26 @@ mod tests {
     assert_eq!(decoded2, 2);
 	}
 
+	#[test]
+	fn encode_and_decode_edge_case(){
+		let test_case = u32::max_value();
+	  let mut line = vec!(0, 0, 0, 0);
+  	encode(test_case,&mut line, 0, 32);
+
+    print!("binary repr: ");
+    for byte in &line {
+    	print!("{:b}, ",byte);
+    } println!();
+
+		let decoded1 = decode(&line, 0, 32);
+
+		println!("0-{} {} {:b}", 32, decoded1, decoded1);
+    assert_eq!(decoded1, test_case);
+	}
 
 	#[test]
 	fn encode_and_decode_multiple(){
-    for length in 8..32 {
+    for length in 8..33 {
 			for offset in 0..16 {
 				for _power1 in 0..length as u16 *10 {
 					for _power2 in 0..length as u16 *10 {

@@ -214,7 +214,7 @@ impl DataSet {
 
 		//read from the dataset
 		self.timeseries.set_bounds(t_start, t_end)?;
-		let (timestamps, line_data) = self.timeseries.decode_sequential_time_only(10000).unwrap();
+		let (timestamps, line_data) = self.timeseries.decode_sequential_time_only(100000).unwrap();
 		let timestamps: Vec<f64> = timestamps.into_iter().map(|ts| ts as f64).collect();
 		//println!{"timestamps: {:?}",timestamps};
 
@@ -230,8 +230,8 @@ impl DataSet {
 				recoded.write_f32::<LittleEndian>(decoded).unwrap();
 			}
 		}
-
-		info!("timestamps: {:?}", timestamps);
+		let first_timestamps = timestamps.iter().cloned().take(5).collect::<Vec<_>>();
+		info!("timestamps: {:?}", first_timestamps);
 		info!("max timestamp: {:?}", timestamps.iter().cloned().float_max());
 		Ok((timestamps, recoded))
 	}
@@ -410,7 +410,7 @@ impl Data {
 				metadata: metadata,
 			};
 			datafile_path.set_extension("yaml");
-			let f = fs::File::create(datafile_path)?;
+			let f = fs::File::create(datafile_path).unwrap();
 			serde_yaml::to_writer(f, &set.metadata).unwrap();
 			
 			self.sets.insert(dataset_id, set);

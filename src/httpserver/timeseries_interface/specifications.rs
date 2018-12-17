@@ -136,3 +136,30 @@ pub fn write_template() -> io::Result<()> {
 		Err(error) => Err(error),
 	}
 }
+
+pub fn write_test() -> io::Result<()> {
+	let template_field_1 = FieldSpec::Manual( FieldManual {
+		name: String::from("timestamps"),
+		length: 32,
+		decode_scale: 1.,
+		decode_add: 0.,
+	});
+	let metadata = MetaDataSpec {
+		name: String::from("template dataset name"),
+		description: String::from("This is a test spec it is used for verifiying the timeseries interface"),
+		fields: vec!(template_field_1),
+	};
+
+	if !Path::new("specs").exists() {fs::create_dir("specs")? }
+	match fs::File::create("specs/test.yaml"){
+		Ok(f) => {
+			if serde_yaml::to_writer(f, &metadata).is_err() {
+				Err(io::Error::new(io::ErrorKind::InvalidData, "could not parse specification"))
+			} else { Ok(()) }
+		},
+		Err(error) => {
+			println!("error while adding test template");
+			Err(error)
+		},
+	}
+}

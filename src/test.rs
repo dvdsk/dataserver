@@ -138,12 +138,12 @@ fn check_server_security() {
 }
 
 
-fn add_test_set(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<timeseries_interface::Data>>)
+fn add_template_set(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<timeseries_interface::Data>>)
 	-> Result<timeseries_interface::DatasetId, ()>{
 	let mut data = data.write().unwrap();
 	let file_name = String::from("template.yaml");
+	timeseries_interface::specifications::write_template().unwrap();
 	if let Ok(dataset_id) = data.add_set(file_name){
-		timeseries_interface::specifications::write_template().unwrap();
 		let username = String::from("test");
 
 		let fields = &data.sets.get(&dataset_id).unwrap().metadata.fields;
@@ -153,10 +153,31 @@ fn add_test_set(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<ti
 		Ok(dataset_id)
 	} else {
 		//destroy files
-		println!("could not create new dataset");
+		println!("could not create new template dataset");
 		Err(())
 	}
 }
+
+fn add_test_set(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<timeseries_interface::Data>>)
+	-> Result<timeseries_interface::DatasetId, ()>{
+	let mut data = data.write().unwrap();
+	let file_name = String::from("test.yaml");
+	timeseries_interface::specifications::write_test().unwrap();
+	if let Ok(dataset_id) = data.add_set(file_name){
+		let username = String::from("test");
+
+		let fields = &data.sets.get(&dataset_id).unwrap().metadata.fields;
+		let mut passw_db = passw_db.write().unwrap();
+		let userdata = passw_db.get_userdata(username).clone();
+		passw_db.add_owner(dataset_id, fields, userdata);
+		Ok(dataset_id)
+	} else {
+		//destroy files
+		println!("could not create new test dataset");
+		Err(())
+	}
+}
+
 
 #[test]
 #[ignore] //not run use: cargo test -- --ignored insert_test_set
@@ -183,7 +204,15 @@ fn insert_test_set() {
 
 	let now = Utc::now();
 	//let t_start= (now - Duration::days(1)).timestamp();
-	let t_start= (now - Duration::minutes(10)).timestamp();
+
+	let t_start= (now - Duration::hours(20)).timestamp();
+	//first point gets the correct dataset, next is at 5/6 of the range till the end
+	//then it goes back to about 1/5
+
+	//let t_start= (now - Duration::hours(15)).timestamp();
+	//let t_start= (now - Duration::hours(10)).timestamp();
+	//let t_start= (now - Duration::minutes(10)).timestamp();
+
 	let t_end = now.timestamp();
 	let mut datasets = data.write().unwrap();
 
@@ -195,10 +224,74 @@ fn insert_test_set() {
 	let len = metadata.fieldsum();
 
 
-	//TODO send single lines
-	for (timestamp, fase) in (t_start..t_end).step_by(5).zip((0..100).cycle()) {
-		let angle = fase as f32 /100. * 3.1415;
-		let mut test_value = angle.sin();
+	for timestamp in (t_start..t_end).step_by(5) {
+		let mut data_string: Vec<u8> = Vec::new();
+		data_string.write_u16::<NativeEndian>(id).unwrap();
+		data_string.write_u64::<NativeEndian>(key).unwrap();
+		for _ in 0..len{ data_string.push(0); }
+
+		fields[0].encode::<u32>(timestamp as f32, &mut data_string[10..]);
+		//println!("{}", field.decode::<f32>(&data_string[10..]) );
+
+		let now = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(timestamp, 0), Utc);
+		datasets.store_new_data(Bytes::from(data_string), now);
+	}
+
+	std::mem::drop(datasets);
+	//TODO send multiple lines
+		//write new protocol for sending multiple lines
+}
+
+
+#[test]
+#[ignore] //not run use: cargo test -- --ignored insert_timecheck_set
+fn insert_timecheck_set() {
+	setup_debug_logging(0).unwrap();
+	//check if putting data works
+	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load("test").unwrap()));
+	let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("test/data")).unwrap()));
+
+	let username = String::from("test");
+	let password = String::from("test");
+
+	let user_data = UserInfo{
+		timeseries_with_access: HashMap::new(),
+		last_login: Utc::now(),
+		username: username.clone(),
+	};
+
+	let mut passw_db_unlocked = passw_db.write().unwrap();
+	passw_db_unlocked.store_user(username.as_str().as_bytes(), password.as_str().as_bytes(), user_data);
+	std::mem::drop(passw_db_unlocked);
+
+	let id = add_test_set(&passw_db, &data).unwrap();
+
+	let now = Utc::now();
+	//let t_start= (now - Duration::days(1)).timestamp();
+
+	let t_start= (now - Duration::hours(20)).timestamp();
+	//first point gets the correct dataset, next is at 5/6 of the range till the end
+	//then it goes back to about 1/5
+
+	//let t_start= (now - Duration::hours(15)).timestamp();
+	//let t_start= (now - Duration::hours(10)).timestamp();
+	//let t_start= (now - Duration::minutes(10)).timestamp();
+
+	let t_end = now.timestamp();
+	let mut datasets = data.write().unwrap();
+
+	let dataset = datasets.sets.get(&id).unwrap();
+	let metadata = &dataset.metadata;
+	let len = metadata.fieldsum();
+	let fields = metadata.fields.clone();
+	let key = metadata.key;
+	let len = metadata.fieldsum();
+
+
+	for ((timestamp, fase), i) in (t_start..t_end).step_by(5).zip((0..100).cycle()).zip((0..4).cycle()) {
+		let angle = fase as f32 /100. * 2. * 3.1415;
+		println!("i: {}",i);
+		let mut test_value = angle.sin();//*100.+100.;
 		println!("angle: {}, test_value: {}",angle,test_value);
 		let mut data_string: Vec<u8> = Vec::new();
 		data_string.write_u16::<NativeEndian>(id).unwrap();
@@ -219,10 +312,12 @@ fn insert_test_set() {
 		//write new protocol for sending multiple lines
 }
 
+
 #[test]
 #[ignore] //not run use: cargo test -- --ignored view_test_set
 fn view_test_set() {
 	//TODO print done and wait for user OK
+	setup_debug_logging(0).unwrap();
 
 	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load("test").unwrap()));
 	let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("test/data")).unwrap()));
@@ -238,7 +333,7 @@ fn view_test_set() {
 	println!("please verify plot is correct then press enter to exit");
 	let file_name: String = read!("{}\n");
 
-	remove_dataset(&passw_db, &data, 0);
+	//remove_dataset(&passw_db, &data, 1);
 	httpserver::stop(web_handle);
 
 }

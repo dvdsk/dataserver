@@ -86,6 +86,7 @@ function gotInitTimestamps(evt){
   for (var i = 0; i < lines.length; i++) {
     lines[i].x = dates;
   }
+  console.log(timestamps);
 }
 
 function gotInitData(evt){

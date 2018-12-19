@@ -137,7 +137,7 @@ pub fn write_template() -> io::Result<()> {
 	}
 }
 
-pub fn write_test() -> io::Result<()> {
+pub fn write_template_for_test() -> io::Result<()> {
 	let template_field_1 = FieldSpec::Manual( FieldManual {
 		name: String::from("timestamps"),
 		length: 32,
@@ -151,7 +151,7 @@ pub fn write_test() -> io::Result<()> {
 	};
 
 	if !Path::new("specs").exists() {fs::create_dir("specs")? }
-	match fs::File::create("specs/test.yaml"){
+	match fs::File::create("specs/template_for_test.yaml"){
 		Ok(f) => {
 			if serde_yaml::to_writer(f, &metadata).is_err() {
 				Err(io::Error::new(io::ErrorKind::InvalidData, "could not parse specification"))

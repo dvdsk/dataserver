@@ -13,13 +13,13 @@
     let mut decoded: u32 = (line[start_byte] & start_mask) as u32;
     let mut bits_read = 8-(bit_offset % 8);
     //if we have more bits 
-    //if length-8 > 8-bit_offset%8 {
+    if length > 8 {
         //decode middle bits, no masking needed
         for (i, byte) in line[start_byte+1..stop_byte].iter().enumerate(){
             decoded |= (*byte as u32) << (8-(bit_offset % 8) + (i as u8) *8) ;
             bits_read+= 8;
         }
-    //}
+    }
     //println!("stop_byte: {}",stop_byte);
     //println!("############################\nstop_byte: {}, \nstop_mask: {:b}\nbits_read: {}\nmasked line: {:b}\nraw line: {:b}\n//////////////////////",
     //stop_byte, stop_mask,bits_read,line[stop_byte] & stop_mask, line[stop_byte]);
@@ -45,12 +45,13 @@
     line[start_byte] |= (to_encode as u8) & start_mask;
     let mut bits_written = 8-(bit_offset % 8);
     
-    //if we have more bits 
-    //if length-8 > 8-bit_offset%8 {
-        //decode middle bits, no masking needed
-    for byte in line[start_byte+1..stop_byte].iter_mut(){
-        *byte |= (to_encode >> bits_written) as u8;
-        bits_written += 8;
+    if length > 8 {
+		  //decode middle bits, no masking needed
+		  //println!("stop_byte: {}, start_byte+1: {}", stop_byte, start_byte+1);
+		  for byte in line[start_byte+1..stop_byte].iter_mut(){
+		      *byte |= (to_encode >> bits_written) as u8;
+		      bits_written += 8;
+		  }
     }
 
     //println!("############################\nstart_byte: {}, stop_byte: {}, \nbits_written: {}\nraw line: {:b}\n//////////////////////",

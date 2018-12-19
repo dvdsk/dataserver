@@ -162,7 +162,7 @@ fn add_test_set(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<ti
 	-> Result<timeseries_interface::DatasetId, ()>{
 	let mut data = data.write().unwrap();
 	let file_name = String::from("test.yaml");
-	timeseries_interface::specifications::write_test().unwrap();
+
 	if let Ok(dataset_id) = data.add_set(file_name){
 		let username = String::from("test");
 
@@ -180,8 +180,8 @@ fn add_test_set(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<ti
 
 
 #[test]
-#[ignore] //not run use: cargo test -- --ignored insert_test_set
-fn insert_test_set() {
+#[ignore] //not run use: cargo test -- --ignored insert_timecheck_set
+fn insert_timecheck_set() {
 	setup_debug_logging(0).unwrap();
 	//check if putting data works
 	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load("test").unwrap()));
@@ -244,8 +244,8 @@ fn insert_test_set() {
 
 
 #[test]
-#[ignore] //not run use: cargo test -- --ignored insert_timecheck_set
-fn insert_timecheck_set() {
+#[ignore] //not run use: cargo test -- --ignored insert_test_set
+fn insert_test_set() {
 	setup_debug_logging(0).unwrap();
 	//check if putting data works
 	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load("test").unwrap()));
@@ -264,12 +264,12 @@ fn insert_timecheck_set() {
 	passw_db_unlocked.store_user(username.as_str().as_bytes(), password.as_str().as_bytes(), user_data);
 	std::mem::drop(passw_db_unlocked);
 
-	let id = add_test_set(&passw_db, &data).unwrap();
+	let id = add_template_set(&passw_db, &data).unwrap();
 
 	let now = Utc::now();
-	//let t_start= (now - Duration::days(1)).timestamp();
+	let t_start= (now - Duration::days(2)).timestamp();
 
-	let t_start= (now - Duration::hours(20)).timestamp();
+	//let t_start= (now - Duration::hours(20)).timestamp();
 	//first point gets the correct dataset, next is at 5/6 of the range till the end
 	//then it goes back to about 1/5
 
@@ -288,8 +288,8 @@ fn insert_timecheck_set() {
 	let len = metadata.fieldsum();
 
 
-	for ((timestamp, fase), i) in (t_start..t_end).step_by(5).zip((0..100).cycle()).zip((0..4).cycle()) {
-		let angle = fase as f32 /100. * 2. * 3.1415;
+	for ((timestamp, fase), i) in (t_start..t_end).step_by(5).zip((0..10_000).cycle()).zip((0..4).cycle()) {
+		let angle = fase as f32 /10_000. * 2. * 3.1415;
 		println!("i: {}",i);
 		let mut test_value = angle.sin();//*100.+100.;
 		println!("angle: {}, test_value: {}",angle,test_value);
@@ -335,5 +335,4 @@ fn view_test_set() {
 
 	//remove_dataset(&passw_db, &data, 1);
 	httpserver::stop(web_handle);
-
 }

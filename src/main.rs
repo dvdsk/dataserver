@@ -58,6 +58,10 @@ fn add_dataset(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<tim
 	if !Path::new("specs/template.yaml").exists() {
 		timeseries_interface::specifications::write_template().unwrap();
 	}
+	if !Path::new("specs/template_for_test.yaml").exists() {
+		timeseries_interface::specifications::write_template_for_test().unwrap();
+	}
+
 	println!("enter the name of the info file in the specs subfolder:");
 	let file_name: String = read!("{}\n");
 
@@ -200,7 +204,7 @@ fn main() {
 		}
 	}
 
-	setup_debug_logging(0);
+	setup_debug_logging(0).expect("could not set up debugging");
 	
 	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load("").unwrap()));
 	let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("data")).unwrap())); 

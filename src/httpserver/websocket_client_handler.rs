@@ -191,7 +191,7 @@ impl WsSession {
 	fn send_data(&mut self, ctx: &mut ws::WebsocketContext<Self, WebServerData>){
 		trace!("sending data to client");
 		let now = Utc::now();
-		let t_start= now - Duration::days(1);
+		let t_start= now - Duration::days(2);
 		let t_end = Utc::now();
 
 		if self.compression_enabled {

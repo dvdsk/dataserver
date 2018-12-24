@@ -105,9 +105,11 @@ function gotInitData(evt){
 
 function gotUpdate(evt){
   data = new DataView(evt.data);
-  setid = data.getInt16();
+  setid = data.getInt16(0, true);
   timestamp = data.getFloat64(2, true);
 
+  console.log(setid);
+  console.log(id_map);
   var fields_to_lines = id_map.get(setid);
   //TODO rethink metadata ordening (use nested list)
 

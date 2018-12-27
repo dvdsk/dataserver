@@ -154,7 +154,7 @@ fn setup_debug_logging(verbosity: u8) -> Result<(), fern::InitError> {
 			// Let's say we depend on something which whose "info" level messages are too
 			// verbose to include in end-user output. If we don't need them,
 			// let's not include them.
-			base_config.level(log::LevelFilter::Warn),
+			base_config.level(log::LevelFilter::Trace),
 
 		_3_or_more => base_config.level(log::LevelFilter::Warn),
 	};

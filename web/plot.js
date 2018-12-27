@@ -71,6 +71,8 @@ function gotMeta(evt){
       i++;
     } while(i < id_info.length && id_info[i].dataset_id == set_id)
     id_map.set(set_id, field_list);
+    console.log(set_id);
+    console.log(id_map);
   }
 
   websocket.onmessage = function(evt) { gotInitTimestamps(evt) };

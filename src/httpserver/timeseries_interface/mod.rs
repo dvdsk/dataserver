@@ -77,10 +77,10 @@ where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+
 	pub fn encode<D>(&self, mut numb: T, line: &mut [u8])
 	where D: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::AddAssign+std::ops::DivAssign{
 
-		println!("org: {}",numb);
+		//println!("org: {}",numb);
 		numb /= num::cast(self.decode_scale).unwrap();
 		numb -= num::cast(self.decode_add).unwrap();
-		println!("scale: {}, add: {}, numb: {}", self.decode_scale, self.decode_add, numb);
+		//println!("scale: {}, add: {}, numb: {}", self.decode_scale, self.decode_add, numb);
 
 		let mut to_encode: u32 = num::cast(numb).unwrap();
 
@@ -103,6 +103,7 @@ pub struct MetaData {
 impl MetaData {
 	pub fn fieldsum(&self) -> u16 {
 		let field = self.fields.last().unwrap();
+		info!("fname: {}",field.name);
 		let bits = field.offset as u16 + field.length as u16;
 		devide_up(bits, 8) //make this do int devide
 	}
@@ -177,6 +178,7 @@ impl DataSet {
 		let mut recoded_line = SmallVec::<[u8; 64]>::new(); // initialize an empty vector
 
 		//browsers tend to use little endian, thus present all data little endian
+		debug!("setid: {}", setid);
 		recoded_line.write_u16::<LittleEndian>(setid).unwrap();
 		recoded_line.write_f64::<LittleEndian>(timestamp as f64).unwrap();
 		for field in allowed_fields.into_iter().map(|id| &self.metadata.fields[*id as usize]) {
@@ -214,7 +216,7 @@ impl DataSet {
 
 		//read from the dataset
 		self.timeseries.set_bounds(t_start, t_end)?;
-		let (timestamps, line_data) = self.timeseries.decode_sequential_time_only(100000).unwrap();
+		let (timestamps, line_data) = self.timeseries.decode_sequential_time_only(100_000_000).unwrap();//max 1 million datapoins
 		let timestamps: Vec<f64> = timestamps.into_iter().map(|ts| ts as f64).collect();
 		//println!{"timestamps: {:?}",timestamps};
 
@@ -468,23 +470,38 @@ impl Data {
 		}
 		
 		let dataset_id = NativeEndian::read_u16(&data_string[..2]);
+		debug!("datasetid array: {:?}", &data_string[..2]);
 		let key = NativeEndian::read_u64(&data_string[2..10]);
 		if let Some(set) = self.sets.get_mut(&dataset_id){
 			if data_string.len() != set.metadata.fieldsum() as usize +10  {
-				warn!("datastring has invalid length ({}) for node (id: {})", data_string.len(), dataset_id);
-				return Err(());
-			} else if key != set.metadata.key {
-				warn!("invalid key on store new data");
+				warn!("datastring has invalid length ({}) for node (id: {}), should have length: {}", data_string.len(), dataset_id, set.metadata.fieldsum()+10);
 				return Err(());
 			}
-			
+			if key != set.metadata.key {
+				warn!("invalid key: {}, on store new data", key);
+				return Err(());
+			}
+			const PRINTVALUES: bool = false; //for debugging
+			if PRINTVALUES {
+				let mut list = String::from("");
+				for field in &set.metadata.fields {
+					//println!("field: {:?}",field);
+					//println!("line: {:?}",line);
+					let decoded: f32 = field.decode::<f32>(&data_string[10..]);
+					list.push_str(&format!("{}: {}\n", field.name, decoded));
+
+				}
+				println!("{}", list);
+			}
+
 			if let Err(error) = set.timeseries.append(time, &data_string[10..]){
+			//if let Err(error) = set.timeseries.append_fast(time, &data_string[10..]){
 				warn!("error on data append: {:?}",error);
 				return Err(());
 			}
 			return Ok((dataset_id, data_string.split_off(10).to_vec() ))
 		} else {
-			warn!("could not find dataset");
+			warn!("could not find dataset with id: {}", dataset_id);
 			return Err(());
 		}
 	}

@@ -267,7 +267,7 @@ fn insert_test_set() {
 	let id = add_template_set(&passw_db, &data).unwrap();
 
 	let now = Utc::now();
-	let t_start= (now - Duration::days(2)).timestamp();
+	let t_start= (now - Duration::days(365)).timestamp();
 
 	//let t_start= (now - Duration::hours(20)).timestamp();
 	//first point gets the correct dataset, next is at 5/6 of the range till the end

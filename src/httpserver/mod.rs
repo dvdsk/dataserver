@@ -126,7 +126,7 @@ fn plot_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	let mut page = String::from(before_form);
 	let data = req.state().data.read().unwrap();
 	for (dataset_id, authorized_fields) in session.timeseries_with_access.read().unwrap().iter() {
-		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
+		let metadata = &data.sets.get(&dataset_id).expect("user has access to a database that does no longer exist").metadata;
 		for field_id in authorized_fields{
 			let id = *field_id.as_ref() as usize;
 			page.push_str(&format!("<input type=\"checkbox\" value={},{} > {}<br>\n", dataset_id, id, metadata.fields[id].name));
@@ -250,7 +250,7 @@ fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 			trace!("got data");
 			match data.store_new_data(bytes, now) {
 				Ok((set_id, data_string)) => {
-					println!("data_string: {:?}",data_string);
+					//println!("data_string: {:?}",data_string);
 					websocket_addr.do_send(websocket_data_router::NewData {
 						from_id: set_id,
 						line: data_string,

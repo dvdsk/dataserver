@@ -92,7 +92,7 @@ impl Handler<websocket_data_router::NewData> for WsSession {
 		let data = ctx.state().data.read().unwrap();
 		//let mut data = ctx.state().data.write().unwrap();
 		let dataset = data.sets.get(&from_id).unwrap();
-		println!("{:?}",line);
+		info!("creating line for fields: {:?}, for set: {}",fields, from_id);
 		let line = if self.compression_enabled {
 			dataset.get_update(line, timestamp, fields, from_id)
 		} else {
@@ -100,6 +100,7 @@ impl Handler<websocket_data_router::NewData> for WsSession {
 		};
 		std::mem::drop(data);
 		//send update
+		debug!("sending update");
 		ctx.binary(Binary::from(line));
 	}
 }
@@ -191,7 +192,7 @@ impl WsSession {
 	fn send_data(&mut self, ctx: &mut ws::WebsocketContext<Self, WebServerData>){
 		trace!("sending data to client");
 		let now = Utc::now();
-		let t_start= now - Duration::days(2);
+		let t_start= now - Duration::days(500);
 		let t_end = Utc::now();
 
 		if self.compression_enabled {

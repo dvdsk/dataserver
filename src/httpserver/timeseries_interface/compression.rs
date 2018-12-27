@@ -2,7 +2,8 @@
     let start_byte = (bit_offset /8) as usize;
     let stop_byte = ((bit_offset+length) /8 ) as usize;
 
-    let start_mask = !0 >> (bit_offset % 8);
+    let start_mask: u8 = !0 >> (bit_offset % 8);
+    //println!("start_mask: {}", start_mask);
     let used_bits = bit_offset+length - stop_byte as u8 *8;
     //println!("div: {}, {}",bit_offset,(((bit_offset+7)/8))*8);
     //println!("used_bits: {}",used_bits);
@@ -49,6 +50,7 @@
 		  //decode middle bits, no masking needed
 		  //println!("stop_byte: {}, start_byte+1: {}", stop_byte, start_byte+1);
 		  for byte in line[start_byte+1..stop_byte].iter_mut(){
+        	//println!("hihi");
 		      *byte |= (to_encode >> bits_written) as u8;
 		      bits_written += 8;
 		  }
@@ -59,7 +61,9 @@
 
     let used_bits = bit_offset+length  -stop_byte as u8 *8;
     //let used_bits = bit_offset+length - bits_written;
+    //println!("used_bits: {}", used_bits);
     let stop_mask = !(!0 >> used_bits);
+    //println!("stop_mask: {}", stop_mask);
     let stop_byte = div_up(bit_offset+length, 8) as usize;//starts at 0
     line[stop_byte-1] |= (to_encode >> (bits_written-(8-used_bits))) as u8 & stop_mask;
 }
@@ -109,6 +113,28 @@ mod tests {
 		let decoded1 = decode(&line, 0, 32);
 
 		println!("0-{} {} {:b}", 32, decoded1, decoded1);
+    assert_eq!(decoded1, test_case);
+	}
+
+	#[test]
+	fn encode_and_decode_start_case(){
+		let test_case = 1023;
+	  let mut line = vec!(0, 0, 0, 0);
+  	encode(test_case,&mut line, 0, 10);
+
+    print!("binary repr: ");
+    for byte in &line {
+    	print!("{:b}, ",byte);
+    } println!();
+
+    print!("array repr: ");
+    for byte in &line {
+    	print!("{}, ",byte);
+    } println!();
+
+		let decoded1 = decode(&line, 0, 10);
+
+		println!("0-{} {} {:b}", 10, decoded1, decoded1);
     assert_eq!(decoded1, test_case);
 	}
 

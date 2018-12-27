@@ -24,11 +24,11 @@ impl Handler<NewData> for DataServer {
 	type Result = ();
 
 	fn handle(&mut self, msg: NewData, _: &mut Context<Self>) -> Self::Result {
-		//println!("NewData, subs: {:?}", self.subs);
+		//debug!("NewData, subs: {:?}", self.subs);
 		let updated_dataset_id = msg.from_id;
 		//get a list of clients connected to the datasource with new data
 		if let Some(subs) = self.subs.get(&updated_dataset_id){
-			//println!("subs: {:?}", subs);
+			debug!("subs: {:?}", subs);
 			for client_session_id in subs.iter() {
 				//println!("sending signal");
 				// foward new data message to actor that maintains the

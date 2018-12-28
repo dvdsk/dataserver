@@ -1,3 +1,9 @@
+
+use std::alloc::System;
+
+#[global_allocator]
+static A: System = System;
+
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -11,6 +17,7 @@ use fern::colors::{Color, ColoredLevelConfig};
 
 mod certificate_manager;
 mod httpserver;
+mod config;
 
 #[cfg(test)]
 mod test;

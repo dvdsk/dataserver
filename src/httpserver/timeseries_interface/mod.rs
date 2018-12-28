@@ -24,6 +24,7 @@ use std::collections::HashMap;
 
 use super::secure_database::{PasswordDatabase, UserInfo};
 use super::websocket_client_handler::SetSliceDecodeInfo;
+use super::super::config;
 
 pub mod specifications;
 pub mod compression;
@@ -216,7 +217,7 @@ impl DataSet {
 
 		//read from the dataset
 		self.timeseries.set_bounds(t_start, t_end)?;
-		let (timestamps, line_data) = self.timeseries.decode_sequential_time_only(100_000_000).unwrap();//max 1 million datapoins
+		let (timestamps, line_data) = self.timeseries.decode_sequential_time_only(config::MAX_LINES_PER_PACKAGE).unwrap();
 		let timestamps: Vec<f64> = timestamps.into_iter().map(|ts| ts as f64).collect();
 		//println!{"timestamps: {:?}",timestamps};
 
@@ -259,7 +260,7 @@ impl DataSet {
 
 		//read from the dataset
 		self.timeseries.set_bounds(t_start, t_end)?;
-		let (timestamps, line_data) = self.timeseries.decode_sequential_time_only(100).unwrap();
+		let (timestamps, line_data) = self.timeseries.decode_sequential_time_only(config::MAX_LINES_PER_PACKAGE).unwrap();
 
 		//shift into recoded line for transmission
 		let mut recoded: Vec<u8> = Vec::with_capacity(timestamps.len()*recoded_line_size as usize);

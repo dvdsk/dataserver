@@ -34,6 +34,7 @@ pub struct WsSession {
 #[derive(Serialize, Deserialize)]
 struct Line {
     r#type: String,
+    mode: String,
     //color: String,
     name: String,
 }
@@ -113,14 +114,17 @@ impl WsSession {
 			//check if user has access to the requested dataset
 			if let Some(fields_with_access) = self.timeseries_with_access.read().unwrap().get(&set_id){
 				//parse requested fields
-				if let Ok(field_ids) = args[2..]
+				if let Ok(mut field_ids) = args[2..]
 					.into_iter()
 					.map(|arg| arg.parse::<timeseries_interface::FieldId>())
 					.collect::<Result<Vec<timeseries_interface::FieldId>,std::num::ParseIntError>>(){
 					
-					let mut subbed_fields = Vec::with_capacity(args[2..].len());
+					let mut subbed_fields = Vec::with_capacity(field_ids.len());
 					for field_id in field_ids { 
-						if fields_with_access.binary_search_by(|auth| auth.as_ref().cmp(&field_id)).is_ok() { 
+						//prevent users requesting a field twice (this leads to an overflow later)
+						if subbed_fields.contains(&field_id) {
+							warn!("field was requested twice, ignoring duplicate");
+						} else if fields_with_access.binary_search_by(|auth| auth.as_ref().cmp(&field_id)).is_ok() {
 							subbed_fields.push(field_id);
 						} else { 
 							warn!("unautorised field requested");
@@ -159,6 +163,7 @@ impl WsSession {
 
 				client_plot_metadata.lines.push( Line {
 					r#type: "scattergl".to_string(),
+					mode: "markers".to_string(),
 					name: field.name.to_owned(),
 				});
 				client_plot_metadata.id_info.push( IdInfo {

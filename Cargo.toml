@@ -2,19 +2,15 @@
 name = "dataserver"
 version = "0.1.0"
 authors = ["David Kleingeld <dskleingeld@gmail.com>"]
+edition = "2018"
 
 [dependencies]
-#actix-web = { version = "0.7.7", features = ["alpn"] }
-#actix-web = { version = "0.7.7", features = ["tls"] }
-actix-web = { version = "0.7.13", features = ["rust-tls"] }
+actix-web = { version = "0.7.15", features = ["rust-tls"] }
 
-actix-web-httpauth = "0.1.0"
+#actix-web-httpauth = "0.1.0"
 
-actix-net = "0.1.1"
+actix-net = "0.2.4"
 
-#openssl = "^0.10"
-#openssl = "0.10.12"
-#openssl = { version = "0.10", features = ["vendored"] }
 rustls = "0.14.0"
 ring = "0.13.2"
 
@@ -22,8 +18,8 @@ actix = "0.7.5"
 futures = "0.1.25"
 bytes = "0.4.10"
 walkdir = "2.2.5"
+num = "0.2.0"
 
-env_logger = "0.5.13"
 acme-client = "0.5.3"
 
 webpki = "0.18.1"
@@ -32,16 +28,22 @@ untrusted = "0.6.2"
 
 chrono = { version = "0.4.6", features = ["serde"] }
 rand = "0.5.5"
+
 log = "0.4.5"
+fern = { version = "0.5.6", features = ["colored"] }
+
 bincode = "1.0.1"
 text_io = "0.1.7"
 
 serde_derive = "1.0.80"
 serde = "1.0.80"
 serde_yaml = "0.8.7"
+serde_json = "1.0.33"
 
 #for testing
 reqwest = "0.9.2"
 byteorder = "1.2.6"
 
-minimal_timeseries = { path = "minimal_timeseries" }
+#minimal_timeseries = { path = "minimal_timeseries" }
+minimal_timeseries = { git = "https://github.com/dskleingeld/minimal_timeseries" }
+smallvec = "0.6.6"

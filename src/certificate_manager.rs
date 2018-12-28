@@ -14,8 +14,8 @@ use self::acme_client::error::Error as aError;
 use self::acme_client::Directory;
 //use self::acme_client::LETSENCRYPT_INTERMEDIATE_CERT_URL;
 
-use self::actix_web::Result as wResult;
-use self::actix_web::{fs, http, server, App, HttpRequest};
+use actix_web::Result as wResult;
+use actix_web::{fs, http, server, App, HttpRequest};
 use std::sync::mpsc;
 use std::thread;
 

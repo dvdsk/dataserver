@@ -1,0 +1,29 @@
+ <!DOCTYPE html>
+<html>
+<head>
+  <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="plot.js"></script>
+</head>
+
+<meta charset="utf-8" />
+<title>WebSocket Test</title>
+
+<body>
+
+  <p>What would you like to plot?</p>
+
+  <form name ="choose lines">
+  <input type="checkbox" value=0,0 > field 1<br>
+  <input type="checkbox" value=0,1 > field 2<br>
+  <br>
+  <input type="button" onclick="init()" value="create plot">
+  </form>
+
+
+<h2>WebSocket Test</h2>
+<div id="plot"></div>
+<div id="output"></div>
+
+</body>
+</html>

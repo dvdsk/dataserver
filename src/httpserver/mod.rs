@@ -1,12 +1,10 @@
 extern crate actix;
 extern crate actix_net;
 extern crate actix_web;
-extern crate actix_web_httpauth;
 
 extern crate bytes;
 extern crate futures;
 
-extern crate env_logger;
 extern crate rustls;
 extern crate rand;
 extern crate chrono;
@@ -44,7 +42,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-use self::chrono::{Utc};
+use self::chrono::{DateTime, Utc};
 
 pub mod timeseries_interface;
 pub mod secure_database;
@@ -53,10 +51,12 @@ mod websocket_data_router;
 mod websocket_client_handler;
 
 use self::secure_database::{PasswordDatabase};
-use timeseries_interface::{Authorisation,DatasetId};
+use crate::timeseries_interface::{Authorisation};
 
 pub struct Session {//TODO deprecate 
-    userinfo: secure_database::UserInfo,
+    timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
+	username: String,
+	last_login: DateTime<Utc>,
     //add more temporary user specific data as needed
 }
 
@@ -66,6 +66,7 @@ pub struct WebServerData {
 	data: Arc<RwLock<timeseries_interface::Data>>,
 	sessions: Arc<RwLock<HashMap<u16,Session>>> ,
 	free_session_ids: Arc<AtomicUsize>,
+	free_ws_session_ids: Arc<AtomicUsize>,
 }
 
 #[derive(Deserialize)]
@@ -82,6 +83,7 @@ fn serve_file(req: &HttpRequest<WebServerData>) -> wResult<NamedFile> {
 
 	let mut path: PathBuf = PathBuf::from("web/");
 	path.push(file_name);
+	println!("returning file: {:?}", &path);
 	Ok(NamedFile::open(path)?)
 }
 
@@ -97,7 +99,7 @@ fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	let session = sessions.get(&session_id).unwrap();
 
 	let data = req.state().data.read().unwrap();
-	for (dataset_id, authorized_fields) in &session.userinfo.timeseries_with_access {
+	for (dataset_id, authorized_fields) in session.timeseries_with_access.read().unwrap().iter() {
 		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
 		let mut dataset_fields = format!("<th>{}</th>", &metadata.name);
 		
@@ -111,6 +113,48 @@ fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	}
 	accessible_fields.push_str("</table></body></html>");
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(accessible_fields)
+}
+
+fn plot_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
+	let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
+	let sessions = req.state().sessions.read().unwrap();
+	let session = sessions.get(&session_id).unwrap();
+
+	let before_form =include_str!("static_webpages/plot_A.html");
+	let after_form = include_str!("static_webpages/plot_B.html");
+
+	let mut page = String::from(before_form);
+	let data = req.state().data.read().unwrap();
+	for (dataset_id, authorized_fields) in session.timeseries_with_access.read().unwrap().iter() {
+		let metadata = &data.sets.get(&dataset_id).expect("user has access to a database that does no longer exist").metadata;
+		for field_id in authorized_fields{
+			let id = *field_id.as_ref() as usize;
+			page.push_str(&format!("<input type=\"checkbox\" value={},{} > {}<br>\n", dataset_id, id, metadata.fields[id].name));
+		}
+	}
+	page.push_str(after_form);
+	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
+}
+
+fn plot_data_debug(req: &HttpRequest<WebServerData>) -> HttpResponse {
+	let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
+	let sessions = req.state().sessions.read().unwrap();
+	let session = sessions.get(&session_id).unwrap();
+
+	let before_form =include_str!("static_webpages/plot_A_debug.html");
+	let after_form = include_str!("static_webpages/plot_B.html");
+
+	let mut page = String::from(before_form);
+	let data = req.state().data.read().unwrap();
+	for (dataset_id, authorized_fields) in session.timeseries_with_access.read().unwrap().iter() {
+		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
+		for field_id in authorized_fields{
+			let id = *field_id.as_ref() as usize;
+			page.push_str(&format!("<input type=\"checkbox\" value={},{} > {}<br>\n", dataset_id, id, metadata.fields[id].name));
+		}
+	}
+	page.push_str(after_form);
+	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
 
 fn logout(req: &HttpRequest<WebServerData>) -> HttpResponse {
@@ -156,25 +200,27 @@ fn login_get_and_check(
     (req, params): (HttpRequest<WebServerData>, Form<Logindata>),
 ) -> wResult<HttpResponse> {
 	
-	println!("checking login");
+	trace!("checking login");
     //if login valid (check passwdb) load userinfo
     let state = req.state();
     let mut passw_db = state.passw_db.write().unwrap();
     
     if passw_db.verify_password(params.u.as_str().as_bytes(), params.p.as_str().as_bytes()).is_err(){
-		println!("incorrect password");
+		warn!("incorrect password");
 		return Ok(HttpResponse::build(http::StatusCode::UNAUTHORIZED)
         .content_type("text/plain")
         .body("incorrect password or username"));
-	} else { println!("user logged in");}
+	} else { info!("user logged in");}
 	
 	//copy userinfo into new session
-	let mut userinfo = passw_db.get_userdata(&params.u);
+	let userinfo = passw_db.get_userdata(&params.u);
 	userinfo.last_login = Utc::now();
-	passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
+	//passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
 	
     let session = Session {
-		userinfo: userinfo,
+		timeseries_with_access: Arc::new(RwLock::new(userinfo.timeseries_with_access.clone())),
+		username: userinfo.username.clone(),
+		last_login: userinfo.last_login.clone(),
 	};
 	//find free session_numb, set new session number and store new session
 	let session_id = state.free_session_ids.fetch_add(1, Ordering::Acquire);
@@ -191,16 +237,25 @@ fn login_get_and_check(
 
 fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 	
+	trace!("newdata");
 	let now = Utc::now();
 	let data = req.state().data.clone();
 	let websocket_addr = req.state().websocket_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
+	trace!("got addr");
 	req.body()
 		.from_err()
 		.and_then(move |bytes: Bytes| {
-			let res = data.write().unwrap().store_new_data(bytes, now);
-			match res {
+			trace!("trying to get data");
+			let mut data = data.write().unwrap();
+			trace!("got data");
+			match data.store_new_data(bytes, now) {
 				Ok((set_id, data_string)) => {
-					websocket_addr.do_send(websocket_data_router::NewData {from: set_id, data: data_string.to_vec()}); 
+					//println!("data_string: {:?}",data_string);
+					websocket_addr.do_send(websocket_data_router::NewData {
+						from_id: set_id,
+						line: data_string,
+						timestamp: now.timestamp()
+					});
 					Ok(HttpResponse::Ok().status(StatusCode::OK).finish()) },
 				Err(_) => Ok(HttpResponse::Ok().status(StatusCode::FORBIDDEN).finish()),
 			}
@@ -213,9 +268,21 @@ fn goodby(_req: &HttpRequest<WebServerData>) -> impl Responder {
 
 /// do websocket handshake and start `MyWebSocket` actor
 fn ws_index(req: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
-	println!("websocket connected");
+	trace!("websocket connected");
 	let session_id = req.identity().unwrap().parse::<u16>().unwrap();
-	ws::start(req, websocket_client_handler::WsSession { session_id: session_id })
+	let sessions = req.state().sessions.read().unwrap();
+	let session = sessions.get(&session_id).unwrap();
+	
+	let timeseries_with_access = session.timeseries_with_access.clone();
+	let ws_session_id = req.state().free_session_ids.fetch_add(1, Ordering::Acquire);
+	
+	ws::start(req, websocket_client_handler::WsSession { 
+		http_session_id: session_id,
+		ws_session_id: ws_session_id  as u16,
+		selected_data: HashMap::new(),
+		compression_enabled: true,
+		timeseries_with_access: timeseries_with_access,
+	})
 }
 
 pub fn start(signed_cert: &Path, private_key: &Path, 
@@ -240,7 +307,8 @@ pub fn start(signed_cert: &Path, private_key: &Path,
 
 	let (tx, rx) = mpsc::channel();
 
-    let free_session_ids = Arc::new(AtomicUsize::new(0));
+  let free_session_ids = Arc::new(AtomicUsize::new(0));
+	let free_ws_session_ids = Arc::new(AtomicUsize::new(0));
 
 	let mut cookie_private_key = [0u8; 32];
 	let mut rng = rand::StdRng::from_entropy();
@@ -260,6 +328,7 @@ pub fn start(signed_cert: &Path, private_key: &Path,
                 data: data.clone(), 
                 sessions: sessions.clone(),
                 free_session_ids: free_session_ids.clone(),
+                free_ws_session_ids: free_ws_session_ids.clone(),
             };
             
 			App::with_state(state)
@@ -280,12 +349,14 @@ pub fn start(signed_cert: &Path, private_key: &Path,
                 .resource("/index", |r| r.f(index))
                 .resource("/", |r| r.f(index))
                 .resource(r"/newdata", |r| r.method(Method::POST).f(newdata))
+                .resource("/plot", |r| r.f(plot_data))
+                .resource("/plot_debug", |r| r.f(plot_data_debug))
                 .resource(r"/list_data.html", |r| r.method(Method::GET).f(list_data))
                 .resource(r"/login/{tail:.*}", |r| {
                         r.method(http::Method::POST).with(login_get_and_check);
                         r.method(http::Method::GET).f(login_page);
-            })
-            .resource(r"/{tail:.*}", |r| r.f(serve_file)) 
+            		})
+            		.resource(r"/{tail:.*}", |r| r.f(serve_file))
         })
         .bind_rustls("0.0.0.0:8080", config).unwrap()
         //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
@@ -306,11 +377,11 @@ pub fn stop(handle: ServerHandle) {
 		.timeout(Duration::from_secs(5)); // <- Send `StopServer` message to server.
 }
 
-pub fn signal_newdata(handle: DataHandle, set_id: timeseries_interface::DatasetId) {
-	handle.do_send(websocket_data_router::NewData {
-		from: set_id,
-		data: vec!(5,10,3,4),
-	});
-	println!("send signal there is new data");
-	//.timeout(Duration::from_secs(5));
-}
+//pub fn signal_newdata(handle: DataHandle, set_id: timeseries_interface::DatasetId) {
+	//handle.do_send(websocket_data_router::NewData {
+		//from: set_id,
+		//data: vec!(5,10,3,4),
+	//});
+	//trace!("send signal there is new data");
+	////.timeout(Duration::from_secs(5));
+//}

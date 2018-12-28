@@ -4,14 +4,17 @@ use self::actix::*;
 extern crate actix;
 extern crate actix_net;
 extern crate actix_web;
-extern crate actix_web_httpauth;
+extern crate chrono;
+extern crate smallvec;
+extern crate bincode;
+extern crate serde_derive;
 
-use self::actix_web::Error as wError;
-use self::actix_web::Result as wResult;
-use self::actix_web::{
-	fs::NamedFile, http, http::Method, http::StatusCode, middleware, server, ws, App,
-	AsyncResponder, Form, FutureResponse, HttpMessage, HttpRequest, HttpResponse, Responder,
-};
+use self::actix_web::{Binary,ws};
+use self::chrono::{Utc, Duration};
+use super::futures::Future;
+
+use std::sync::{Arc,RwLock};
+use std::collections::HashMap;
 
 use super::timeseries_interface;
 use super::websocket_data_router;
@@ -20,9 +23,31 @@ use super::WebServerData;
 // store data in here, it can then be accessed using self
 pub struct WsSession {
 	/// unique session id
-	pub session_id: u16,
-	subscribed_fields: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::FieldId>>,
-	timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
+	pub http_session_id: u16,
+	pub ws_session_id: u16,
+	//pub subscribed_fields: HashMap<timeseries_interface::DatasetId, Vec<SubbedField>>,
+	pub compression_enabled: bool,
+	pub selected_data: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::FieldId>>,
+	pub timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Line {
+    r#type: String,
+    //color: String,
+    name: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct IdInfo {
+		dataset_id: timeseries_interface::DatasetId,
+		field_id: timeseries_interface::FieldId,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct MetaForPlot {
+		id_info: Vec<IdInfo>,
+    lines: Vec<Line>,
 }
 
 impl Actor for WsSession {
@@ -35,28 +60,21 @@ impl Actor for WsSession {
 		// HttpContext::state() is instance of WsChatSessionState, state is shared
 		// across all routes within application
 
-		println!("TEST");
 		let addr = ctx.address();
 		ctx.state()
             .websocket_addr
             .send(websocket_data_router::Connect {
                 addr: addr.recipient(),
-                session_id: self.session_id,
+                ws_session_id: self.ws_session_id,
             })
-            //wait for response
-            .into_actor(self)
-            //process response in closure
-            .then(|res, act, ctx| {
-                fut::ok(())
-            })
-            .wait(ctx);
+            .wait().unwrap();
 	}
 
 	fn stopping(&mut self, ctx: &mut Self::Context) -> Running {
 		// notify chat server
 		ctx.state()
 			.websocket_addr
-			.do_send(websocket_data_router::Disconnect { session_id: self.session_id });
+			.do_send(websocket_data_router::Disconnect { ws_session_id: self.ws_session_id });
 		Running::Stop
 	}
 }
@@ -66,58 +84,188 @@ impl Handler<websocket_data_router::NewData> for WsSession {
 	type Result = ();
 
 	fn handle(&mut self, msg: websocket_data_router::NewData, ctx: &mut Self::Context) {
-		println!("client handler recieved signal there is new data");
-		let custom_data = timeseries_interface::select_authorised();
-		ctx.binary();
+		trace!("client handler recieved signal there is new data");
+		//recode data for this user
+		let websocket_data_router::NewData{from_id, line, timestamp} = msg;
+
+		let fields = self.selected_data.get(&from_id).unwrap();
+		let data = ctx.state().data.read().unwrap();
+		//let mut data = ctx.state().data.write().unwrap();
+		let dataset = data.sets.get(&from_id).unwrap();
+		info!("creating line for fields: {:?}, for set: {}",fields, from_id);
+		let line = if self.compression_enabled {
+			dataset.get_update(line, timestamp, fields, from_id)
+		} else {
+			dataset.get_update_uncompressed(line, timestamp, fields, from_id)
+		};
+		std::mem::drop(data);
+		//send update
+		debug!("sending update");
+		ctx.binary(Binary::from(line));
 	}
 }
 
 impl WsSession {
-	fn attempt_subscribe(&self, args: &str, ctx: &mut WsSession::Context){
+	
+	fn select_data(&mut self, args: Vec<&str>, compressed: bool, websocket_addr: &Addr<websocket_data_router::DataServer>){
+		if args.len() < 3 {return }
 		if let Ok(set_id) = args[1].parse::<timeseries_interface::DatasetId>() {
 			//check if user has access to the requested dataset
-			if let Some(fields_with_access) = self.timeseries_with_access.get(&set_id){
-				//get info on valid fields in this database
-				let max_field_id = ctx.state()
-				    .data.read().unwrap()
-				    .sets.get(fields_with_access).unwrap()
-				    .metadata.fields.len()
+			if let Some(fields_with_access) = self.timeseries_with_access.read().unwrap().get(&set_id){
 				//parse requested fields
-				if let Ok(fields) = args[2..]
+				if let Ok(field_ids) = args[2..]
 					.into_iter()
 					.map(|arg| arg.parse::<timeseries_interface::FieldId>())
-					.map(|field_id| if field_id => max_field_id { Err(()) } else { field_id }) //TODO CHECK IF FIELD EXISTS AND USER IS AUTHORISED
-					.collect() {//TODO check if field exists??? (depends on further implementation)
+					.collect::<Result<Vec<timeseries_interface::FieldId>,std::num::ParseIntError>>(){
 					
-					
-					//all good, subscribe 
-					subscribed_fields.insert(set_id, fields);
-					ctx.state() //subscribe to dataset at datarouter
-						.websocket_addr
-						.do_send(websocket_data_router::SubscribeToSource {
-							session_id: self.session_id,
-							set_id: set_id,
-						});
-					return;
+					let mut subbed_fields = Vec::with_capacity(args[2..].len());
+					for field_id in field_ids { 
+						if fields_with_access.binary_search_by(|auth| auth.as_ref().cmp(&field_id)).is_ok() { 
+							subbed_fields.push(field_id);
+						} else { 
+							warn!("unautorised field requested");
+							return;
+						}
+					}
+					self.selected_data.insert(set_id, subbed_fields);
+					self.compression_enabled = compressed;
 				} else { warn!("invalid field requested") };
-			}
+			} else { warn!("invalid dataset id"); }
 		} else { warn!("no access to dataset"); }
 	}
+
+	fn subscribe(&mut self, websocket_addr: &Addr<websocket_data_router::DataServer>){
+		for set_id in self.selected_data.keys(){
+			websocket_addr.do_send( websocket_data_router::SubscribeToSource {
+				ws_session_id: self.ws_session_id,
+				set_id: *set_id,
+			});
+		}
+	}
+
+	//TODO implement unsubscribe command
+	fn unsubscribe(&mut self, _websocket_addr: &Addr<websocket_data_router::DataServer>){
+		unimplemented!();
+	}
+
+	fn send_metadata(&mut self, data: &Arc<RwLock<timeseries_interface::Data>>) -> String{
+		let data = data.read().unwrap();
+		let mut client_plot_metadata: MetaForPlot = Default::default();
+		
+		for (dataset_id, field_ids) in &self.selected_data {
+			let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
+			for field_id in field_ids {
+				let field = &metadata.fields[*field_id as usize];
+
+				client_plot_metadata.lines.push( Line {
+					r#type: "scattergl".to_string(),
+					name: field.name.to_owned(),
+				});
+				client_plot_metadata.id_info.push( IdInfo {
+					dataset_id: *dataset_id,
+					field_id: *field_id,
+				});
+			}
+		}
+		let json = serde_json::to_string(&client_plot_metadata).unwrap();
+		json
+	}
+	
+	fn send_decode_info(&self, args: Vec<&str>, ctx: &mut ws::WebsocketContext<Self, WebServerData>) {
+		trace!("sending decode info to client");
+		if args.len() < 2 {warn!("can not send decode info without setid"); return; }
+		if let Ok(set_id) = args[1].parse::<timeseries_interface::DatasetId>() {
+			if let Some(fields) = self.selected_data.get(&set_id){
+				let data = ctx.state().data.read().unwrap();
+				let dataset = data.sets.get(&set_id).unwrap();
+				let decode_info = dataset.get_decode_info(fields);
+				std::mem::drop(data);
+				let decode_info = bincode::serialize(&decode_info).unwrap();
+				ctx.binary(Binary::from(decode_info));
+			} else {
+				warn!("tried access to unautorised or non existing dataset");
+			}
+		}
+	}
+
+	//fn send_data(&mut self, data: &Arc<RwLock<timeseries_interface::Data>>, ){
+	fn send_data(&mut self, ctx: &mut ws::WebsocketContext<Self, WebServerData>){
+		trace!("sending data to client");
+		let now = Utc::now();
+		let t_start= now - Duration::days(500);
+		let t_end = Utc::now();
+
+		if self.compression_enabled {
+			for (dataset_id, field_ids) in &self.selected_data {
+				let mut data = ctx.state().data.write().unwrap();
+				let dataset = data.sets.get_mut(dataset_id).unwrap();
+				if let Ok((timestamps, recoded, decode_info)) = dataset.get_initdata(t_start,t_end, field_ids){
+					std::mem::drop(data);
+
+					let mut timestamps: Vec<u8> = unsafe {std::mem::transmute(timestamps)};
+					unsafe {timestamps.set_len(timestamps.len()*8)};
+					ctx.binary(Binary::from(timestamps));
+					ctx.binary(Binary::from(recoded));
+				} else {
+					//TODO tell client something went wrong
+					warn!("could not get data");
+				}
+			}
+		} else {
+			for (dataset_id, field_ids) in &self.selected_data {
+				let mut data = ctx.state().data.write().unwrap();
+				let dataset = data.sets.get_mut(dataset_id).unwrap();
+				if let Ok((timestamps, recoded)) = dataset.get_initdata_uncompressed(t_start,t_end, field_ids){
+					std::mem::drop(data);
+					println!("timestamps: {:?}", timestamps.len());
+					println!("recoded: {:?}", recoded.len());
+					let mut timestamps: Vec<u8> = unsafe {std::mem::transmute(timestamps)};
+					unsafe {timestamps.set_len(timestamps.len()*8)};
+					println!("timestamps: {}",timestamps.len()); //TODO std::mem does not set the size of the vec right/ use slice
+					ctx.binary(Binary::from(timestamps ));
+					ctx.binary(Binary::from(recoded));
+				} else {
+					//TODO tell client something went wrong
+					warn!("could not get data");
+				}
+			}
+		};
+
+	}
+}
+
+#[derive(Serialize)]
+pub struct SetSliceDecodeInfo {
+	pub field_lenghts: Vec<u8>,
+	pub field_offsets: Vec<u8>,
+	pub data_is_little_endian: bool,
 }
 
 /// Handler for `ws::Message`
 impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
+	
 	fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
 		// process websocket messages
-		println!("WS: {:?}", msg);
+		//println!("WS: {:?}", msg);
 		match msg {
 			ws::Message::Text(text) => {
 				let m = text.trim();
 				if m.starts_with('/') {
-					let args: Vec<&str> = m.splitn(2, ' ').collect();
+					let args: Vec<&str> = m.split_whitespace().collect();
+					//println!("args: {:?}",args);
 					match args[0] {
-						"/sub" => attempt_subscribe(&args, &mut ctx),
-						"/name" => {}
+						//select uncompressed will case data to be send without compression
+						//it is used until webassembly is relaiable
+						"/select" => self.select_data(args, true, &ctx.state().websocket_addr),
+						"/select_uncompressed" => self.select_data(args, false, &ctx.state().websocket_addr),
+
+						"/sub" => self.subscribe(&ctx.state().websocket_addr),
+						"/meta" => ctx.text(self.send_metadata(&ctx.state().data)),
+						"/data" => self.send_data(ctx),
+
+						//for use with webassembly only
+						"/decode_info" => self.send_decode_info(args, ctx),
+
 						_ => ctx.text(format!("!!! unknown command: {:?}", m)),
 					}
 				}
@@ -125,7 +273,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
 			ws::Message::Ping(msg) => ctx.pong(&msg),
 			ws::Message::Binary(bin) => ctx.binary(bin),
 			ws::Message::Close(_) => {
-				ctx.state().websocket_addr.do_send(websocket_data_router::Disconnect {session_id: self.session_id,});
+				ctx.state().websocket_addr.do_send(websocket_data_router::Disconnect {ws_session_id: self.ws_session_id,});
 				ctx.stop();
 			}
 			_ => (),

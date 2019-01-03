@@ -3,7 +3,11 @@ var plotmeta = new Map();
 var output;
 var subbed = new Map();
 
+var initdata_fields_to_lines;
+var initdata_is_last_chunk;
+
 var lines;
+//maps set_id"s to indexes for lines
 var id_map = new Map();
 
 var layout = {
@@ -74,9 +78,18 @@ function gotMeta(evt){
     console.log(set_id);
     console.log(id_map);
   }
-
-  websocket.onmessage = function(evt) { gotInitTimestamps(evt) };
+  console.log("gotMeta");
+  websocket.onmessage = function(evt) { gotInitDataInfo(evt) };
   doSend("/data");
+}
+
+function gotInitDataInfo(evt){
+  var data = new DataView(evt.data);
+  initdata_is_last_chunk = data.getInt8(0, true);
+  var setid = data.getInt16(1, true);
+  initdata_fields_to_lines = id_map.get(setid);
+  console.log("initdata field to lines");
+  websocket.onmessage = function(evt) { gotInitTimestamps(evt) };
 }
 
 function gotInitTimestamps(evt){
@@ -85,24 +98,30 @@ function gotInitTimestamps(evt){
   var floatarr = new Float64Array(evt.data, 0, len/8);
   var timestamps = Array.from(floatarr);
   var dates = timestamps.map(x => new Date(x*1000));
-  for (var i = 0; i < lines.length; i++) {
-    lines[i].x = dates;
+  //look up which traces x-axis to append to
+  for (var i = 0; i < initdata_fields_to_lines.length; i++) {
+    var trace_numb = initdata_fields_to_lines[i].trace_numb;
+    lines[trace_numb].x.push(dates);
   }
   console.log(timestamps);
 }
 
 function gotInitData(evt){
-  websocket.onmessage = function(evt) { gotUpdate(evt) };
   var len = evt.data.byteLength;
   var data = new Float32Array(evt.data, 0, len/4);
   for (var i=0; i < data.length; i+=lines.length){
-    for (var j=0; j < lines.length; j++){
-      lines[j].y.push(data[i+j]);
+    for (var j=0; j < initdata_fields_to_lines.length; j++){
+      var trace_numb = initdata_fields_to_lines[j].trace_numb;
+      lines[trace_numb].y.push(data[i+j]);
     }
   }
   console.log(lines);
   Plotly.newPlot("plot", lines, layout, {responsive: true});
-  doSend("/sub");
+
+  if (initdata_is_last_chunk != 0) {
+    websocket.onmessage = function(evt) { gotUpdate(evt) };
+    doSend("/sub");
+  }
 }
 
 function gotUpdate(evt){

@@ -9,6 +9,10 @@ extern crate smallvec;
 extern crate bincode;
 extern crate serde_derive;
 
+extern crate byteorder;
+
+use self::byteorder::{LittleEndian, WriteBytesExt};
+
 use self::actix_web::{Binary,ws};
 use self::chrono::{Utc, Duration};
 use super::futures::Future;
@@ -19,6 +23,7 @@ use std::collections::HashMap;
 use super::timeseries_interface;
 use super::websocket_data_router;
 use super::WebServerData;
+use super::super::config;
 
 // store data in here, it can then be accessed using self
 pub struct WsSession {
@@ -106,15 +111,19 @@ impl Handler<websocket_data_router::NewData> for WsSession {
 	}
 }
 
+fn divide_ceil(x: u64, y: u64) -> u64{
+	(x + y - 1) / y
+}
+
 impl WsSession {
 	
-	fn select_data(&mut self, args: Vec<&str>, compressed: bool, websocket_addr: &Addr<websocket_data_router::DataServer>){
+	fn select_data(&mut self, args: Vec<&str>, compressed: bool){
 		if args.len() < 3 {return }
 		if let Ok(set_id) = args[1].parse::<timeseries_interface::DatasetId>() {
 			//check if user has access to the requested dataset
 			if let Some(fields_with_access) = self.timeseries_with_access.read().unwrap().get(&set_id){
 				//parse requested fields
-				if let Ok(mut field_ids) = args[2..]
+				if let Ok(field_ids) = args[2..]
 					.into_iter()
 					.map(|arg| arg.parse::<timeseries_interface::FieldId>())
 					.collect::<Result<Vec<timeseries_interface::FieldId>,std::num::ParseIntError>>(){
@@ -197,41 +206,40 @@ impl WsSession {
 	fn send_data(&mut self, ctx: &mut ws::WebsocketContext<Self, WebServerData>){
 		trace!("sending data to client");
 		let now = Utc::now();
-		let t_start= now - Duration::days(500);
+		let t_start= now - Duration::hours(196);
 		let t_end = Utc::now();
 
 		if self.compression_enabled {
-			for (dataset_id, field_ids) in &self.selected_data {
-				let mut data = ctx.state().data.write().unwrap();
-				let dataset = data.sets.get_mut(dataset_id).unwrap();
-				if let Ok((timestamps, recoded, decode_info)) = dataset.get_initdata(t_start,t_end, field_ids){
-					std::mem::drop(data);
-
-					let mut timestamps: Vec<u8> = unsafe {std::mem::transmute(timestamps)};
-					unsafe {timestamps.set_len(timestamps.len()*8)};
-					ctx.binary(Binary::from(timestamps));
-					ctx.binary(Binary::from(recoded));
-				} else {
-					//TODO tell client something went wrong
-					warn!("could not get data");
-				}
-			}
+			unimplemented!();
 		} else {
 			for (dataset_id, field_ids) in &self.selected_data {
 				let mut data = ctx.state().data.write().unwrap();
 				let dataset = data.sets.get_mut(dataset_id).unwrap();
-				if let Ok((timestamps, recoded)) = dataset.get_initdata_uncompressed(t_start,t_end, field_ids){
+
+				let mut read_state = dataset.prepare_read(t_start,t_end, field_ids).unwrap();//FIXME handle possible error!!!
+				let n_bytes = read_state.bytes_to_read();
+				std::mem::drop(dataset);
+				std::mem::drop(data);
+
+				debug!("read_state: {:?}", read_state);
+				for i in (0..divide_ceil(n_bytes,config::MAX_LINES_PER_PACKAGE as u64) ).rev() {
+					//TODO some mechanisme to loop multiple get_data_chunk
+					trace!("sending data packet numb: {}",i);
+					let mut data = ctx.state().data.write().unwrap();
+					let dataset = data.sets.get_mut(dataset_id).unwrap();
+					let (timestamps, lines) = dataset.get_data_chunk_uncompressed(
+						&mut read_state,
+						config::MAX_LINES_PER_PACKAGE).unwrap();//FIXME handle possible error!!!
+					std::mem::drop(dataset);
 					std::mem::drop(data);
-					println!("timestamps: {:?}", timestamps.len());
-					println!("recoded: {:?}", recoded.len());
-					let mut timestamps: Vec<u8> = unsafe {std::mem::transmute(timestamps)};
-					unsafe {timestamps.set_len(timestamps.len()*8)};
-					println!("timestamps: {}",timestamps.len()); //TODO std::mem does not set the size of the vec right/ use slice
+
+					let mut info = Vec::with_capacity(3);
+					info.write_u8(i as u8).unwrap();;//indicates this is the last part of this dataset
+					info.write_u16::<LittleEndian>(*dataset_id).unwrap();
+
+					ctx.binary(Binary::from(info ));
 					ctx.binary(Binary::from(timestamps ));
-					ctx.binary(Binary::from(recoded));
-				} else {
-					//TODO tell client something went wrong
-					warn!("could not get data");
+					ctx.binary(Binary::from(lines ));
 				}
 			}
 		};
@@ -261,8 +269,8 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
 					match args[0] {
 						//select uncompressed will case data to be send without compression
 						//it is used until webassembly is relaiable
-						"/select" => self.select_data(args, true, &ctx.state().websocket_addr),
-						"/select_uncompressed" => self.select_data(args, false, &ctx.state().websocket_addr),
+						"/select" => self.select_data(args, true),
+						"/select_uncompressed" => self.select_data(args, false),
 
 						"/sub" => self.subscribe(&ctx.state().websocket_addr),
 						"/meta" => ctx.text(self.send_metadata(&ctx.state().data)),

@@ -239,7 +239,7 @@ fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 	
 	trace!("newdata");
 	let now = Utc::now();
-	let data = req.state().data.clone();
+	let data = req.state().data.clone();//clones pointer
 	let websocket_addr = req.state().websocket_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
 	trace!("got addr");
 	req.body()
@@ -247,15 +247,16 @@ fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 		.and_then(move |bytes: Bytes| {
 			trace!("trying to get data");
 			let mut data = data.write().unwrap();
-			trace!("got data");
+			trace!("got data lock");
 			match data.store_new_data(bytes, now) {
 				Ok((set_id, data_string)) => {
-					//println!("data_string: {:?}",data_string);
+					trace!("stored new data");
 					websocket_addr.do_send(websocket_data_router::NewData {
 						from_id: set_id,
 						line: data_string,
 						timestamp: now.timestamp()
 					});
+					trace!("done websocket send");
 					Ok(HttpResponse::Ok().status(StatusCode::OK).finish()) },
 				Err(_) => Ok(HttpResponse::Ok().status(StatusCode::FORBIDDEN).finish()),
 			}

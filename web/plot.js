@@ -84,12 +84,12 @@ function gotMeta(evt){
 }
 
 function gotInitDataInfo(evt){
+  websocket.onmessage = function(evt) { gotInitTimestamps(evt) };
   var data = new DataView(evt.data);
   initdata_is_last_chunk = data.getInt8(0, true);
   var setid = data.getInt16(1, true);
   initdata_fields_to_lines = id_map.get(setid);
-  console.log("initdata field to lines");
-  websocket.onmessage = function(evt) { gotInitTimestamps(evt) };
+  console.log("initdata info");
 }
 
 function gotInitTimestamps(evt){
@@ -101,24 +101,27 @@ function gotInitTimestamps(evt){
   //look up which traces x-axis to append to
   for (var i = 0; i < initdata_fields_to_lines.length; i++) {
     var trace_numb = initdata_fields_to_lines[i].trace_numb;
-    lines[trace_numb].x.push(dates);
+    lines[trace_numb].x = lines[trace_numb].x.concat(dates);
   }
+  console.log("timestamps");
   console.log(timestamps);
 }
 
 function gotInitData(evt){
-  var len = evt.data.byteLength;
-  var data = new Float32Array(evt.data, 0, len/4);
-  for (var i=0; i < data.length; i+=lines.length){
-    for (var j=0; j < initdata_fields_to_lines.length; j++){
-      var trace_numb = initdata_fields_to_lines[j].trace_numb;
-      lines[trace_numb].y.push(data[i+j]);
+    websocket.onmessage = function(evt) { gotInitDataInfo(evt) };
+    var len = evt.data.byteLength;
+    var data = new Float32Array(evt.data, 0, len/4);
+    for (var i=0; i < data.length; i+=lines.length){
+      for (var j=0; j < initdata_fields_to_lines.length; j++){
+        var trace_numb = initdata_fields_to_lines[j].trace_numb;
+        lines[trace_numb].y.push(data[i+j]);
+      }
     }
-  }
-  console.log(lines);
-  Plotly.newPlot("plot", lines, layout, {responsive: true});
-
-  if (initdata_is_last_chunk != 0) {
+    console.log("data");
+    console.log(lines);
+  if (initdata_is_last_chunk == 0) {
+    console.log("got last data chunk, creating plot");
+    Plotly.newPlot("plot", lines, layout, {responsive: true});
     websocket.onmessage = function(evt) { gotUpdate(evt) };
     doSend("/sub");
   }
@@ -149,7 +152,6 @@ function gotUpdate(evt){
   Plotly.extendTraces("plot", {x: x_update, y: y_update}, updated_traces);
 
   writeToScreen("Got Update");
-
 }
 
 

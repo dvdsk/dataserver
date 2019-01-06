@@ -213,7 +213,7 @@ impl WsSession {
 			unimplemented!();
 		} else {
 			for (dataset_id, field_ids) in &self.selected_data {
-				let mut data = ctx.state().data.write().unwrap();
+				let mut data = ctx.state().data.write().unwrap();//todo clone for use in loop
 				let dataset = data.sets.get_mut(dataset_id).unwrap();
 
 				let mut read_state = dataset.prepare_read(t_start,t_end, field_ids).unwrap();//FIXME handle possible error!!!
@@ -222,24 +222,20 @@ impl WsSession {
 				std::mem::drop(data);
 
 				debug!("read_state: {:?}", read_state);
-				for i in (0..divide_ceil(n_bytes,config::MAX_LINES_PER_PACKAGE as u64) ).rev() {
+				for package_numb in (0..divide_ceil(n_bytes,config::MAX_LINES_PER_PACKAGE as u64) ).rev() {
 					//TODO some mechanisme to loop multiple get_data_chunk
-					trace!("sending data packet numb: {}",i);
+					trace!("sending data packet numb: {}", package_numb);
 					let mut data = ctx.state().data.write().unwrap();
 					let dataset = data.sets.get_mut(dataset_id).unwrap();
-					let (timestamps, lines) = dataset.get_data_chunk_uncompressed(
+					let buffer = dataset.get_data_chunk_uncompressed(
 						&mut read_state,
-						config::MAX_LINES_PER_PACKAGE).unwrap();//FIXME handle possible error!!!
+						config::MAX_LINES_PER_PACKAGE,
+						package_numb as u16,
+						*dataset_id).unwrap();//FIXME handle possible error!!!
 					std::mem::drop(dataset);
 					std::mem::drop(data);
 
-					let mut info = Vec::with_capacity(3);
-					info.write_u8(i as u8).unwrap();;//indicates this is the last part of this dataset
-					info.write_u16::<LittleEndian>(*dataset_id).unwrap();
-
-					ctx.binary(Binary::from(info ));
-					ctx.binary(Binary::from(timestamps ));
-					ctx.binary(Binary::from(lines ));
+					ctx.binary(Binary::from(buffer ));
 				}
 			}
 		};

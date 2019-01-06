@@ -235,8 +235,8 @@ impl DataSet {
 		}
 	}
 
-	pub fn get_data_chunk_uncompressed(&mut self, state: &mut ReadState, chunk_size: usize)
-	-> Option<(Vec<u8>, Vec<u8>)> {
+	pub fn get_data_chunk_uncompressed(&mut self, state: &mut ReadState, chunk_size: usize, package_numb: u16, dataset_id: u16)
+	-> Option<Vec<u8>> {
 
 		if self.timeseries.decode_time_into_given(
 			&mut state.timestamps_u64,
@@ -247,20 +247,24 @@ impl DataSet {
 			&mut state.decode_params).is_ok() {
 
 			let numb_lines = (state.stop_byte as usize-state.start_byte as usize)/self.timeseries.line_size;
-			let mut timestamps_recoded = Vec::with_capacity(std::mem::size_of::<u64>()*numb_lines);
-			let mut line_recoded = Vec::with_capacity(std::mem::size_of::<f32>()*state.fields.len()*numb_lines);
+			let recoded_timestamps_size = std::mem::size_of::<u64>()*numb_lines;
+			let recoded_lines_size = std::mem::size_of::<f32>()*state.fields.len()*numb_lines;
+			let mut buffer = Vec::with_capacity(1+recoded_timestamps_size+recoded_lines_size);
 
+			//write packet info
+			buffer.write_u16::<LittleEndian>(package_numb).unwrap();
+			buffer.write_u16::<LittleEndian>(dataset_id).unwrap();
 			for ts in &state.timestamps_u64 {
-				timestamps_recoded.write_f64::<LittleEndian>(*ts as f64).unwrap();
+				buffer.write_f64::<LittleEndian>(*ts as f64).unwrap();
 			}
 
 			for line in state.line_data.chunks(self.timeseries.line_size) {
 				for field in &state.fields {
 					let decoded: f32 = field.decode::<f32>(&line);
-					line_recoded.write_f32::<LittleEndian>(decoded).unwrap();
+					buffer.write_f32::<LittleEndian>(decoded).unwrap();
 				}
 			}
-			Some((timestamps_recoded, line_recoded))
+			Some(buffer)
 		} else {
 			None
 		}

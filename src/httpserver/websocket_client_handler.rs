@@ -10,6 +10,7 @@ extern crate bincode;
 extern crate serde_derive;
 
 extern crate byteorder;
+extern crate crossbeam_utils;
 
 use self::byteorder::{LittleEndian, WriteBytesExt};
 
@@ -19,6 +20,9 @@ use super::futures::Future;
 
 use std::sync::{Arc,RwLock};
 use std::collections::HashMap;
+
+use std::thread;
+use std::sync::mpsc::sync_channel;
 
 use super::timeseries_interface;
 use super::websocket_data_router;
@@ -206,36 +210,53 @@ impl WsSession {
 	fn send_data(&mut self, ctx: &mut ws::WebsocketContext<Self, WebServerData>){
 		trace!("sending data to client");
 		let now = Utc::now();
-		let t_start= now - Duration::hours(196);
+		//let t_start= now - Duration::hours(196);
+		let t_start= now - Duration::days(20);
 		let t_end = Utc::now();
 
 		if self.compression_enabled {
 			unimplemented!();
 		} else {
 			for (dataset_id, field_ids) in &self.selected_data {
-				let mut data = ctx.state().data.write().unwrap();//todo clone for use in loop
+				let data_handle = ctx.state().data.clone();
+				let mut data = data_handle.write().unwrap();//todo clone for use in loop
 				let dataset = data.sets.get_mut(dataset_id).unwrap();
 
 				let mut read_state = dataset.prepare_read(t_start,t_end, field_ids).unwrap();//FIXME handle possible error!!!
-				let n_bytes = read_state.bytes_to_read();
+				let n_bytes_to_send = read_state.bytes_to_read();
 				std::mem::drop(dataset);
 				std::mem::drop(data);
 
 				debug!("read_state: {:?}", read_state);
-				for package_numb in (0..divide_ceil(n_bytes,config::MAX_LINES_PER_PACKAGE as u64) ).rev() {
-					//TODO some mechanisme to loop multiple get_data_chunk
-					trace!("sending data packet numb: {}", package_numb);
-					let mut data = ctx.state().data.write().unwrap();
-					let dataset = data.sets.get_mut(dataset_id).unwrap();
-					let buffer = dataset.get_data_chunk_uncompressed(
-						&mut read_state,
-						config::MAX_LINES_PER_PACKAGE,
-						package_numb as u16,
-						*dataset_id).unwrap();//FIXME handle possible error!!!
-					std::mem::drop(dataset);
-					std::mem::drop(data);
+				let (tx, rx) = sync_channel(2);
+				let dataset_id = *dataset_id;
+				let network_io = thread::spawn(move|| {
+					for package_numb in (0..divide_ceil(n_bytes_to_send, config::MAX_LINES_PER_PACKAGE as u64) ).rev() {
+						let mut data = data_handle.write().unwrap();//todo clone for use in loop
 
-					ctx.binary(Binary::from(buffer ));
+						trace!("sending data packet numb: {}", package_numb);
+						let dataset = data.sets.get_mut(&dataset_id).unwrap();
+						let buffer = dataset.get_data_chunk_uncompressed(
+							&mut read_state,
+							config::MAX_LINES_PER_PACKAGE,
+							package_numb as u16,
+							dataset_id
+						).unwrap();//FIXME handle possible error!!!
+
+						//unlock RW lock data_handle
+						std::mem::drop(dataset);
+						std::mem::drop(data);
+						//block if network_io thread has not yet send the previouse n packets
+						if tx.send(buffer).is_err() {break; };
+					}
+				});
+
+			  while let Ok(buffer) = rx.recv() {
+  				if ctx.connected() {
+						ctx.binary(Binary::from(buffer ));
+  				} else {
+  					break;
+  				}
 				}
 			}
 		};

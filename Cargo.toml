@@ -48,3 +48,4 @@ byteorder = "1.2.6"
 minimal_timeseries = { git = "https://github.com/dskleingeld/minimal_timeseries", branch = "multithraeded_file_read" }
 
 smallvec = "0.6.6"
+crossbeam-utils = "0.6"

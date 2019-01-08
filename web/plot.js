@@ -11,7 +11,9 @@ var lines;
 var id_map = new Map();
 
 var layout = {
-	xaxis: {title: 'time (s)'},
+	xaxis: {
+	  type: 'date',
+	  title: 'time (s)'},
 	yaxis: {title: 'humidity',}
 };
 

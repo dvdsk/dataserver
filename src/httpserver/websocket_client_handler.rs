@@ -115,7 +115,7 @@ impl Handler<websocket_data_router::NewData> for WsSession {
 	}
 }
 
-fn divide_ceil(x: u64, y: u64) -> u64{
+fn divide_ceil(x: usize, y: usize) -> usize{
 	(x + y - 1) / y
 }
 
@@ -223,22 +223,34 @@ impl WsSession {
 				let dataset = data.sets.get_mut(dataset_id).unwrap();
 
 				let mut read_state = dataset.prepare_read(t_start,t_end, field_ids).unwrap();//FIXME handle possible error!!!
-				let n_bytes_to_send = read_state.bytes_to_read();
 				std::mem::drop(dataset);
 				std::mem::drop(data);
+				//determine numb of bytes to be send
+				//determine numb of chunks
+				//determine numb of lines per chunk
+				const PACKAGE_HEADER_SIZE: usize = 8;
+				let bytes_to_send = read_state.numb_lines*(read_state.decoded_line_size+std::mem::size_of::<f64>())+PACKAGE_HEADER_SIZE;
+				let n_packages = divide_ceil(bytes_to_send, config::MAX_BYTES_PER_PACKAGE);
+				let max_lines_per_package = config::MAX_BYTES_PER_PACKAGE/(read_state.decoded_line_size+std::mem::size_of::<f64>());
+
+				dbg!(n_packages);
+				dbg!(read_state.numb_lines);
+				dbg!(bytes_to_send);
 
 				debug!("read_state: {:?}", read_state);
 				let (tx, rx) = sync_channel(2);
 				let dataset_id = *dataset_id;
-				let network_io = thread::spawn(move|| {
-					for package_numb in (0..divide_ceil(n_bytes_to_send, config::MAX_LINES_PER_PACKAGE as u64) ).rev() {
+				let file_io = thread::spawn(move|| {
+					dbg!(bytes_to_send);
+					dbg!(config::MAX_BYTES_PER_PACKAGE);
+					for package_numb in (0..n_packages).rev() {
 						let mut data = data_handle.write().unwrap();//todo clone for use in loop
 
 						trace!("sending data packet numb: {}", package_numb);
 						let dataset = data.sets.get_mut(&dataset_id).unwrap();
 						let buffer = dataset.get_data_chunk_uncompressed(
 							&mut read_state,
-							config::MAX_LINES_PER_PACKAGE,
+							config::MAX_BYTES_PER_PACKAGE,
 							package_numb as u16,
 							dataset_id
 						).unwrap();//FIXME handle possible error!!!
@@ -246,7 +258,8 @@ impl WsSession {
 						//unlock RW lock data_handle
 						std::mem::drop(dataset);
 						std::mem::drop(data);
-						//block if network_io thread has not yet send the previouse n packets
+						//block if parent thread has not yet send the previouse n packets
+						//break and end thread if something went wrong
 						if tx.send(buffer).is_err() {break; };
 					}
 				});

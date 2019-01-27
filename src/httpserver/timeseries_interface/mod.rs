@@ -124,6 +124,8 @@ pub struct ReadState {
 	start_byte: u64,
 	stop_byte: u64,
 	decode_params: DecodeParams,
+	pub decoded_line_size: usize,
+	pub numb_lines: usize,
 }
 
 impl ReadState {
@@ -221,7 +223,8 @@ impl DataSet {
 				let fields: Vec<Field<f32>> = requested_fields.into_iter()
 				.map(|id| self.metadata.fields[*id as usize].clone() ).collect();
 
-				let numb_lines = (stop_byte as usize-start_byte as usize)/self.timeseries.line_size;
+				let numb_lines = (stop_byte as usize-start_byte as usize)/self.timeseries.full_line_size;
+				let decoded_line_size = fields.len()*std::mem::size_of::<f32>();
 
 				Some( ReadState {
 					timestamps_u64: Vec::with_capacity(numb_lines),
@@ -229,7 +232,9 @@ impl DataSet {
 					fields,
 					start_byte,
 					stop_byte,
-					decode_params
+					decode_params,
+					decoded_line_size,
+					numb_lines
 				})
 			},
 		}
@@ -238,22 +243,28 @@ impl DataSet {
 	pub fn get_data_chunk_uncompressed(&mut self, state: &mut ReadState, chunk_size: usize, package_numb: u16, dataset_id: u16)
 	-> Option<Vec<u8>> {
 
+		//TODO refactor to: timestamps, line_data = self.timeseries.decode_time_into_given
+		let chunk_size_in_lines = chunk_size/(state.decoded_line_size+std::mem::size_of::<f64>());
 		if self.timeseries.decode_time_into_given(
 			&mut state.timestamps_u64,
 			&mut state.line_data,
-			chunk_size,
+			chunk_size_in_lines,
 			&mut state.start_byte,
 			state.stop_byte,
 			&mut state.decode_params).is_ok() {
 
-			let numb_lines = (state.stop_byte as usize-state.start_byte as usize)/self.timeseries.line_size;
-			let recoded_timestamps_size = std::mem::size_of::<u64>()*numb_lines;
-			let recoded_lines_size = std::mem::size_of::<f32>()*state.fields.len()*numb_lines;
-			let mut buffer = Vec::with_capacity(1+recoded_timestamps_size+recoded_lines_size);
+			dbg!(chunk_size_in_lines);
+			dbg!(state.decoded_line_size);
+			dbg!(state.line_data.len());
+
+			let mut buffer = Vec::with_capacity(chunk_size);
+			dbg!(buffer.len());
 
 			//write packet info
 			buffer.write_u16::<LittleEndian>(package_numb).unwrap();
 			buffer.write_u16::<LittleEndian>(dataset_id).unwrap();
+			//add padding
+			buffer.write_u32::<LittleEndian>(0).unwrap();
 			for ts in &state.timestamps_u64 {
 				buffer.write_f64::<LittleEndian>(*ts as f64).unwrap();
 			}
@@ -264,6 +275,9 @@ impl DataSet {
 					buffer.write_f32::<LittleEndian>(decoded).unwrap();
 				}
 			}
+			dbg!(state.timestamps_u64.len());
+			dbg!(state.line_data.len());
+			dbg!(buffer.len());
 			Some(buffer)
 		} else {
 			None

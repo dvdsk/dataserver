@@ -161,6 +161,14 @@ fn setup_debug_logging(verbosity: u8) -> Result<(), fern::InitError> {
 			// Let's say we depend on something which whose "info" level messages are too
 			// verbose to include in end-user output. If we don't need them,
 			// let's not include them.
+			base_config.level(log::LevelFilter::Info)
+					.level_for("actix-web", log::LevelFilter::Warn)
+					.level_for("dataserver", log::LevelFilter::Trace)
+					.level_for("minimal_timeseries", log::LevelFilter::Info),
+		3 =>
+			// Let's say we depend on something which whose "info" level messages are too
+			// verbose to include in end-user output. If we don't need them,
+			// let's not include them.
 			base_config.level(log::LevelFilter::Trace),
 
 		_3_or_more => base_config.level(log::LevelFilter::Warn),
@@ -199,7 +207,7 @@ fn setup_debug_logging(verbosity: u8) -> Result<(), fern::InitError> {
 fn main() {
 	//https://www.deviousd.duckdns.org:8080/index.html
 	//only do if certs need update
-	if false {
+	if config::FORCE_CERT_REGEN {
 		//generate_and_sign_keys
 		if let Err(error) = certificate_manager::generate_and_sign_keys(
 			"deviousd.duckdns.org",
@@ -211,7 +219,7 @@ fn main() {
 		}
 	}
 
-	setup_debug_logging(0).expect("could not set up debugging");
+	setup_debug_logging(2).expect("could not set up debugging");
 	
 	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load("").unwrap()));
 	let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("data")).unwrap())); 

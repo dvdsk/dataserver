@@ -283,6 +283,7 @@ fn ws_index(req: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
 		selected_data: HashMap::new(),
 		compression_enabled: true,
 		timeseries_with_access: timeseries_with_access,
+		file_io_thread: None,
 	})
 }
 

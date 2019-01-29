@@ -127,10 +127,6 @@ pub struct Clientinfo {
 impl Default for DataServer {
 	fn default() -> DataServer {
 		let mut subs = HashMap::new();
-		subs.insert(0, HashSet::new());
-		subs.insert(1, HashSet::new());
-		subs.insert(2, HashSet::new());
-		subs.insert(3, HashSet::new());
 
 		DataServer {
 			sessions: HashMap::new(),

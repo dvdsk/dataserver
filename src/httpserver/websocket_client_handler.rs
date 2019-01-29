@@ -22,6 +22,7 @@ use std::sync::{Arc,RwLock};
 use std::collections::HashMap;
 
 use std::thread;
+use std::sync::mpsc;
 use std::sync::mpsc::sync_channel;
 
 use super::timeseries_interface;
@@ -38,6 +39,7 @@ pub struct WsSession {
 	pub compression_enabled: bool,
 	pub selected_data: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::FieldId>>,
 	pub timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
+	pub file_io_thread: Option<(thread::JoinHandle<()>, mpsc::Receiver<Vec<u8>>)>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -165,6 +167,23 @@ impl WsSession {
 		unimplemented!();
 	}
 
+	fn send_decode_info(&self, args: Vec<&str>, ctx: &mut ws::WebsocketContext<Self, WebServerData>) {
+		trace!("sending decode info to client");
+		if args.len() < 2 {warn!("can not send decode info without setid"); return; }
+		if let Ok(set_id) = args[1].parse::<timeseries_interface::DatasetId>() {
+			if let Some(fields) = self.selected_data.get(&set_id){
+				let data = ctx.state().data.read().unwrap();
+				let dataset = data.sets.get(&set_id).unwrap();
+				let decode_info = dataset.get_decode_info(fields);
+				std::mem::drop(data);
+				let decode_info = bincode::serialize(&decode_info).unwrap();
+				ctx.binary(Binary::from(decode_info));
+			} else {
+				warn!("tried access to unautorised or non existing dataset");
+			}
+		}
+	}
+
 	fn send_metadata(&mut self, data: &Arc<RwLock<timeseries_interface::Data>>) -> String{
 		let data = data.read().unwrap();
 		let mut client_plot_metadata: MetaForPlot = Default::default();
@@ -188,93 +207,108 @@ impl WsSession {
 		let json = serde_json::to_string(&client_plot_metadata).unwrap();
 		json
 	}
-	
-	fn send_decode_info(&self, args: Vec<&str>, ctx: &mut ws::WebsocketContext<Self, WebServerData>) {
-		trace!("sending decode info to client");
-		if args.len() < 2 {warn!("can not send decode info without setid"); return; }
-		if let Ok(set_id) = args[1].parse::<timeseries_interface::DatasetId>() {
-			if let Some(fields) = self.selected_data.get(&set_id){
-				let data = ctx.state().data.read().unwrap();
-				let dataset = data.sets.get(&set_id).unwrap();
-				let decode_info = dataset.get_decode_info(fields);
-				std::mem::drop(data);
-				let decode_info = bincode::serialize(&decode_info).unwrap();
-				ctx.binary(Binary::from(decode_info));
-			} else {
-				warn!("tried access to unautorised or non existing dataset");
-			}
-		}
-	}
 
-	//fn send_data(&mut self, data: &Arc<RwLock<timeseries_interface::Data>>, ){
-	fn send_data(&mut self, ctx: &mut ws::WebsocketContext<Self, WebServerData>){
+	//TODO rethink entire data sending sys.
+	// - needs to be able to try next dataset if lock cant be aquired
+	// - only one thread may be used
+	// - match ops that take client side time to server side heavy ops
+	/////////////
+	// ideas:
+	// - put metadata sending in here
+	/////////////
+	// pitfalls:
+	// - cant recieve packages from here
+	// -
+	/////////////
+	// solution:
+	// - prepare a list of data needed for reading
+	// - start a thread in prepare_data (pass the above list)
+	//    - try lock dont block
+	//    - send to mpsc
+	// 		- thread closes when mpsc closes or no more data availible
+	//    - thread handle is stored in websocket session
+	//    - no more then one thread can be started
+
+	fn prepare_data(&mut self, ctx: &mut ws::WebsocketContext<Self, WebServerData>){
 		trace!("sending data to client");
+		if self.file_io_thread.is_some() {
+			warn!("already preparing data!");
+			return;
+		}
+
 		let now = Utc::now();
 		//let t_start= now - Duration::hours(196);
 		let t_start= now - Duration::days(20);
 		let t_end = Utc::now();
 
-		if self.compression_enabled {
-			unimplemented!();
-		} else {
-			for (dataset_id, field_ids) in &self.selected_data {
-				let data_handle = ctx.state().data.clone();
-				let mut data = data_handle.write().unwrap();//todo clone for use in loop
-				let dataset = data.sets.get_mut(dataset_id).unwrap();
+		let mut reader_infos: Vec<ReaderInfo> = Vec::with_capacity(self.selected_data.len());
+		let data_handle = ctx.state().data.clone();
+		let mut data = data_handle.write().unwrap();
+		for (dataset_id, field_ids) in  &self.selected_data {
+			let dataset = data.sets.get_mut(dataset_id).unwrap();
+			let mut read_state = dataset.prepare_read(t_start,t_end, field_ids).unwrap();
 
-				let mut read_state = dataset.prepare_read(t_start,t_end, field_ids).unwrap();//FIXME handle possible error!!!
-				std::mem::drop(dataset);
-				std::mem::drop(data);
-				//determine numb of bytes to be send
-				//determine numb of chunks
-				//determine numb of lines per chunk
-				const PACKAGE_HEADER_SIZE: usize = 8;
-				let bytes_to_send = read_state.numb_lines*(read_state.decoded_line_size+std::mem::size_of::<f64>())+PACKAGE_HEADER_SIZE;
-				let n_packages = divide_ceil(bytes_to_send, config::MAX_BYTES_PER_PACKAGE);
-				let max_lines_per_package = config::MAX_BYTES_PER_PACKAGE/(read_state.decoded_line_size+std::mem::size_of::<f64>());
+			const PACKAGE_HEADER_SIZE: usize = 8;
+			let bytes_to_send = read_state.numb_lines*(read_state.decoded_line_size+std::mem::size_of::<f64>())+PACKAGE_HEADER_SIZE;
+			let n_packages = divide_ceil(bytes_to_send, config::MAX_BYTES_PER_PACKAGE);
+			let max_lines_per_package = config::MAX_BYTES_PER_PACKAGE/(read_state.decoded_line_size+std::mem::size_of::<f64>());
 
-				dbg!(n_packages);
-				dbg!(read_state.numb_lines);
-				dbg!(bytes_to_send);
+			reader_infos.push(ReaderInfo {
+				dataset_id: *dataset_id,
+				n_packages,
+				read_state,
+			});
+		}
+		std::mem::drop(data);
 
-				debug!("read_state: {:?}", read_state);
-				let (tx, rx) = sync_channel(2);
-				let dataset_id = *dataset_id;
-				let file_io = thread::spawn(move|| {
-					dbg!(bytes_to_send);
-					dbg!(config::MAX_BYTES_PER_PACKAGE);
-					for package_numb in (0..n_packages).rev() {
-						let mut data = data_handle.write().unwrap();//todo clone for use in loop
+		//spawn file io thread
+		let (tx, rx) = sync_channel(2);
+		let thread = thread::spawn(move|| { read_into_buffers(data_handle, tx, reader_infos); });
+		self.file_io_thread = Some((thread, rx));
+	}
 
-						trace!("sending data packet numb: {}", package_numb);
-						let dataset = data.sets.get_mut(&dataset_id).unwrap();
-						let buffer = dataset.get_data_chunk_uncompressed(
-							&mut read_state,
-							config::MAX_BYTES_PER_PACKAGE,
-							package_numb as u16,
-							dataset_id
-						).unwrap();//FIXME handle possible error!!!
-
-						//unlock RW lock data_handle
-						std::mem::drop(dataset);
-						std::mem::drop(data);
-						//block if parent thread has not yet send the previouse n packets
-						//break and end thread if something went wrong
-						if tx.send(buffer).is_err() {break; };
-					}
-				});
-
-			  while let Ok(buffer) = rx.recv() {
-  				if ctx.connected() {
-						ctx.binary(Binary::from(buffer ));
-  				} else {
-  					break;
-  				}
+	fn send_data(&mut self, ctx: &mut ws::WebsocketContext<Self, WebServerData>){
+		if let Some((thread, rx)) = self.file_io_thread.take() {
+			while let Ok(buffer) = rx.recv() {
+				if ctx.connected() {
+					ctx.binary(Binary::from(buffer ));
+				} else {
+					break;
 				}
 			}
-		};
-
+		}
 	}
+}
+
+struct ReaderInfo {
+	dataset_id: timeseries_interface::DatasetId,
+	n_packages: usize,
+	read_state: timeseries_interface::ReadState,
+}
+
+fn read_into_buffers(data_handle: Arc<RwLock<timeseries_interface::Data>>, tx: mpsc::SyncSender<Vec<u8>>, reader_infos: Vec<ReaderInfo>){
+
+	for ReaderInfo {dataset_id, n_packages, mut read_state} in reader_infos {
+		for package_numb in (0..n_packages).rev() {
+			let mut data = data_handle.write().unwrap(); //write needed as file needs write
+			let dataset = data.sets.get_mut(&dataset_id).unwrap();
+
+			let buffer = dataset.get_data_chunk_uncompressed(
+				&mut read_state,
+				config::MAX_BYTES_PER_PACKAGE,
+				package_numb as u16,
+				dataset_id
+			).unwrap();//FIXME handle possible error!!!
+
+			std::mem::drop(dataset);
+			std::mem::drop(data);
+
+			//block if parent thread has not yet send the previouse n packets
+			//break and end thread if something went wrong
+			if tx.send(buffer).is_err() {break; };
+		}
+	}
+
 }
 
 #[derive(Serialize)]
@@ -304,7 +338,8 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
 
 						"/sub" => self.subscribe(&ctx.state().websocket_addr),
 						"/meta" => ctx.text(self.send_metadata(&ctx.state().data)),
-						"/data" => self.send_data(ctx),
+						"/data" => self.prepare_data(ctx),
+						"/RTC" => self.send_data(ctx),//client signals ready to recieve
 
 						//for use with webassembly only
 						"/decode_info" => self.send_decode_info(args, ctx),

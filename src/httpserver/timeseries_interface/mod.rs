@@ -301,10 +301,10 @@ impl AsRef<FieldId> for Authorisation{
 	}
 }
 
-pub struct Data {
+pub struct Data {//TODO make multithreaded
 	dir: PathBuf,
-	free_dataset_id: u16,
-	pub sets: HashMap<DatasetId, DataSet>,
+	free_dataset_id: u16, //replace with atomics
+	pub sets: HashMap<DatasetId, DataSet>, //rwlocked hasmap + rwlocked Dataset
 }
 
 // load all the datasets and store them on theire id in a hashmap

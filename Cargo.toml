@@ -44,8 +44,8 @@ serde_json = "1.0.33"
 reqwest = "0.9.2"
 byteorder = "1.2.6"
 
-#minimal_timeseries = { path = "minimal_timeseries" }
-minimal_timeseries = { git = "https://github.com/dskleingeld/minimal_timeseries", branch = "multithraeded_file_read" }
+minimal_timeseries = { path = "minimal_timeseries" }
+#minimal_timeseries = { git = "https://github.com/dskleingeld/minimal_timeseries", branch = "multithraeded_file_read" }
 
 smallvec = "0.6.6"
 crossbeam-utils = "0.6"

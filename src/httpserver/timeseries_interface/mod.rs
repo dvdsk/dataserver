@@ -128,12 +128,6 @@ pub struct ReadState {
 	pub numb_lines: usize,
 }
 
-impl ReadState {
-	pub fn bytes_to_read(&self) -> u64{
-		self.stop_byte - self.start_byte
-	}
-}
-
 impl DataSet {
 	pub fn get_decode_info(&self, allowed_fields: &Vec<FieldId>) -> SetSliceDecodeInfo {
 		let mut offset_in_dataset = SmallVec::<[u8; 8]>::new();
@@ -308,7 +302,8 @@ pub struct Data {//TODO make multithreaded
 }
 
 // load all the datasets and store them on theire id in a hashmap
-pub fn init(dir: PathBuf) -> Result<Data, io::Error> {
+pub fn init<P: Into<PathBuf>>(dir: P) -> Result<Data, io::Error> {
+	let dir = dir.into();
 	if !Path::new(&dir).exists() {
 		fs::create_dir(&dir)?
 	};

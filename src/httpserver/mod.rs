@@ -47,51 +47,71 @@ use self::chrono::{DateTime, Utc};
 pub mod timeseries_interface;
 pub mod secure_database;
 
-mod websocket_data_router;
-mod websocket_client_handler;
+pub mod websocket_data_router;
+pub mod websocket_client_handler;
 
 use self::secure_database::{PasswordDatabase};
-use crate::timeseries_interface::{Authorisation};
+use crate::httpserver::timeseries_interface::{Authorisation};
 
 pub struct Session {//TODO deprecate 
-    timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
+  timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
 	username: String,
 	last_login: DateTime<Utc>,
-    //add more temporary user specific data as needed
+  //add more temporary user specific data as needed
 }
 
 pub struct WebServerData {
-	passw_db: Arc<RwLock<PasswordDatabase>>,
-	websocket_addr: Addr<websocket_data_router::DataServer>,
-	data: Arc<RwLock<timeseries_interface::Data>>,
-	sessions: Arc<RwLock<HashMap<u16,Session>>> ,
-	free_session_ids: Arc<AtomicUsize>,
-	free_ws_session_ids: Arc<AtomicUsize>,
+	pub passw_db: Arc<RwLock<PasswordDatabase>>,
+	pub websocket_addr: Addr<websocket_data_router::DataServer>,
+	pub data: Arc<RwLock<timeseries_interface::Data>>,
+	pub sessions: Arc<RwLock<HashMap<u16,Session>>> ,
+	pub free_session_ids: Arc<AtomicUsize>,
+	pub free_ws_session_ids: Arc<AtomicUsize>,
+}
+
+pub fn make_random_cookie_key() -> [u8; 32] {
+	let mut cookie_private_key = [0u8; 32];
+	let mut rng = rand::StdRng::from_entropy();
+	rng.fill(&mut cookie_private_key[..]);
+	cookie_private_key
+}
+
+pub fn make_tls_config<P: AsRef<Path>>(signed_cert_path: P, private_key_path: P) -> self::rustls::ServerConfig{
+	let mut tls_config = ServerConfig::new(NoClientAuth::new());
+	let cert_file = &mut BufReader::new(File::open(signed_cert_path).unwrap());
+	let key_file = &mut BufReader::new(File::open(private_key_path).unwrap());
+	let cert_chain = certs(cert_file).unwrap();
+	let mut key = pkcs8_private_keys(key_file).unwrap();
+
+	tls_config
+		.set_single_cert(cert_chain, key.pop().unwrap())
+		.unwrap();
+	tls_config
 }
 
 #[derive(Deserialize)]
-struct Logindata {
+pub struct Logindata {
 	u: String,
 	p: String,
 }
 
-type ServerHandle = self::actix::Addr<actix_net::server::Server>;
-type DataHandle = self::actix::Addr<websocket_data_router::DataServer>;
+pub type ServerHandle = self::actix::Addr<actix_net::server::Server>;
+pub type DataHandle = self::actix::Addr<websocket_data_router::DataServer>;
 
-fn serve_file(req: &HttpRequest<WebServerData>) -> wResult<NamedFile> {
+pub fn serve_file(req: &HttpRequest<WebServerData>) -> wResult<NamedFile> {
 	let file_name: String = req.match_info().query("tail")?;
 
 	let mut path: PathBuf = PathBuf::from("web/");
 	path.push(file_name);
-	println!("returning file: {:?}", &path);
+	trace!("returning file: {:?}", &path);
 	Ok(NamedFile::open(path)?)
 }
 
-fn index(req: &HttpRequest<WebServerData>) -> String {
+pub fn index(req: &HttpRequest<WebServerData>) -> String {
 	format!("Hello {}", req.identity().unwrap_or("Anonymous".to_owned()))
 }
 
-fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
+pub fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	let mut accessible_fields = String::from("<html><body><table>");
 	
 	let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
@@ -115,7 +135,7 @@ fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(accessible_fields)
 }
 
-fn plot_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
+pub fn plot_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
 	let sessions = req.state().sessions.read().unwrap();
 	let session = sessions.get(&session_id).unwrap();
@@ -157,7 +177,7 @@ fn plot_data_debug(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
 
-fn logout(req: &HttpRequest<WebServerData>) -> HttpResponse {
+pub fn logout(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	req.forget();
 	HttpResponse::Found().finish()
 }
@@ -190,13 +210,13 @@ impl middleware::Middleware<WebServerData> for CheckLogin {
 	}
 }
 
-fn login_page(_req: &HttpRequest<WebServerData>) -> HttpResponse {
+pub fn login_page(_req: &HttpRequest<WebServerData>) -> HttpResponse {
 	let page = include_str!("static_webpages/login.html");
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
 
 /// State and POST Params
-fn login_get_and_check(
+pub fn login_get_and_check(
     (req, params): (HttpRequest<WebServerData>, Form<Logindata>),
 ) -> wResult<HttpResponse> {
 	
@@ -235,7 +255,7 @@ fn login_get_and_check(
 	   .finish())
 }
 
-fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
+pub fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 	
 	trace!("newdata");
 	let now = Utc::now();
@@ -263,12 +283,8 @@ fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
 		}).responder()
 }
 
-fn goodby(_req: &HttpRequest<WebServerData>) -> impl Responder {
-	"Goodby!"
-}
-
 /// do websocket handshake and start `MyWebSocket` actor
-fn ws_index(req: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
+pub fn ws_index(req: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
 	trace!("websocket connected");
 	let session_id = req.identity().unwrap().parse::<u16>().unwrap();
 	let sessions = req.state().sessions.read().unwrap();
@@ -285,92 +301,6 @@ fn ws_index(req: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
 		timeseries_with_access: timeseries_with_access,
 		file_io_thread: None,
 	})
-}
-
-pub fn start(signed_cert: &Path, private_key: &Path, 
-     data: Arc<RwLock<timeseries_interface::Data>>, 
-     passw_db: Arc<RwLock<PasswordDatabase>>,
-     sessions: Arc<RwLock<HashMap<u16,Session>>>) -> (DataHandle, ServerHandle) {
-	// load ssl keys
-
-	//if ::std::env::var("RUST_LOG").is_err() {
-		//::std::env::set_var("RUST_LOG", "actix_web=trace");
-	//}
-	//env_logger::init();
-
-	let mut config = ServerConfig::new(NoClientAuth::new());
-	let cert_file = &mut BufReader::new(File::open(signed_cert).unwrap());
-	let key_file = &mut BufReader::new(File::open(private_key).unwrap());
-	let cert_chain = certs(cert_file).unwrap();
-	let mut key = pkcs8_private_keys(key_file).unwrap();
-	config
-		.set_single_cert(cert_chain, key.pop().unwrap())
-		.unwrap();
-
-	let (tx, rx) = mpsc::channel();
-
-  let free_session_ids = Arc::new(AtomicUsize::new(0));
-	let free_ws_session_ids = Arc::new(AtomicUsize::new(0));
-
-	let mut cookie_private_key = [0u8; 32];
-	let mut rng = rand::StdRng::from_entropy();
-	rng.fill(&mut cookie_private_key[..]);
-
-	thread::spawn(move || {
-		// Start data server actor in separate thread
-		let sys = actix::System::new("http-server");
-		let data_server = Arbiter::start(|_| websocket_data_router::DataServer::default());
-		let data_server_clone = data_server.clone();
-
-		let web_server = server::new(move || {
-			 // Websocket sessions state
-			let state = WebServerData {
-                passw_db: passw_db.clone(),
-                websocket_addr: data_server_clone.clone(),
-                data: data.clone(), 
-                sessions: sessions.clone(),
-                free_session_ids: free_session_ids.clone(),
-                free_ws_session_ids: free_ws_session_ids.clone(),
-            };
-            
-			App::with_state(state)
-            .middleware(IdentityService::new(
-                CookieIdentityPolicy::new(&cookie_private_key[..])
-                    .domain("deviousd.duckdns.org")
-                    .name("auth-cookie")
-                    .path("/")
-                    .secure(true),
-            ))
-			.middleware(CheckLogin)
-                // websocket route
-                // note some browsers need already existing http connection to 
-                // this server for the upgrade to wss to work
-                .resource("/ws/", |r| r.method(http::Method::GET).f(ws_index))
-                .resource("/goodby.html", |r| r.f(goodby)) 
-                .resource("/logout", |r| r.f(logout))
-                .resource("/index", |r| r.f(index))
-                .resource("/", |r| r.f(index))
-                .resource(r"/newdata", |r| r.method(Method::POST).f(newdata))
-                .resource("/plot", |r| r.f(plot_data))
-                .resource("/plot_debug", |r| r.f(plot_data_debug))
-                .resource(r"/list_data.html", |r| r.method(Method::GET).f(list_data))
-                .resource(r"/login/{tail:.*}", |r| {
-                        r.method(http::Method::POST).with(login_get_and_check);
-                        r.method(http::Method::GET).f(login_page);
-            		})
-            		.resource(r"/{tail:.*}", |r| r.f(serve_file))
-        })
-        .bind_rustls("0.0.0.0:8080", config).unwrap()
-        //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
-        .shutdown_timeout(60)    // <- Set shutdown timeout to 60 seconds
-        .start();
-
-		let _ = tx.send((data_server, web_server));
-		let _ = sys.run();
-	});
-
-	let (data_handle, web_handle) = rx.recv().unwrap();
-	(data_handle, web_handle)
 }
 
 pub fn stop(handle: ServerHandle) {

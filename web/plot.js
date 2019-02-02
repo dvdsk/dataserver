@@ -9,7 +9,7 @@ var initdata_fields_to_lines;
 var initdata_is_last_chunk;
 
 var package_size;
-var lines;
+var lines = [];
 //maps set_id"s to indexes for traces, and position in traces
 var id_map = new Map();
 
@@ -36,6 +36,7 @@ function onOpen(evt){
   writeToScreen("CONNECTED");
 
   //parse the form
+  //TODO change plot button to "update"
   var selected = document.forms["choose lines"];
   for (var i = 0; i < selected.length; i++) {
     if (selected[i].checked === true) {
@@ -74,25 +75,42 @@ function gotMeta(evt){
   showMessage(evt);
 
   var id_info;
-  ({id_info, lines, numb_of_lines, package_size} = JSON.parse(evt.data));//add package info (total data size, package size)
+  var sets_meta = JSON.parse(evt.data);//add package info (total data size, package size)
+  console.log(sets_meta);
 
-  var i = 0;
-  while (i < id_info.length) {
-    var set_id =  id_info[i].dataset_id;
+  //for every dataset
+  for (var set_idx=0; set_idx < sets_meta.length; set_idx+=1){
+    ({field_ids, traces_meta, numb_of_lines, set_id} = sets_meta[set_idx]);
+
     var field_list = [];
-    var shared_time_x = new Float64Array(numb_of_lines);
-    do {
-      field_list.push({field_id: id_info[i].field_id, trace_numb: lines.length()+i});
-      lines[i].x = shared_time_x; lines[i].y = new Float32Array(numb_of_lines);
-      i++;
-    } while(i < id_info.length && id_info[i].dataset_id == set_id)
+    //append all the metadata to the lines
+    console.log("lines before");
+    console.log(lines);
+    console.log("traces_meta");
+    console.log(traces_meta);
+    lines = lines.concat(traces_meta);
+    console.log("lines");
+    console.log(lines);
+
+    //create an x-array for all a dataset
+    var shared_x = new Float64Array(numb_of_lines);
+    var len = lines.length;
+    for (var i= 0; i<field_ids.length; i++) {
+      //for each line/field/y-value link the x-array and allocate a y-array
+      field_list.push({field_id: field_ids[i], trace_numb: len+i});
+      lines[len+i].x = shared_x;
+      lines[len+i].y = new Float32Array(numb_of_lines);
+    }
+    console.log("lines allocated");
+    console.log(lines);
+    debugger;
     id_map.set(set_id, field_list);
     //console.log(set_id);
     //console.log(id_map);
   }
-  //console.log("gotMeta");
+  console.log("gotMeta");
   websocket.onmessage = function(evt) { gotDataChunk(evt) };
-  doSend("/data");
+  doSend("/RTC");
 }
 
 function setTimestamps(data, numb_of_elements, fields_to_lines, pos){
@@ -104,6 +122,12 @@ function setTimestamps(data, numb_of_elements, fields_to_lines, pos){
   //no need to set for all x-axises as they are linked
   //memcpy equivalent of memcpy(trace+pos, timestamps, len(timestamps));
   trace_numb = fields_to_lines[0].trace_numb;
+  console.log("fields to lines[0]");
+  console.log(fields_to_lines[0]);
+  console.log("fields to lines");
+  console.log(fields_to_lines);
+  console.log("lines");
+  console.log(lines);
   // Copy the new timestamps into the array starting at index pos
   //console.log(lines);
   lines[trace_numb].x = lines[trace_numb].x.set(timestamps, pos);
@@ -124,13 +148,30 @@ function setData(data, numb_of_elements, fields_to_lines, pos){
 
 //allocate data for all chunks
 function gotDataChunk(evt){ //FIXME only works for one dataset
-  //console.log("got data chunk");
+  console.log("evt");
+  console.log(evt);
+
   var data = new DataView(evt.data);
+  //check for server signal that all data has been recieved, or an error has
+  //occured
+  if (data.getInt16(3, true) == 1) {
+    //console.log("got last data chunk, creating plot");
+    Plotly.newPlot("plot", lines, layout, {responsive: true});
+    websocket.onmessage = function(evt) { gotUpdate(evt) };
+    doSend("/sub");
+    return;
+  };
+
   var chunknumb = data.getInt16(0, true);
   var setid = data.getInt16(2, true);
   var fields_to_lines = id_map.get(setid);
-  //console.log("chunknumb");
-  //console.log(chunknumb);
+  var numb_of_elements = (evt.data.byteLength-8)/(4*(fields_to_lines.length)+8);
+  console.log("numb_of_elements");
+  console.log(numb_of_elements);
+  console.log(evt.data.byteLength);
+  console.log("evt.data");
+  console.log(evt.data);
+  console.log(fields_to_lines.length);
 
   //FIXME NEEDS TO MOVE TO META DATA, NO TIME TO PRE ALLOC CURRENTLY
   //next package arrives and is handled before this is done
@@ -140,23 +181,13 @@ function gotDataChunk(evt){ //FIXME only works for one dataset
   //--determine pos not from last (vector/write style) but chunknumber and known chunk sizes
   //--add check if allocation is finished before continueing (use global bool flag for this)
 
-  var pos = chunknumb+package_size;
+  var pos = chunknumb*package_size;
   //console.log("numb of elements");
   //console.log(numb_of_elements);
   setTimestamps(evt.data, numb_of_elements, fields_to_lines, pos);
   debugger;
   setData(evt.data, numb_of_elements, fields_to_lines, pos);
   debugger;
-
-  //console.log("data");
-  //console.log(lines);
-  //check if all data for all sets has been recieved
-  if (chunknumb == 0) {
-    //console.log("got last data chunk, creating plot");
-    Plotly.newPlot("plot", lines, layout, {responsive: true});
-    websocket.onmessage = function(evt) { gotUpdate(evt) };
-    doSend("/sub");
-  }
 }
 
 function gotUpdate(evt){

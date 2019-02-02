@@ -5,7 +5,7 @@ use self::actix::prelude::*;
 
 use std::collections::{HashMap, HashSet};
 
-use crate::timeseries_interface::{DatasetId};
+use crate::httpserver::timeseries_interface::{DatasetId};
 
 pub struct DataServer {
 	sessions: HashMap<u16, Clientinfo>,
@@ -126,7 +126,7 @@ pub struct Clientinfo {
 
 impl Default for DataServer {
 	fn default() -> DataServer {
-		let mut subs = HashMap::new();
+		let subs = HashMap::new();
 
 		DataServer {
 			sessions: HashMap::new(),

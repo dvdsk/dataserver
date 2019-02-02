@@ -140,8 +140,6 @@ fn index(req: &HttpRequest) -> wResult<fs::NamedFile> {
 	let mut full_path = PathBuf::from(".tmp/www/.well-known/acme-challenge/");
 	let path: PathBuf = req.match_info().query("tail")?;
 	full_path.push(&path);
-	dbg!(&full_path);
-	println!("HHOOOOOOOOIIIIIIIIII");
 	Ok(fs::NamedFile::open(full_path)?)
 }
 
@@ -197,12 +195,16 @@ fn make_domain_list(domain: &str) -> (String, String) {
 	}
 }
 
-pub fn generate_and_sign_keys(
+pub fn generate_and_sign_keys<T: AsRef<Path>>(
 	domain: &str,
-	signed_cert: &Path,
-	private_key: &Path,
-	user_private_key: &Path,
+	signed_cert: T,
+	private_key: T,
+	user_private_key: T,
 ) -> Result<(), aError> {
+	let signed_cert = signed_cert.as_ref();
+	let private_key =	private_key.as_ref();
+	let user_private_key =	user_private_key.as_ref();
+
 	let (a, b) = make_domain_list(domain);
 	let domains = [a.as_str(), b.as_str()];
 	let directory = Directory::lets_encrypt().unwrap();

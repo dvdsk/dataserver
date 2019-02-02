@@ -2,7 +2,7 @@ extern crate ring;
 extern crate chrono;
 extern crate bincode;
 
-use crate::timeseries_interface;
+use crate::httpserver::timeseries_interface;
 
 use self::bincode::{deserialize_from,serialize_into};
 

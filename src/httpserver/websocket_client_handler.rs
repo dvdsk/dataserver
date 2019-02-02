@@ -43,23 +43,19 @@ pub struct WsSession {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Line {
+struct Trace {
     r#type: String,
     mode: String,
     //color: String,
     name: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct IdInfo {
-		dataset_id: timeseries_interface::DatasetId,
-		field_id: timeseries_interface::FieldId,
-}
-
 #[derive(Serialize, Deserialize, Default)]
-struct MetaForPlot {
-		id_info: Vec<IdInfo>,
-    lines: Vec<Line>,
+struct DataSetClientMeta {
+		field_ids: Vec<timeseries_interface::FieldId>,
+    traces_meta: Vec<Trace>,
+    n_lines: usize,
+    dataset_id: timeseries_interface::DatasetId,
 }
 
 impl Actor for WsSession {
@@ -184,29 +180,6 @@ impl WsSession {
 		}
 	}
 
-	fn send_metadata(&mut self, data: &Arc<RwLock<timeseries_interface::Data>>) -> String{
-		let data = data.read().unwrap();
-		let mut client_plot_metadata: MetaForPlot = Default::default();
-		
-		for (dataset_id, field_ids) in &self.selected_data {
-			let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
-			for field_id in field_ids {
-				let field = &metadata.fields[*field_id as usize];
-
-				client_plot_metadata.lines.push( Line {
-					r#type: "scattergl".to_string(),
-					mode: "markers".to_string(),
-					name: field.name.to_owned(),
-				});
-				client_plot_metadata.id_info.push( IdInfo {
-					dataset_id: *dataset_id,
-					field_id: *field_id,
-				});
-			}
-		}
-		let json = serde_json::to_string(&client_plot_metadata).unwrap();
-		json
-	}
 
 	//TODO rethink entire data sending sys.
 	// - needs to be able to try next dataset if lock cant be aquired
@@ -242,24 +215,57 @@ impl WsSession {
 		let t_end = Utc::now();
 
 		let mut reader_infos: Vec<ReaderInfo> = Vec::with_capacity(self.selected_data.len());
+		let mut client_metadata = Vec::with_capacity(self.selected_data.len());
 		let data_handle = ctx.state().data.clone();
 		let mut data = data_handle.write().unwrap();
-		for (dataset_id, field_ids) in  &self.selected_data {
-			let dataset = data.sets.get_mut(dataset_id).unwrap();
-			let mut read_state = dataset.prepare_read(t_start,t_end, field_ids).unwrap();
 
+		for (dataset_id, field_ids) in  &self.selected_data {
+			let mut dataset_client_metadata: DataSetClientMeta = Default::default();
+			let dataset = data.sets.get_mut(dataset_id).unwrap();
+			let read_state = dataset.prepare_read(t_start,t_end, field_ids).unwrap();
+
+			//prepare for reading and calc number of bytes we will be sending
 			const PACKAGE_HEADER_SIZE: usize = 8;
+			let numb_lines = read_state.numb_lines;
 			let bytes_to_send = read_state.numb_lines*(read_state.decoded_line_size+std::mem::size_of::<f64>())+PACKAGE_HEADER_SIZE;
 			let n_packages = divide_ceil(bytes_to_send, config::MAX_BYTES_PER_PACKAGE);
-			let max_lines_per_package = config::MAX_BYTES_PER_PACKAGE/(read_state.decoded_line_size+std::mem::size_of::<f64>());
 
 			reader_infos.push(ReaderInfo {
 				dataset_id: *dataset_id,
 				n_packages,
 				read_state,
 			});
-		}
+
+			//prepare and send metadata
+			for field_id in field_ids.iter().map(|id| *id) {
+				let field = &dataset.metadata.fields[field_id as usize];
+				dataset_client_metadata.traces_meta.push( Trace {
+					r#type: "scattergl".to_string(),
+					mode: "markers".to_string(),
+					name: field.name.to_owned(),
+				});
+				dataset_client_metadata.field_ids.push(field_id);
+			}
+			dataset_client_metadata.n_lines = numb_lines;
+			dataset_client_metadata.dataset_id = *dataset_id;
+			client_metadata.push(dataset_client_metadata);
+		};
 		std::mem::drop(data);
+
+		let json = serde_json::to_string(&client_metadata).unwrap();
+		println!("{:?}", json);
+		//sample output: //TODO adjust plot.js to handle new style of sending metadata
+		// "[
+		// {
+		// \"id_info\":[{\"dataset_id\":0,\"field_id\":0},{\"dataset_id\":0,\"field_id\":1}],
+		// \"lines\":[{\"type\":\"scattergl\",\"mode\":\"markers\",\"name\":\"Temperature\"},
+		//            {\"type\":\"scattergl\",\"mode\":\"markers\",\"name\":\"Humidity\"}],
+		// \"n_lines\":3
+		//  }
+		//  ]"
+
+		ctx.text(json);
+
 
 		//spawn file io thread
 		let (tx, rx) = sync_channel(2);
@@ -268,14 +274,16 @@ impl WsSession {
 	}
 
 	fn send_data(&mut self, ctx: &mut ws::WebsocketContext<Self, WebServerData>){
-		if let Some((thread, rx)) = self.file_io_thread.take() {
+		if let Some((_thread, rx)) = self.file_io_thread.take() {
 			while let Ok(buffer) = rx.recv() {
 				if ctx.connected() {
 					ctx.binary(Binary::from(buffer ));
 				} else {
-					break;
+					return;
 				}
-			}
+			} //send message to signal we are done sending data
+			//third byte set to one signals this
+			ctx.binary(Binary::from(vec!(0u8,0,1,0)));
 		}
 	}
 }
@@ -337,8 +345,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
 						"/select_uncompressed" => self.select_data(args, false),
 
 						"/sub" => self.subscribe(&ctx.state().websocket_addr),
-						"/meta" => ctx.text(self.send_metadata(&ctx.state().data)),
-						"/data" => self.prepare_data(ctx),
+						"/meta" => self.prepare_data(ctx),
 						"/RTC" => self.send_data(ctx),//client signals ready to recieve
 
 						//for use with webassembly only

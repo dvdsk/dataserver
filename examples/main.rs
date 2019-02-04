@@ -21,6 +21,10 @@ use std::collections::HashMap;
 
 const FORCE_CERT_REGEN: bool =	false;
 
+struct ExampleState {
+	test_var: Arc<RwLock<u8>>,
+}
+
 pub fn start(signed_cert: &str, private_key: &str,
      data: Arc<RwLock<timeseries_interface::Data>>, //
      passw_db: Arc<RwLock<PasswordDatabase>>,
@@ -50,32 +54,44 @@ pub fn start(signed_cert: &str, private_key: &str,
 			  free_ws_session_ids: free_ws_session_ids.clone(),
 		  };
 
+
+		  let state2 = ExampleState {
+		  	test_var: Arc::new(RwLock::new(5)),
+		  };
+
+			vec![ //vector of different prefixes, matched from first to last
+			App::with_state(state2)
+				.prefix("/commands")
+				.resource("/", |r| r.f(|_| actix_web::HttpResponse::Ok()))
+				.boxed(),
+
 			App::with_state(state)
-      .middleware(IdentityService::new(
-        CookieIdentityPolicy::new(&cookie_key[..])
-        .domain("deviousd.duckdns.org")
-        .name("auth-cookie")
-        .path("/")
-        .secure(true),
-      ))
-			.middleware(CheckLogin)
-			// websocket route
-			// note some browsers need already existing http connection to
-			// this server for the upgrade to wss to work
-			.resource("/ws/", |r| r.method(Method::GET).f(ws_index))
-			.resource("/logout", |r| r.f(logout))
-			.resource("/", |r| r.f(index))
-			.resource(r"/newdata", |r| r.method(Method::POST).f(newdata))
-			.resource("/plot", |r| r.f(plot_data))
-			.resource(r"/list_data.html", |r| r.method(Method::GET).f(list_data))
-			//login route, every uri starting "/login" will be forwarded to the adress
-			//after "/login" once the client has been authenticated
-			.resource(r"/login/{tail:.*}", |r| {
-				r.method(Method::POST).with(login_get_and_check);
-				r.method(Method::GET).f(login_page);
-			})
-			//for all other urls we try to resolve to static files in the "web" dir
-			.resource(r"/{tail:.*}", |r| r.f(serve_file))
+		    .middleware(IdentityService::new(
+		      CookieIdentityPolicy::new(&cookie_key[..])
+		      .domain("deviousd.duckdns.org")
+		      .name("auth-cookie")
+		      .path("/")
+		      .secure(true),
+		    ))
+				.middleware(CheckLogin)
+				// websocket route
+				// note some browsers need already existing http connection to
+				// this server for the upgrade to wss to work
+				.resource("/ws/", |r| r.method(Method::GET).f(ws_index))
+				.resource("/logout", |r| r.f(logout))
+				.resource("/", |r| r.f(index))
+				.resource(r"/newdata", |r| r.method(Method::POST).f(newdata))
+				.resource("/plot", |r| r.f(plot_data))
+				.resource(r"/list_data.html", |r| r.method(Method::GET).f(list_data))
+				//login route, every uri starting "/login" will be forwarded to the adress
+				//after "/login" once the client has been authenticated
+				.resource(r"/login/{tail:.*}", |r| {
+					r.method(Method::POST).with(login_get_and_check);
+					r.method(Method::GET).f(login_page);
+				})
+				//for all other urls we try to resolve to static files in the "web" dir
+				.resource(r"/{tail:.*}", |r| r.f(serve_file))
+				.boxed(), ]
     })
     .bind_rustls("0.0.0.0:8080", tls_config).unwrap()
     //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)

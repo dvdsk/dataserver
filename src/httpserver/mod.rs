@@ -256,7 +256,6 @@ pub fn login_get_and_check(
 }
 
 pub fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
-	
 	trace!("newdata");
 	let now = Utc::now();
 	let data = req.state().data.clone();//clones pointer

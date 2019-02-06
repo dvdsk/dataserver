@@ -27,11 +27,12 @@ use std::sync::mpsc::sync_channel;
 
 use super::timeseries_interface;
 use super::websocket_data_router;
-use super::WebServerData;
+use super::DataServerState;
 use super::super::config;
+use crate::httpserver::InnerState;
 
 // store data in here, it can then be accessed using self
-pub struct WsSession {
+pub struct WsSession<'a,T: InnerState> {
 	/// unique session id
 	pub http_session_id: u16,
 	pub ws_session_id: u16,
@@ -40,6 +41,7 @@ pub struct WsSession {
 	pub selected_data: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::FieldId>>,
 	pub timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
 	pub file_io_thread: Option<(thread::JoinHandle<()>, mpsc::Receiver<Vec<u8>>)>,
+	pub phantom: std::marker::PhantomData<&'a T>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -58,9 +60,11 @@ struct DataSetClientMeta {
     dataset_id: timeseries_interface::DatasetId,
 }
 
-impl Actor for WsSession {
-	type Context = ws::WebsocketContext<Self, WebServerData>;
+impl<T: InnerState+'static> Actor for WsSession<'static,T> {
+	//type Context = ws::WebsocketContext<Self, DataServerState>;
+	type Context = ws::WebsocketContext<Self, T>;
 
+	//fn started<T: InnerState>(&mut self, ctx: &mut Self::Context) {
 	fn started(&mut self, ctx: &mut Self::Context) {
 		// register self in chat server. `AsyncContext::wait` register
 		// future within context, but context waits until this future resolves
@@ -69,7 +73,7 @@ impl Actor for WsSession {
 		// across all routes within application
 
 		let addr = ctx.address();
-		ctx.state()
+		ctx.state().inner_state()
             .websocket_addr
             .send(websocket_data_router::Connect {
                 addr: addr.recipient(),
@@ -80,15 +84,16 @@ impl Actor for WsSession {
 
 	fn stopping(&mut self, ctx: &mut Self::Context) -> Running {
 		// notify chat server
-		ctx.state()
+		ctx.state().inner_state()
 			.websocket_addr
 			.do_send(websocket_data_router::Disconnect { ws_session_id: self.ws_session_id });
 		Running::Stop
 	}
 }
 
+
 /// send messages to server if requested by dataserver
-impl Handler<websocket_data_router::NewData> for WsSession {
+impl<T: InnerState+'static> Handler<websocket_data_router::NewData> for WsSession<'static,T> {
 	type Result = ();
 
 	fn handle(&mut self, msg: websocket_data_router::NewData, ctx: &mut Self::Context) {
@@ -97,7 +102,7 @@ impl Handler<websocket_data_router::NewData> for WsSession {
 		let websocket_data_router::NewData{from_id, line, timestamp} = msg;
 
 		let fields = self.selected_data.get(&from_id).unwrap();
-		let data = ctx.state().data.read().unwrap();
+		let data = ctx.state().inner_state().data.read().unwrap();
 		//let mut data = ctx.state().data.write().unwrap();
 		let dataset = data.sets.get(&from_id).unwrap();
 		info!("creating line for fields: {:?}, for set: {}",fields, from_id);
@@ -117,7 +122,8 @@ fn divide_ceil(x: usize, y: usize) -> usize{
 	(x + y - 1) / y
 }
 
-impl WsSession {
+/*
+impl<'a,T: InnerState> WsSession<'a,T> {
 	
 	fn select_data(&mut self, args: Vec<&str>, compressed: bool){
 		if args.len() < 3 {return }
@@ -163,7 +169,7 @@ impl WsSession {
 		unimplemented!();
 	}
 
-	fn send_decode_info(&self, args: Vec<&str>, ctx: &mut ws::WebsocketContext<Self, WebServerData>) {
+	fn send_decode_info(&self, args: Vec<&str>, ctx: &mut ws::WebsocketContext<Self, T>) {
 		trace!("sending decode info to client");
 		if args.len() < 2 {warn!("can not send decode info without setid"); return; }
 		if let Ok(set_id) = args[1].parse::<timeseries_interface::DatasetId>() {
@@ -202,7 +208,7 @@ impl WsSession {
 	//    - thread handle is stored in websocket session
 	//    - no more then one thread can be started
 
-	fn prepare_data(&mut self, ctx: &mut ws::WebsocketContext<Self, WebServerData>){
+	fn prepare_data(&mut self, ctx: &mut ws::WebsocketContext<Self, T>){
 		trace!("sending data to client");
 		if self.file_io_thread.is_some() {
 			warn!("already preparing data!");
@@ -273,7 +279,7 @@ impl WsSession {
 		self.file_io_thread = Some((thread, rx));
 	}
 
-	fn send_data(&mut self, ctx: &mut ws::WebsocketContext<Self, WebServerData>){
+	fn send_data(&mut self, ctx: &mut ws::WebsocketContext<Self, T>){
 		if let Some((_thread, rx)) = self.file_io_thread.take() {
 			while let Ok(buffer) = rx.recv() {
 				if ctx.connected() {
@@ -287,7 +293,7 @@ impl WsSession {
 		}
 	}
 }
-
+*/
 struct ReaderInfo {
 	dataset_id: timeseries_interface::DatasetId,
 	n_packages: usize,
@@ -327,7 +333,7 @@ pub struct SetSliceDecodeInfo {
 }
 
 /// Handler for `ws::Message`
-impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
+impl<T: InnerState+'static> StreamHandler<ws::Message, ws::ProtocolError> for WsSession<'static,T> {
 	
 	fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
 		// process websocket messages
@@ -338,6 +344,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
 				if m.starts_with('/') {
 					let args: Vec<&str> = m.split_whitespace().collect();
 					//println!("args: {:?}",args);
+					/*
 					match args[0] {
 						//select uncompressed will case data to be send without compression
 						//it is used until webassembly is relaiable
@@ -352,16 +359,17 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
 						"/decode_info" => self.send_decode_info(args, ctx),
 
 						_ => ctx.text(format!("!!! unknown command: {:?}", m)),
-					}
+					}*/
 				}
 			} //handle other websocket commands
 			ws::Message::Ping(msg) => ctx.pong(&msg),
 			ws::Message::Binary(bin) => ctx.binary(bin),
 			ws::Message::Close(_) => {
-				ctx.state().websocket_addr.do_send(websocket_data_router::Disconnect {ws_session_id: self.ws_session_id,});
+				ctx.state().inner_state().websocket_addr.do_send(websocket_data_router::Disconnect {ws_session_id: self.ws_session_id,});
 				ctx.stop();
 			}
 			_ => (),
 		}
 	}
 }
+

@@ -11,8 +11,8 @@ use std::sync::atomic::{AtomicUsize};
 use std::thread;
 
 use dataserver::{certificate_manager, httpserver};
-use dataserver::helper;
-use dataserver::httpserver::{secure_database::PasswordDatabase, timeseries_interface, ServerHandle, DataHandle, WebServerData, CheckLogin};
+use dataserver::{helper};
+use dataserver::httpserver::{InnerState, secure_database::PasswordDatabase, timeseries_interface, ServerHandle, DataHandle, DataServerState, CheckLogin};
 use dataserver::httpserver::{ws_index, index, logout, newdata, plot_data, list_data, login_get_and_check, login_page, serve_file};
 
 use std::sync::{Arc, RwLock};
@@ -23,6 +23,13 @@ const FORCE_CERT_REGEN: bool =	false;
 
 struct ExampleState {
 	test_var: Arc<RwLock<u8>>,
+	dataserver_state: DataServerState,
+}
+
+impl InnerState for ExampleState {
+	fn inner_state(&self) -> &DataServerState {
+		&self.dataserver_state
+	}
 }
 
 pub fn start(signed_cert: &str, private_key: &str,
@@ -45,26 +52,17 @@ pub fn start(signed_cert: &str, private_key: &str,
 
 		let web_server = server::new(move || {
 			// data the webservers functions have access to
-			let state = WebServerData {
-			  passw_db: passw_db.clone(),
-			  websocket_addr: data_server_clone.clone(),
-			  data: data.clone(),
-			  sessions: sessions.clone(),
-			  free_session_ids: free_session_ids.clone(),
-			  free_ws_session_ids: free_ws_session_ids.clone(),
+			let state = ExampleState {
+				test_var: Arc::new(RwLock::new(5)),
+				dataserver_state: DataServerState {
+					passw_db: passw_db.clone(),
+					websocket_addr: data_server_clone.clone(),
+					data: data.clone(),
+					sessions: sessions.clone(),
+					free_session_ids: free_session_ids.clone(),
+					free_ws_session_ids: free_ws_session_ids.clone(),
+				},
 		  };
-
-
-		  let state2 = ExampleState {
-		  	test_var: Arc::new(RwLock::new(5)),
-		  };
-
-			vec![ //vector of different prefixes, matched from first to last
-			App::with_state(state2)
-				.prefix("/commands")
-				.resource("/", |r| r.f(|_| actix_web::HttpResponse::Ok()))
-				.boxed(),
-
 			App::with_state(state)
 		    .middleware(IdentityService::new(
 		      CookieIdentityPolicy::new(&cookie_key[..])
@@ -91,7 +89,6 @@ pub fn start(signed_cert: &str, private_key: &str,
 				})
 				//for all other urls we try to resolve to static files in the "web" dir
 				.resource(r"/{tail:.*}", |r| r.f(serve_file))
-				.boxed(), ]
     })
     .bind_rustls("0.0.0.0:8080", tls_config).unwrap()
     //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)

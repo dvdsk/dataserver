@@ -60,13 +60,25 @@ pub struct Session {//TODO deprecate
   //add more temporary user specific data as needed
 }
 
-pub struct WebServerData {
+/// standardised interface that the libs handelers use to get the application state they need
+pub trait InnerState {
+	fn inner_state(&self) -> &DataServerState;
+}
+
+pub struct DataServerState {
 	pub passw_db: Arc<RwLock<PasswordDatabase>>,
 	pub websocket_addr: Addr<websocket_data_router::DataServer>,
 	pub data: Arc<RwLock<timeseries_interface::Data>>,
 	pub sessions: Arc<RwLock<HashMap<u16,Session>>> ,
 	pub free_session_ids: Arc<AtomicUsize>,
 	pub free_ws_session_ids: Arc<AtomicUsize>,
+}
+
+//allows to use
+impl InnerState for DataServerState {
+	fn inner_state(&self) -> &Self {
+		self
+	}
 }
 
 pub fn make_random_cookie_key() -> [u8; 32] {
@@ -98,7 +110,7 @@ pub struct Logindata {
 pub type ServerHandle = self::actix::Addr<actix_net::server::Server>;
 pub type DataHandle = self::actix::Addr<websocket_data_router::DataServer>;
 
-pub fn serve_file(req: &HttpRequest<WebServerData>) -> wResult<NamedFile> {
+pub fn serve_file<T: InnerState>(req: &HttpRequest<T>) -> wResult<NamedFile> {
 	let file_name: String = req.match_info().query("tail")?;
 
 	let mut path: PathBuf = PathBuf::from("web/");
@@ -107,18 +119,18 @@ pub fn serve_file(req: &HttpRequest<WebServerData>) -> wResult<NamedFile> {
 	Ok(NamedFile::open(path)?)
 }
 
-pub fn index(req: &HttpRequest<WebServerData>) -> String {
+pub fn index<T: InnerState>(req: &HttpRequest<T>) -> String {
 	format!("Hello {}", req.identity().unwrap_or("Anonymous".to_owned()))
 }
 
-pub fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
+pub fn list_data<T: InnerState>(req: &HttpRequest<T>) -> HttpResponse {
 	let mut accessible_fields = String::from("<html><body><table>");
 	
 	let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
-	let sessions = req.state().sessions.read().unwrap();
+	let sessions = req.state().inner_state().sessions.read().unwrap();
 	let session = sessions.get(&session_id).unwrap();
 
-	let data = req.state().data.read().unwrap();
+	let data = req.state().inner_state().data.read().unwrap();
 	for (dataset_id, authorized_fields) in session.timeseries_with_access.read().unwrap().iter() {
 		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
 		let mut dataset_fields = format!("<th>{}</th>", &metadata.name);
@@ -135,16 +147,16 @@ pub fn list_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(accessible_fields)
 }
 
-pub fn plot_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
+pub fn plot_data<T: InnerState>(req: &HttpRequest<T>) -> HttpResponse {
 	let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
-	let sessions = req.state().sessions.read().unwrap();
+	let sessions = req.state().inner_state().sessions.read().unwrap();
 	let session = sessions.get(&session_id).unwrap();
 
 	let before_form =include_str!("static_webpages/plot_A.html");
 	let after_form = include_str!("static_webpages/plot_B.html");
 
 	let mut page = String::from(before_form);
-	let data = req.state().data.read().unwrap();
+	let data = req.state().inner_state().data.read().unwrap();
 	for (dataset_id, authorized_fields) in session.timeseries_with_access.read().unwrap().iter() {
 		let metadata = &data.sets.get(&dataset_id).expect("user has access to a database that does no longer exist").metadata;
 		for field_id in authorized_fields{
@@ -156,16 +168,16 @@ pub fn plot_data(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
 
-fn plot_data_debug(req: &HttpRequest<WebServerData>) -> HttpResponse {
+fn plot_data_debug<T: InnerState>(req: &HttpRequest<T>) -> HttpResponse {
 	let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
-	let sessions = req.state().sessions.read().unwrap();
+	let sessions = req.state().inner_state().sessions.read().unwrap();
 	let session = sessions.get(&session_id).unwrap();
 
 	let before_form =include_str!("static_webpages/plot_A_debug.html");
 	let after_form = include_str!("static_webpages/plot_B.html");
 
 	let mut page = String::from(before_form);
-	let data = req.state().data.read().unwrap();
+	let data = req.state().inner_state().data.read().unwrap();
 	for (dataset_id, authorized_fields) in session.timeseries_with_access.read().unwrap().iter() {
 		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
 		for field_id in authorized_fields{
@@ -177,18 +189,18 @@ fn plot_data_debug(req: &HttpRequest<WebServerData>) -> HttpResponse {
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
 
-pub fn logout(req: &HttpRequest<WebServerData>) -> HttpResponse {
+pub fn logout<T: InnerState>(req: &HttpRequest<T>) -> HttpResponse {
 	req.forget();
 	HttpResponse::Found().finish()
 }
 
 pub struct CheckLogin;
-impl middleware::Middleware<WebServerData> for CheckLogin {
+impl <T: InnerState>middleware::Middleware<T> for CheckLogin {
 	// We only need to hook into the `start` for this middleware.
-	fn start(&self, req: &HttpRequest<WebServerData>) -> wResult<middleware::Started> {
+	fn start(&self, req: &HttpRequest<T>) -> wResult<middleware::Started> {
 		if let Some(id) = req.identity() {
             //check if valid session
-            if req.state().sessions.read().unwrap().contains_key(&id.parse().unwrap()) {
+            if req.state().inner_state().sessions.read().unwrap().contains_key(&id.parse().unwrap()) {
 				return Ok(middleware::Started::Done);
 			}
 		}
@@ -210,19 +222,19 @@ impl middleware::Middleware<WebServerData> for CheckLogin {
 	}
 }
 
-pub fn login_page(_req: &HttpRequest<WebServerData>) -> HttpResponse {
+pub fn login_page<T: InnerState>(_req: &HttpRequest<T>) -> HttpResponse {
 	let page = include_str!("static_webpages/login.html");
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
 
 /// State and POST Params
-pub fn login_get_and_check(
-    (req, params): (HttpRequest<WebServerData>, Form<Logindata>),
+pub fn login_get_and_check<T: InnerState>(
+    (req, params): (HttpRequest<T>, Form<Logindata>),
 ) -> wResult<HttpResponse> {
 	
 	trace!("checking login");
     //if login valid (check passwdb) load userinfo
-    let state = req.state();
+    let state = req.state().inner_state();
     let mut passw_db = state.passw_db.write().unwrap();
     
     if passw_db.verify_password(params.u.as_str().as_bytes(), params.p.as_str().as_bytes()).is_err(){
@@ -255,11 +267,11 @@ pub fn login_get_and_check(
 	   .finish())
 }
 
-pub fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse> {
+pub fn newdata<T: InnerState+'static>(req: &HttpRequest<T>) -> FutureResponse<HttpResponse> {
 	trace!("newdata");
 	let now = Utc::now();
-	let data = req.state().data.clone();//clones pointer
-	let websocket_addr = req.state().websocket_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
+	let data = req.state().inner_state().data.clone();//clones pointer
+	let websocket_addr = req.state().inner_state().websocket_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
 	trace!("got addr");
 	req.body()
 		.from_err()
@@ -283,22 +295,23 @@ pub fn newdata(req: &HttpRequest<WebServerData>) -> FutureResponse<HttpResponse>
 }
 
 /// do websocket handshake and start `MyWebSocket` actor
-pub fn ws_index(req: &HttpRequest<WebServerData>) -> Result<HttpResponse, wError> {
+pub fn ws_index<T: InnerState+'static>(req: &HttpRequest<T>) -> Result<HttpResponse, wError> {
 	trace!("websocket connected");
 	let session_id = req.identity().unwrap().parse::<u16>().unwrap();
-	let sessions = req.state().sessions.read().unwrap();
+	let sessions = req.state().inner_state().sessions.read().unwrap();
 	let session = sessions.get(&session_id).unwrap();
 	
 	let timeseries_with_access = session.timeseries_with_access.clone();
-	let ws_session_id = req.state().free_session_ids.fetch_add(1, Ordering::Acquire);
+	let ws_session_id = req.state().inner_state().free_session_ids.fetch_add(1, Ordering::Acquire);
 	
-	ws::start(req, websocket_client_handler::WsSession { 
+	ws::start(req, websocket_client_handler::WsSession {
 		http_session_id: session_id,
 		ws_session_id: ws_session_id  as u16,
 		selected_data: HashMap::new(),
 		compression_enabled: true,
 		timeseries_with_access: timeseries_with_access,
 		file_io_thread: None,
+		phantom: std::marker::PhantomData,
 	})
 }
 

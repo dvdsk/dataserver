@@ -194,7 +194,12 @@ pub fn logout<T: InnerState>(req: &HttpRequest<T>) -> HttpResponse {
 	HttpResponse::Found().finish()
 }
 
-pub struct CheckLogin;
+#[derive(Default)]
+pub struct CheckLogin {
+	pub public_urls: Vec<String>,
+	pub public_roots: Vec<String>,
+}
+
 impl <T: InnerState>middleware::Middleware<T> for CheckLogin {
 	// We only need to hook into the `start` for this middleware.
 	fn start(&self, req: &HttpRequest<T>) -> wResult<middleware::Started> {
@@ -204,12 +209,19 @@ impl <T: InnerState>middleware::Middleware<T> for CheckLogin {
 				return Ok(middleware::Started::Done);
 			}
 		}
-		if req.path() == r"/newdata" { 
+
+		if req.path() == r"/newdata" {
 			//newdata is authenticated through other means
 			return Ok(middleware::Started::Done);
 		}
 		// Don't forward to /login if we are already on /login
 		if req.path().starts_with("/login") {
+			return Ok(middleware::Started::Done);
+		}
+		if self.public_urls.iter().any(|x| x==req.path()) {
+			return Ok(middleware::Started::Done);
+		}
+		if self.public_roots.iter().any(|x| req.path().starts_with(x)) {
 			return Ok(middleware::Started::Done);
 		}
 

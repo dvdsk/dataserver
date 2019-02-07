@@ -26,11 +26,7 @@ struct ExampleState {
 	dataserver_state: DataServerState,
 }
 
-impl InnerState for ExampleState {
-	fn inner_state(&self) -> &DataServerState {
-		&self.dataserver_state
-	}
-}
+
 
 pub fn start(signed_cert: &str, private_key: &str,
      data: Arc<RwLock<timeseries_interface::Data>>, //
@@ -71,7 +67,7 @@ pub fn start(signed_cert: &str, private_key: &str,
 		      .path("/")
 		      .secure(true),
 		    ))
-				.middleware(CheckLogin)
+				.middleware(CheckLogin{public_urls: vec!("/some/public/page"), public_url_roots: vec!("/public") })
 				// websocket route
 				// note some browsers need already existing http connection to
 				// this server for the upgrade to wss to work

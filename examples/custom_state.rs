@@ -15,18 +15,30 @@ use dataserver::{helper};
 use dataserver::httpserver::{InnerState, secure_database::PasswordDatabase, timeseries_interface, ServerHandle, DataHandle, DataServerState, CheckLogin};
 use dataserver::httpserver::{ws_index, index, logout, newdata, plot_data, list_data, login_get_and_check, login_page, serve_file};
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Mutex};
 use std::io::stdin;
 use std::collections::HashMap;
 
 const FORCE_CERT_REGEN: bool =	false;
 
 struct ExampleState {
-	test_var: Arc<RwLock<u8>>,
+	counter: Arc<Mutex<usize>>,
 	dataserver_state: DataServerState,
 }
 
+/// simple handle
+fn test_state(req: &actix_web::HttpRequest<ExampleState>) -> actix_web::HttpResponse {
+    println!("{:?}", req);
+    *(req.state().counter.lock().unwrap()) += 1;
 
+    actix_web::HttpResponse::Ok().body(format!("Num of requests: {}", req.state().counter.lock().unwrap()))
+}
+
+impl InnerState for ExampleState{
+	fn inner_state(&self) -> &DataServerState {
+		&self.dataserver_state
+	}
+}
 
 pub fn start(signed_cert: &str, private_key: &str,
      data: Arc<RwLock<timeseries_interface::Data>>, //
@@ -49,7 +61,7 @@ pub fn start(signed_cert: &str, private_key: &str,
 		let web_server = server::new(move || {
 			// data the webservers functions have access to
 			let state = ExampleState {
-				test_var: Arc::new(RwLock::new(5)),
+				counter: Arc::new(Mutex::new(0)),
 				dataserver_state: DataServerState {
 					passw_db: passw_db.clone(),
 					websocket_addr: data_server_clone.clone(),
@@ -67,10 +79,14 @@ pub fn start(signed_cert: &str, private_key: &str,
 		      .path("/")
 		      .secure(true),
 		    ))
-				.middleware(CheckLogin{public_urls: vec!("/some/public/page"), public_url_roots: vec!("/public") })
+				.middleware(CheckLogin{
+					public_roots: vec!(String::from("/commands")),
+					..CheckLogin::default()
+				})
 				// websocket route
 				// note some browsers need already existing http connection to
 				// this server for the upgrade to wss to work
+				.resource("/commands/test_state", |r| r.method(Method::GET).f(test_state))
 				.resource("/ws/", |r| r.method(Method::GET).f(ws_index))
 				.resource("/logout", |r| r.f(logout))
 				.resource("/", |r| r.f(index))

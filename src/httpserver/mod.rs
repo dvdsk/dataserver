@@ -108,7 +108,7 @@ pub struct Logindata {
 }
 
 pub type ServerHandle = self::actix::Addr<actix_net::server::Server>;
-pub type DataHandle = self::actix::Addr<websocket_data_router::DataServer>;
+pub type DataRouterHandle = self::actix::Addr<websocket_data_router::DataServer>;
 
 pub fn serve_file<T: InnerState>(req: &HttpRequest<T>) -> wResult<NamedFile> {
 	let file_name: String = req.match_info().query("tail")?;
@@ -333,7 +333,7 @@ pub fn stop(handle: ServerHandle) {
 		.timeout(Duration::from_secs(5)); // <- Send `StopServer` message to server.
 }
 
-pub fn signal_newdata(handle: DataHandle, from_id: timeseries_interface::DatasetId, line: Vec<u8>, timestamp: i64) {
+pub fn signal_newdata(handle: DataRouterHandle, from_id: timeseries_interface::DatasetId, line: Vec<u8>, timestamp: i64) {
 	handle.do_send(websocket_data_router::NewData {
 		from_id,
 		line,

@@ -12,7 +12,7 @@ use std::thread;
 
 use dataserver::{certificate_manager, httpserver};
 use dataserver::helper;
-use dataserver::httpserver::{secure_database::PasswordDatabase, timeseries_interface, ServerHandle, DataHandle, DataServerState, CheckLogin};
+use dataserver::httpserver::{secure_database::PasswordDatabase, timeseries_interface, ServerHandle, DataRouterHandle, DataServerState, CheckLogin};
 use dataserver::httpserver::{ws_index, index, logout, newdata, plot_data, list_data, login_get_and_check, login_page, serve_file};
 
 use std::sync::{Arc, RwLock};
@@ -24,7 +24,7 @@ const FORCE_CERT_REGEN: bool =	false;
 pub fn start(signed_cert: &str, private_key: &str,
      data: Arc<RwLock<timeseries_interface::Data>>, //
      passw_db: Arc<RwLock<PasswordDatabase>>,
-     sessions: Arc<RwLock<HashMap<u16, dataserver::httpserver::Session>>>) -> (DataHandle, ServerHandle) {
+     sessions: Arc<RwLock<HashMap<u16, dataserver::httpserver::Session>>>) -> (DataRouterHandle, ServerHandle) {
 
 	let tls_config = httpserver::make_tls_config(signed_cert, private_key);
 	let cookie_key = httpserver::make_random_cookie_key();

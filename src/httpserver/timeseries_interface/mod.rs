@@ -398,6 +398,27 @@ impl Data {
 			Err(io::Error::new(io::ErrorKind::InvalidData, "could not parse specification"))
 		}
 	}
+	pub fn add_specific_set(&mut self, spec: specifications::MetaDataSpec) -> io::Result<DatasetId>{
+		let metadata: MetaData = spec.into();
+		let name = metadata.name.clone();
+		let line_size: u16 = metadata.fieldsum();
+		let dataset_id = self.free_dataset_id;
+		self.free_dataset_id += 1;
+		let mut datafile_path = self.dir.clone();
+		datafile_path.push(dataset_id.to_string());
+
+		let set = DataSet {
+			timeseries: Timeseries::open(&datafile_path, line_size as usize)?,
+			metadata: metadata,
+		};
+		datafile_path.set_extension("yaml");
+		let f = fs::File::create(datafile_path).unwrap();
+		serde_yaml::to_writer(f, &set.metadata).unwrap();
+
+		self.sets.insert(dataset_id, set);
+		info!("added timeseries: {} under id: {}",name, dataset_id);
+		Ok(dataset_id)
+	}
 	pub fn remove_set(&mut self, id: DatasetId) -> io::Result<()>{
 
 		if self.sets.remove(&id).is_none(){
@@ -480,5 +501,6 @@ impl Data {
 			return Err(());
 		}
 	}
+
 }
 

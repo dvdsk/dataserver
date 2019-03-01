@@ -333,7 +333,7 @@ pub fn stop(handle: ServerHandle) {
 		.timeout(Duration::from_secs(5)); // <- Send `StopServer` message to server.
 }
 
-pub fn signal_newdata(handle: DataRouterHandle, from_id: timeseries_interface::DatasetId, line: Vec<u8>, timestamp: i64) {
+pub fn signal_newdata(handle: &DataRouterHandle, from_id: timeseries_interface::DatasetId, line: Vec<u8>, timestamp: i64) {
 	handle.do_send(websocket_data_router::NewData {
 		from_id,
 		line,

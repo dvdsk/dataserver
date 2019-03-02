@@ -122,8 +122,8 @@ fn divide_ceil(x: usize, y: usize) -> usize{
 	(x + y - 1) / y
 }
 
-/*
-impl<'a,T: InnerState> WsSession<'a,T> {
+
+impl<T: InnerState+'static> WsSession<'static,T> {
 	
 	fn select_data(&mut self, args: Vec<&str>, compressed: bool){
 		if args.len() < 3 {return }
@@ -174,7 +174,7 @@ impl<'a,T: InnerState> WsSession<'a,T> {
 		if args.len() < 2 {warn!("can not send decode info without setid"); return; }
 		if let Ok(set_id) = args[1].parse::<timeseries_interface::DatasetId>() {
 			if let Some(fields) = self.selected_data.get(&set_id){
-				let data = ctx.state().data.read().unwrap();
+				let data = ctx.state().inner_state().data.read().unwrap();
 				let dataset = data.sets.get(&set_id).unwrap();
 				let decode_info = dataset.get_decode_info(fields);
 				std::mem::drop(data);
@@ -185,7 +185,6 @@ impl<'a,T: InnerState> WsSession<'a,T> {
 			}
 		}
 	}
-
 
 	//TODO rethink entire data sending sys.
 	// - needs to be able to try next dataset if lock cant be aquired
@@ -222,7 +221,7 @@ impl<'a,T: InnerState> WsSession<'a,T> {
 
 		let mut reader_infos: Vec<ReaderInfo> = Vec::with_capacity(self.selected_data.len());
 		let mut client_metadata = Vec::with_capacity(self.selected_data.len());
-		let data_handle = ctx.state().data.clone();
+		let data_handle = ctx.state().inner_state().data.clone();
 		let mut data = data_handle.write().unwrap();
 
 		for (dataset_id, field_ids) in  &self.selected_data {
@@ -293,7 +292,7 @@ impl<'a,T: InnerState> WsSession<'a,T> {
 		}
 	}
 }
-*/
+
 struct ReaderInfo {
 	dataset_id: timeseries_interface::DatasetId,
 	n_packages: usize,
@@ -343,15 +342,15 @@ impl<T: InnerState+'static> StreamHandler<ws::Message, ws::ProtocolError> for Ws
 				let m = text.trim();
 				if m.starts_with('/') {
 					let args: Vec<&str> = m.split_whitespace().collect();
-					//println!("args: {:?}",args);
-					/*
+					println!("args: {:?}",args);
+
 					match args[0] {
 						//select uncompressed will case data to be send without compression
 						//it is used until webassembly is relaiable
 						"/select" => self.select_data(args, true),
 						"/select_uncompressed" => self.select_data(args, false),
 
-						"/sub" => self.subscribe(&ctx.state().websocket_addr),
+						"/sub" => self.subscribe(&ctx.state().inner_state().websocket_addr),
 						"/meta" => self.prepare_data(ctx),
 						"/RTC" => self.send_data(ctx),//client signals ready to recieve
 
@@ -359,7 +358,7 @@ impl<T: InnerState+'static> StreamHandler<ws::Message, ws::ProtocolError> for Ws
 						"/decode_info" => self.send_decode_info(args, ctx),
 
 						_ => ctx.text(format!("!!! unknown command: {:?}", m)),
-					}*/
+					}
 				}
 			} //handle other websocket commands
 			ws::Message::Ping(msg) => ctx.pong(&msg),

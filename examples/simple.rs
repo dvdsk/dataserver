@@ -77,7 +77,7 @@ pub fn start(signed_cert: &str, private_key: &str,
 				//for all other urls we try to resolve to static files in the "web" dir
 				.resource(r"/{tail:.*}", |r| r.f(serve_file))
     })
-    .bind_rustls("0.0.0.0:8080", tls_config).unwrap()
+    .bind_rustls("0.0.0.0:8070", tls_config).unwrap()
     //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
     .shutdown_timeout(5)    // shut down 5 seconds after getting the signal to shut down
     .start();

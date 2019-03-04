@@ -2,7 +2,7 @@ extern crate ring;
 extern crate chrono;
 extern crate bincode;
 
-use crate::timeseries_interface;
+use crate::httpserver::timeseries_interface;
 
 use self::bincode::{deserialize_from,serialize_into};
 
@@ -169,27 +169,3 @@ impl PasswordDatabase {
 		}
 	}
 }
-		
-//fn main() {
-//    // Normally these parameters would be loaded from a configuration file.
-//    let mut db = PasswordDatabase {
-//        pbkdf2_iterations: 100_000,
-//        db_salt_component: [
-//            // This value was generated from a secure PRNG.
-//            0xd6, 0x26, 0x98, 0xda, 0xf4, 0xdc, 0x50, 0x52,
-//            0x24, 0xf2, 0x27, 0xd1, 0xfe, 0x39, 0x01, 0x8a
-//        ],
-//        storage: HashMap::new(),
-//    };
-
-//    db.store_password("alice", "@74d7]404j|W}6u");
-
-//    // An attempt to log in with the wrong password fails.
-//    assert!(db.verify_password("alice", "wrong password").is_err());
-
-//    // Normally there should be an expoentially-increasing delay between
-//    // attempts to further protect against online attacks.
-
-//    // An attempt to log in with the right password succeeds.
-//    assert!(db.verify_password("alice", "@74d7]404j|W}6u").is_ok());
-//}

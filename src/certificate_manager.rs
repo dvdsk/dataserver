@@ -140,8 +140,11 @@ fn index(req: &HttpRequest) -> wResult<fs::NamedFile> {
 	let mut full_path = PathBuf::from(".tmp/www/.well-known/acme-challenge/");
 	let path: PathBuf = req.match_info().query("tail")?;
 	full_path.push(&path);
-
 	Ok(fs::NamedFile::open(full_path)?)
+}
+
+fn print(_req: &HttpRequest) -> &'static str {
+    "Hello world!"
 }
 
 type ServerHandle = self::actix::Addr<actix_net::server::Server>;
@@ -155,6 +158,7 @@ pub fn host_server() -> Result<ServerHandle, ()> {
 			let sys = actix::System::new("http-server");
 			let addr = server::new(|| App::new()
 			//handle only requests for certificate challanges
+			.resource("/", |r| r.f(print))
 			.resource(r"/.well-known/acme-challenge/{tail:.*}", |r| r.method(http::Method::GET).f(index))
 			)
 			.bind(&socket).expect(&format!("Can not bind to {}",socket))
@@ -191,12 +195,16 @@ fn make_domain_list(domain: &str) -> (String, String) {
 	}
 }
 
-pub fn generate_and_sign_keys(
+pub fn generate_and_sign_keys<T: AsRef<Path>>(
 	domain: &str,
-	signed_cert: &Path,
-	private_key: &Path,
-	user_private_key: &Path,
+	signed_cert: T,
+	private_key: T,
+	user_private_key: T,
 ) -> Result<(), aError> {
+	let signed_cert = signed_cert.as_ref();
+	let private_key =	private_key.as_ref();
+	let user_private_key =	user_private_key.as_ref();
+
 	let (a, b) = make_domain_list(domain);
 	let domains = [a.as_str(), b.as_str()];
 	let directory = Directory::lets_encrypt().unwrap();
@@ -216,11 +224,19 @@ pub fn generate_and_sign_keys(
 	};
 
 	// Create a identifier authorization for example.com
-	// TODO add www. domain, and strip domain of www if it already has
-	// also print domains for which certs are being requested
 	create_dir(".tmp/www");
 	//host server with key saved above
 	let server = host_server().expect("needs to be ran as root");
+
+	//enable to halt signing process and check if signing request server is reachable
+	// loop {
+	// 	let mut input = String::new();
+	// 	std::io::stdin().read_line(&mut input).unwrap();
+	// 	match input.as_str() {
+	// 		"q\n" => break,
+	// 		_ => println!("unhandled"),
+	// 	};
+	// }
 
 	for domain in domains.iter() {
 		let authorization = account.authorization(domain).unwrap();

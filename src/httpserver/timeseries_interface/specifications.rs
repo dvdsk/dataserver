@@ -10,26 +10,26 @@ use super::super::{rand, rand::{FromEntropy, Rng}};
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct FieldLength {
-	name: String,
-	min_value: f32,
-	max_value: f32,
-	numb_of_bits: u8, //bits (max 32 bit variables)
+	pub name: String,
+	pub min_value: f32,
+	pub max_value: f32,
+	pub numb_of_bits: u8, //bits (max 32 bit variables)
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct FieldSigDigits {
-	name: String,
-	min_value: f32,
-	max_value: f32,
-	number_of_digits: u32,
+	pub name: String,
+	pub min_value: f32,
+	pub max_value: f32,
+	pub number_of_digits: u32,
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct FieldManual {
-	name: String,
-    length: u8,
-    decode_scale: f32,
-    decode_add: f32,
+	pub name: String,
+  pub length: u8,
+  pub decode_scale: f32,
+  pub decode_add: f32,
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]

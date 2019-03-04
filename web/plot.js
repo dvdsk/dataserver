@@ -79,9 +79,13 @@ function gotMeta(evt){
   console.log(sets_meta);
 
   //for every dataset
-  for (var set_idx=0; set_idx < sets_meta.length; set_idx+=1){
-    ({field_ids, traces_meta, numb_of_lines, set_id} = sets_meta[set_idx]);
+  for (var i=0; i < sets_meta.length; i+=1){
+    ({field_ids, traces_meta, n_lines, dataset_id} = sets_meta[i]);
 
+    console.log("sets_meta");
+    console.log(sets_meta[i]);
+
+    var old_len = lines.length;
     var field_list = [];
     //append all the metadata to the lines
     console.log("lines before");
@@ -93,19 +97,23 @@ function gotMeta(evt){
     console.log(lines);
 
     //create an x-array for all a dataset
-    var shared_x = new Float64Array(numb_of_lines);
-    var len = lines.length;
+    var shared_x = new Float64Array(n_lines);
     for (var i= 0; i<field_ids.length; i++) {
-      //for each line/field/y-value link the x-array and allocate a y-array
-      field_list.push({field_id: field_ids[i], trace_numb: len+i});
-      lines[len+i].x = shared_x;
-      lines[len+i].y = new Float32Array(numb_of_lines);
+      //for each new line/field/y-value link the x-array and allocate a y-array
+      field_list.push({field_id: field_ids[i], trace_numb: old_len+i});
+      lines[old_len+i].x = shared_x;
+      lines[old_len+i].y = new Float32Array(n_lines);
     }
+    console.log("n_lines");
+    console.log(n_lines);
+
     console.log("lines allocated");
     console.log(lines);
-    debugger;
-    id_map.set(set_id, field_list);
-    //console.log(set_id);
+
+    //debugger;
+    id_map.set(dataset_id, field_list);
+    console.log("inserting field list with set_id: ");
+    console.log(dataset_id);
     //console.log(id_map);
   }
   console.log("gotMeta");
@@ -128,6 +136,8 @@ function setTimestamps(data, numb_of_elements, fields_to_lines, pos){
   console.log(fields_to_lines);
   console.log("lines");
   console.log(lines);
+  console.log("trace_numb");
+  console.log(trace_numb);
   // Copy the new timestamps into the array starting at index pos
   //console.log(lines);
   lines[trace_numb].x = lines[trace_numb].x.set(timestamps, pos);
@@ -154,7 +164,7 @@ function gotDataChunk(evt){ //FIXME only works for one dataset
   var data = new DataView(evt.data);
   //check for server signal that all data has been recieved, or an error has
   //occured
-  if (data.getInt16(3, true) == 1) {
+  if (data.getInt16(2, true) == 1) { //check if this was the last package
     //console.log("got last data chunk, creating plot");
     Plotly.newPlot("plot", lines, layout, {responsive: true});
     websocket.onmessage = function(evt) { gotUpdate(evt) };
@@ -165,6 +175,13 @@ function gotDataChunk(evt){ //FIXME only works for one dataset
   var chunknumb = data.getInt16(0, true);
   var setid = data.getInt16(2, true);
   var fields_to_lines = id_map.get(setid);
+  console.log("fields_to_lines:");
+  console.log(fields_to_lines);
+  console.log("id_map:");
+  console.log(id_map);
+  console.log("setid:");
+  console.log(setid);
+
   var numb_of_elements = (evt.data.byteLength-8)/(4*(fields_to_lines.length)+8);
   console.log("numb_of_elements");
   console.log(numb_of_elements);

@@ -40,6 +40,30 @@ pub fn add_user(passw_db: & Arc<RwLock<PasswordDatabase>>){
 	passw_db.store_user(username.as_str().as_bytes(), password.as_str().as_bytes(), user_data);
 }
 
+pub fn add_fields_to_user(passw_db: & Arc<RwLock<PasswordDatabase>>){
+	use timeseries_interface::{DatasetId, FieldId};
+
+	println!("enter username:");
+	let username: String = read!("{}\n");
+
+	println!("enter dataset id:");
+	let dataset_id: DatasetId = read!("{}\n");
+
+	println!("enter space seperated list of field ids:");
+	let fields: String = read!("{}\n");//TODO parse to fields vector
+	let fields: Result<Vec<_>, _> = fields.split_whitespace().map(|x| x.parse::<FieldId>() ).collect();
+	match fields {
+		Ok(fields) => {
+			let mut passw_db = passw_db.write().unwrap();
+			let userdata = passw_db.get_userdata(username).clone();
+			passw_db.add_owner_from_field_id(dataset_id, &fields, userdata);
+		}
+		Err(error) => {
+			println!("error parsing fields");
+		}
+	}
+}
+
 pub fn add_dataset(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<timeseries_interface::Data>>){
 
 	if !Path::new("specs/template.yaml").exists() {

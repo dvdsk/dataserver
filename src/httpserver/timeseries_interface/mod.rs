@@ -450,6 +450,13 @@ impl PasswordDatabase {
 		let username = userinfo.username.clone();
 		self.set_userdata(username.as_str().as_bytes(), userinfo );
 	}
+	pub fn add_owner_from_field_id(&mut self, id: DatasetId, fields: &Vec<FieldId>, mut userinfo: UserInfo){
+		let auth_fields: Vec<Authorisation> = fields.into_iter().map(|fieldid| Authorisation::Owner(*fieldid)).collect();
+		userinfo.timeseries_with_access.insert(id, auth_fields);
+
+		let username = userinfo.username.clone();
+		self.set_userdata(username.as_str().as_bytes(), userinfo );
+	}
 	// pub fn remove_owner(&mut self, id: DatasetId, &mut userinfo: UserInfo){
 	// 	userinfo.timeseries_with_access.remove(&id);
 

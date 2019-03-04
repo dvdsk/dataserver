@@ -113,7 +113,7 @@ fn main() {
 
 	let (_data_handle, web_handle) =
 	start("keys/cert.key", "keys/cert.cert", data.clone(), passw_db.clone(), sessions.clone());
-	println!("press: t to send test data, n: to add a new user, q to quit, a to add new dataset");
+	println!("press: t to send test data, n: to add a new user, q to quit, a to add new dataset, u to add fields to a user");
 	loop {
 		let mut input = String::new();
 		stdin().read_line(&mut input).unwrap();
@@ -122,6 +122,7 @@ fn main() {
 			//"x\n" => httpserver::signal_newdata(data_handle.clone(),0),
 			"n\n" => helper::add_user(& passw_db),
 			"a\n" => helper::add_dataset(&passw_db, &data),
+			"u\n" => helper::add_fields_to_user(&passw_db),
 			"q\n" => break,
 			_ => println!("unhandled"),
 		};

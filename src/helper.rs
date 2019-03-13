@@ -104,7 +104,7 @@ pub fn remove_dataset(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwL
 	}
 }
 
-pub fn send_test_data(data: Arc<RwLock<timeseries_interface::Data>>){
+pub fn send_test_data(data: Arc<RwLock<timeseries_interface::Data>>, port: u16){
 	let node_id = 0;
 	let client = reqwest::Client::builder()
 	.danger_accept_invalid_certs(true)
@@ -131,7 +131,7 @@ pub fn send_test_data(data: Arc<RwLock<timeseries_interface::Data>>){
 	println!("datastring: {:?}",data_string);
 	std::mem::drop(datasets);//unlock rwlock
 	let _ = client
-		.post("https://www.deviousd.duckdns.org:8080/newdata")
+		.post(&format!("{}{}{}","https://www.deviousd.duckdns.org:",port,"/newdata"))
 		.body(data_string)
 		.send()
 		.unwrap();

@@ -38,7 +38,7 @@ function onOpen(evt){
   //parse the form
   //TODO change plot button to "update"
   var selected = document.forms["choose lines"];
-  for (var i = 0; i < selected.length; i++) {
+  for (var i = 0; i < selected.length; i++) {//TODO selected.for ... of ... (look up)
     if (selected[i].checked === true) {
       var input = selected[i].value;
       let [set_id_str, field_id] = input.split(",");

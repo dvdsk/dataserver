@@ -266,6 +266,11 @@ impl DataSet {
 			for line in state.line_data.chunks(self.timeseries.line_size) {
 				for field in &state.fields {
 					let decoded: f32 = field.decode::<f32>(&line);
+					dbg!(decoded);
+
+					use crate::httpserver::timeseries_interface::compression::decode;
+					println!("decoded: {}", decode(&line, field.offset, field.length));
+
 					buffer.write_f32::<LittleEndian>(decoded).unwrap();
 				}
 			}
@@ -502,6 +507,9 @@ impl Data {
 				warn!("error on data append: {:?}",error);
 				return Err(());
 			}
+			use crate::httpserver::timeseries_interface::compression::decode;
+			dbg!(decode(&data_string[10..], 0, 10));
+
 			return Ok((dataset_id, data_string.split_off(10).to_vec() ))
 		} else {
 			warn!("could not find dataset with id: {}", dataset_id);

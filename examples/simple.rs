@@ -118,7 +118,7 @@ fn main() {
 		let mut input = String::new();
 		stdin().read_line(&mut input).unwrap();
 		match input.as_str() {
-			"t\n" => helper::send_test_data(data.clone()),
+			"t\n" => helper::send_test_data(data.clone(), 8070),
 			//"x\n" => httpserver::signal_newdata(data_handle.clone(),0),
 			"n\n" => helper::add_user(& passw_db),
 			"a\n" => helper::add_dataset(&passw_db, &data),

@@ -227,33 +227,33 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 		for (dataset_id, field_ids) in  &self.selected_data {
 			let mut dataset_client_metadata: DataSetClientMeta = Default::default();
 			let dataset = data.sets.get_mut(dataset_id).unwrap();
-			let read_state = dataset.prepare_read(t_start,t_end, field_ids).unwrap();
+			if let Some(read_state) = dataset.prepare_read(t_start,t_end, field_ids) {
+				//prepare for reading and calc number of bytes we will be sending
+				const PACKAGE_HEADER_SIZE: usize = 8;
+				let numb_lines = read_state.numb_lines;
+				let bytes_to_send = read_state.numb_lines*(read_state.decoded_line_size+std::mem::size_of::<f64>())+PACKAGE_HEADER_SIZE;
+				let n_packages = divide_ceil(bytes_to_send, config::MAX_BYTES_PER_PACKAGE);
 
-			//prepare for reading and calc number of bytes we will be sending
-			const PACKAGE_HEADER_SIZE: usize = 8;
-			let numb_lines = read_state.numb_lines;
-			let bytes_to_send = read_state.numb_lines*(read_state.decoded_line_size+std::mem::size_of::<f64>())+PACKAGE_HEADER_SIZE;
-			let n_packages = divide_ceil(bytes_to_send, config::MAX_BYTES_PER_PACKAGE);
-
-			reader_infos.push(ReaderInfo {
-				dataset_id: *dataset_id,
-				n_packages,
-				read_state,
-			});
-
-			//prepare and send metadata
-			for field_id in field_ids.iter().map(|id| *id) {
-				let field = &dataset.metadata.fields[field_id as usize];
-				dataset_client_metadata.traces_meta.push( Trace {
-					r#type: "scattergl".to_string(),
-					mode: "markers".to_string(),
-					name: field.name.to_owned(),
+				reader_infos.push(ReaderInfo {
+					dataset_id: *dataset_id,
+					n_packages,
+					read_state,
 				});
-				dataset_client_metadata.field_ids.push(field_id);
-			}
-			dataset_client_metadata.n_lines = numb_lines;
-			dataset_client_metadata.dataset_id = *dataset_id;
-			client_metadata.push(dataset_client_metadata);
+
+				//prepare and send metadata
+				for field_id in field_ids.iter().map(|id| *id) {
+					let field = &dataset.metadata.fields[field_id as usize];
+					dataset_client_metadata.traces_meta.push( Trace {
+						r#type: "scattergl".to_string(),
+						mode: "markers".to_string(),
+						name: field.name.to_owned(),
+					});
+					dataset_client_metadata.field_ids.push(field_id);
+				}
+				dataset_client_metadata.n_lines = numb_lines;
+				dataset_client_metadata.dataset_id = *dataset_id;
+				client_metadata.push(dataset_client_metadata);
+			} else { warn!("no data to send to client"); }
 		};
 		std::mem::drop(data);
 

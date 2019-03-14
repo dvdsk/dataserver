@@ -135,9 +135,9 @@ function setTimestamps(data, numb_of_elements, fields_to_lines, pos){
   //console.log("lines"); console.log(lines);
   //console.log("trace_numb"); console.log(trace_numb);
   // Copy the new timestamps into the array starting at index pos
-  console.log("timestamps"); console.log(timestamps);
+  //console.log("timestamps"); console.log(timestamps);
   lines[trace_numb].x.set(timestamps, pos);
-  console.log("lines"); console.log(lines);
+  //console.log("lines"); console.log(lines);
 }
 
 function setData(data, numb_of_elements, fields_to_lines, pos){
@@ -219,12 +219,15 @@ function gotUpdate(evt){
   //console.log(setid);
   //console.log(id_map);
   var len = fields_to_lines.length;
-  for (var i=0; i < len; i++) {
+  for (var i=0; i < len; i++) {// for all traces make an update
     var trace_numb = fields_to_lines[i].trace_numb;
     updated_traces.push(trace_numb);
-    x_update.push([new Date(timestamp*1000)]);
-    y_update.push([data.getFloat32(4*i+10, true)]);
+    x_update.push(new Float64Array([timestamp*1000]));
+    y_update.push(new Float32Array([data.getFloat32(4*i+10, true)]));
   }
+  console.log(x_update);
+  console.log(y_update);
+  console.log(lines);
   Plotly.extendTraces("plot", {x: x_update, y: y_update}, updated_traces);
 
   writeToScreen("Got Update");

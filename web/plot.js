@@ -76,25 +76,25 @@ function gotMeta(evt){
 
   var id_info;
   var sets_meta = JSON.parse(evt.data);//add package info (total data size, package size)
-  console.log(sets_meta);
+  //console.log(sets_meta);
 
   //for every dataset
   for (var i=0; i < sets_meta.length; i+=1){
     ({field_ids, traces_meta, n_lines, dataset_id} = sets_meta[i]);
 
-    console.log("sets_meta");
-    console.log(sets_meta[i]);
+    //console.log("sets_meta");
+    //console.log(sets_meta[i]);
 
     var old_len = lines.length;
     var field_list = [];
     //append all the metadata to the lines
-    console.log("lines before");
-    console.log(lines);
-    console.log("traces_meta");
-    console.log(traces_meta);
+    //console.log("lines before");
+    //console.log(lines);
+    //console.log("traces_meta");
+    //console.log(traces_meta);
     lines = lines.concat(traces_meta);
-    console.log("lines");
-    console.log(lines);
+    //console.log("lines");
+    //console.log(lines);
 
     //create an x-array for all a dataset
     var shared_x = new Float64Array(n_lines);
@@ -104,19 +104,19 @@ function gotMeta(evt){
       lines[old_len+i].x = shared_x;
       lines[old_len+i].y = new Float32Array(n_lines);
     }
-    console.log("n_lines");
-    console.log(n_lines);
+    //console.log("n_lines");
+    //console.log(n_lines);
 
-    console.log("lines allocated");
-    console.log(lines);
+    //console.log("lines allocated");
+    //console.log(lines);
 
     //debugger;
     id_map.set(dataset_id, [field_list, 0]);
-    console.log("inserting field list with set_id: ");
-    console.log(dataset_id);
+    //console.log("inserting field list with set_id: ");
+    //console.log(dataset_id);
     //console.log(id_map);
   }
-  console.log("gotMeta");
+  //console.log("gotMeta");
   websocket.onmessage = function(evt) { gotDataChunk(evt) };
   doSend("/RTC");
 }
@@ -130,37 +130,36 @@ function setTimestamps(data, numb_of_elements, fields_to_lines, pos){
   //no need to set for all x-axises as they are linked
   //memcpy equivalent of memcpy(trace+pos, timestamps, len(timestamps));
   trace_numb = fields_to_lines[0].trace_numb;
-  console.log("fields to lines[0]"); console.log(fields_to_lines[0]);
-  console.log("fields to lines"); console.log(fields_to_lines);
-  console.log("lines"); console.log(lines);
-  console.log("trace_numb"); console.log(trace_numb);
+  //console.log("fields to lines[0]"); console.log(fields_to_lines[0]);
+  //console.log("fields to lines"); console.log(fields_to_lines);
+  //console.log("lines"); console.log(lines);
+  //console.log("trace_numb"); console.log(trace_numb);
   // Copy the new timestamps into the array starting at index pos
-  //console.log(lines);
-  lines[trace_numb].x = lines[trace_numb].x.set(timestamps, pos);
-  //console.log("timestamps");
-  //console.log(timestamps);
+  console.log("timestamps"); console.log(timestamps);
+  lines[trace_numb].x.set(timestamps, pos);
+  console.log("lines"); console.log(lines);
 }
 
 function setData(data, numb_of_elements, fields_to_lines, pos){
   var nTraces_in_set = fields_to_lines.length;
   var data = new Float32Array(data, 8+numb_of_elements*8, numb_of_elements);
-  console.log("data:"); console.log(data);
-  console.log("pos"); console.log(pos);
+  //console.log("data:"); console.log(data);
+  //console.log("pos"); console.log(pos);
 
   for (var i=0; i < numb_of_elements; i+=1){
     for (var j=0; j < nTraces_in_set; j++){
       var trace_numb = fields_to_lines[j].trace_numb;
       lines[trace_numb].y[pos+i] = data[i+j];
-      console.log("trace_numb"); console.log(trace_numb);
-      console.log("pos+i"); console.log(pos+i);
+      //console.log("trace_numb"); console.log(trace_numb);
+      //console.log("pos+i"); console.log(pos+i);
     }
   }
 }
 
 //allocate data for all chunks
 function gotDataChunk(evt){ //FIXME only works for one dataset
-  console.log("evt");
-  console.log(evt);
+  //console.log("evt");
+  //console.log(evt);
 
   var data = new DataView(evt.data);
   //check for server signal that all data has been recieved, or an error has
@@ -176,14 +175,14 @@ function gotDataChunk(evt){ //FIXME only works for one dataset
   var chunknumb = data.getInt16(0, true);
   var setid = data.getInt16(2, true);
   var [fields_to_lines, pos] = id_map.get(setid);
-  console.log("fields_to_lines:"); console.log(fields_to_lines);
-  console.log("id_map:"); console.log(id_map);
-  console.log("setid:"); console.log(setid);
+  //console.log("fields_to_lines:"); console.log(fields_to_lines);
+  //console.log("id_map:"); console.log(id_map);
+  //console.log("setid:"); console.log(setid);
 
   var numb_of_elements = (evt.data.byteLength-8)/(4*(fields_to_lines.length)+8);
-  console.log("numb_of_elements"); console.log(numb_of_elements);
-  console.log("evt.data"); console.log(evt.data);
-  console.log(fields_to_lines.length);
+  //console.log("numb_of_elements"); console.log(numb_of_elements);
+  //console.log("evt.data"); console.log(evt.data);
+  //console.log(fields_to_lines.length);
 
   //FIXME NEEDS TO MOVE TO META DATA, NO TIME TO PRE ALLOC CURRENTLY
   //next package arrives and is handled before this is done
@@ -193,15 +192,15 @@ function gotDataChunk(evt){ //FIXME only works for one dataset
   //--determine pos not from last (vector/write style) but chunknumber and known chunk sizes
   //--add check if allocation is finished before continueing (use global bool flag for this)
 
-  console.log("numb_of_elements"); console.log(numb_of_elements);
-  console.log("package_size"); console.log(package_size);
+  //console.log("numb_of_elements"); console.log(numb_of_elements);
+  //console.log("package_size"); console.log(package_size);
 
   //console.log(numb_of_elements);
   setTimestamps(evt.data, numb_of_elements, fields_to_lines, pos);
   setData(evt.data, numb_of_elements, fields_to_lines, pos);
   pos += numb_of_elements;
 
-  console.log("lines"); console.log(lines);
+  //console.log("lines"); console.log(lines);
 }
 
 function gotUpdate(evt){

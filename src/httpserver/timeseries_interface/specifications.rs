@@ -35,7 +35,7 @@ pub struct FieldManual {
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub enum FieldSpec{
 	BitLength(FieldLength),
-	SigDigits(FieldResolution),
+	Resolution(FieldResolution),
 	Manual(FieldManual),
 }
 
@@ -63,7 +63,7 @@ impl Into<MetaData> for MetaDataSpec {
 					let decode_add = field.min_value;
 					(decode_scale, length, name, decode_add)
 				}
-				FieldSpec::SigDigits(field) => {
+				FieldSpec::Resolution(field) => {
 					let given_range = field.max_value - field.min_value;
 					let needed_range = given_range as f32 /field.resolution as f32;
 					let length = needed_range.log2().ceil() as u8;
@@ -109,7 +109,7 @@ pub fn write_template() -> io::Result<()> {
 		max_value: 10f32,
 		numb_of_bits: 10u8, //bits (max 32 bit variables)
 	});
-	let template_field_2 = FieldSpec::SigDigits( FieldResolution {
+	let template_field_2 = FieldSpec::Resolution( FieldResolution {
 		name: String::from("template field name2"),
 		min_value: 0f32,
 		max_value: 100f32,

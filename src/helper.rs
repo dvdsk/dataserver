@@ -11,9 +11,11 @@ use std::path::{Path};
 use std::sync::{Arc, RwLock};
 use std::io::{stdin, stdout, Read, Write};
 use std::collections::HashMap;
+use std::thread;
 
 use crate::byteorder::{NativeEndian, WriteBytesExt};
 use crate::httpserver::timeseries_interface::compression::encode;
+use crate::httpserver::DataRouterHandle;
 
 pub fn pause() {
 	let mut stdout = stdout();
@@ -104,7 +106,8 @@ pub fn remove_dataset(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwL
 	}
 }
 
-pub fn send_test_data(data: Arc<RwLock<timeseries_interface::Data>>, port: u16){
+/// Note the test value will be shifted on decoding.
+pub fn send_test_data_over_http(data: Arc<RwLock<timeseries_interface::Data>>, port: u16){
 	let node_id = 0;
 	let client = reqwest::Client::builder()
 	.danger_accept_invalid_certs(true)
@@ -120,11 +123,13 @@ pub fn send_test_data(data: Arc<RwLock<timeseries_interface::Data>>, port: u16){
 	data_string.write_u16::<NativeEndian>(node_id).unwrap();
 	data_string.write_u64::<NativeEndian>(key).unwrap();
 
-	let test_value = 10;
+	let test_value = 120;
 	for _ in 0..metadata.fieldsum(){ data_string.push(0); }
 	for field in &metadata.fields {
 		println!("offset: {}, length: {}, {}, {}",field.offset, field.length, field.decode_scale, field.decode_add);
 		encode(test_value, &mut data_string[10..], field.offset, field.length);
+		dbg!(field.offset);
+		dbg!(field.length);
 		use crate::httpserver::timeseries_interface::compression::decode;
 		println!("decoded: {}", decode(&data_string[10..], field.offset, field.length));
 	}
@@ -136,6 +141,34 @@ pub fn send_test_data(data: Arc<RwLock<timeseries_interface::Data>>, port: u16){
 		.send()
 		.unwrap();
 }
+
+pub fn signal_and_append_test_data(dataset_handle: Arc<RwLock<timeseries_interface::Data>>,
+                                   data_router_handle: &DataRouterHandle){
+	const LOCAL_SENSING_ID: u16 = 0;
+	//load the requird dataset
+	let data = dataset_handle.read().unwrap();
+	let dataset = data.sets.get(&LOCAL_SENSING_ID).expect("dataset for local sensors is missing");
+	let fields = dataset.metadata.fields.clone();
+	drop(data);
+
+	let mut line: Vec<u8> = vec!(0;64);
+	//get all measurements
+	let (humidity, temperature, pressure) = (10.,20.,30.);
+	let now = Utc::now();
+
+	//encode all data
+	//dbg!(fields);
+	fields[0].encode::<f32>(humidity, &mut line);
+	//fields[1].encode::<f32>(temperature, &mut line);
+	//fields[2].encode::<f32>(pressure, &mut line);
+
+	//store data and send to active web_clients
+	crate::httpserver::signal_newdata(&data_router_handle, LOCAL_SENSING_ID, line.clone(), now.timestamp() );
+	let mut data = dataset_handle.write().unwrap();
+	let set = data.sets.get_mut(&LOCAL_SENSING_ID).unwrap();
+	set.timeseries.append(now, &line).unwrap();
+}
+
 
 pub fn setup_logging(verbosity: u8) -> Result<(), fern::InitError> {
 	let mut base_config = fern::Dispatch::new();
@@ -174,7 +207,11 @@ pub fn setup_logging(verbosity: u8) -> Result<(), fern::InitError> {
 			// verbose to include in end-user output. If we don't need them,
 			// let's not include them.
 			base_config.level(log::LevelFilter::Trace),
-
+		4 =>
+			// Let's say we depend on something which whose "info" level messages are too
+			// verbose to include in end-user output. If we don't need them,
+			// let's not include them.
+			base_config.level(log::LevelFilter::Error),
 		_3_or_more => base_config.level(log::LevelFilter::Warn),
 	};
 

@@ -320,6 +320,7 @@ pub fn ws_index<T: InnerState+'static>(req: &HttpRequest<T>) -> Result<HttpRespo
 		http_session_id: session_id,
 		ws_session_id: ws_session_id  as u16,
 		selected_data: HashMap::new(),
+		timerange: websocket_client_handler::TimesRange::default(),
 		compression_enabled: true,
 		timeseries_with_access: timeseries_with_access,
 		file_io_thread: None,

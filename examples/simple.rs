@@ -105,21 +105,22 @@ fn main() {
 		}
 	}
 
-	helper::setup_logging(2).expect("could not set up debugging");
+	helper::setup_logging(4).expect("could not set up debugging");
 
 	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load("").unwrap()));
 	let data = Arc::new(RwLock::new(timeseries_interface::init("data").unwrap()));
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 
-	let (_data_handle, web_handle) =
+	let (data_handle, web_handle) =
 	start("keys/cert.key", "keys/cert.cert", data.clone(), passw_db.clone(), sessions.clone());
 	println!("press: t to send test data, n: to add a new user, q to quit, a to add new dataset, u to add fields to a user");
 	loop {
 		let mut input = String::new();
 		stdin().read_line(&mut input).unwrap();
 		match input.as_str() {
-			"t\n" => helper::send_test_data(data.clone(), 8070),
-			//"x\n" => httpserver::signal_newdata(data_handle.clone(),0),
+			"t\n" => helper::send_test_data_over_http(data.clone(), 8070), //does wierd things
+			"d\n" => helper::signal_and_append_test_data(data.clone(), &data_handle), //works
+
 			"n\n" => helper::add_user(& passw_db),
 			"a\n" => helper::add_dataset(&passw_db, &data),
 			"u\n" => helper::add_fields_to_user(&passw_db),

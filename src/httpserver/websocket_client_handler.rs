@@ -24,12 +24,29 @@ use std::collections::HashMap;
 use std::thread;
 use std::sync::mpsc;
 use std::sync::mpsc::sync_channel;
+use chrono::DateTime;
+use chrono::TimeZone; // We need the trait in scope to use Utc::timestamp().
+
 
 use super::timeseries_interface;
 use super::websocket_data_router;
 use super::DataServerState;
 use super::super::config;
 use crate::httpserver::InnerState;
+
+pub struct TimesRange {
+	pub start: DateTime::<Utc>,
+	pub stop: DateTime::<Utc>,
+}
+
+impl Default for TimesRange {
+	fn default() -> Self {
+		TimesRange {
+			start: Utc::now() - chrono::Duration::hours(12), //default timerange
+			stop: Utc::now(),
+		}
+	}
+}
 
 // store data in here, it can then be accessed using self
 pub struct WsSession<'a,T: InnerState> {
@@ -38,6 +55,7 @@ pub struct WsSession<'a,T: InnerState> {
 	pub ws_session_id: u16,
 	//pub subscribed_fields: HashMap<timeseries_interface::DatasetId, Vec<SubbedField>>,
 	pub compression_enabled: bool,
+	pub timerange: TimesRange,
 	pub selected_data: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::FieldId>>,
 	pub timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
 	pub file_io_thread: Option<(thread::JoinHandle<()>, mpsc::Receiver<Vec<u8>>)>,
@@ -125,13 +143,18 @@ fn divide_ceil(x: usize, y: usize) -> usize{
 
 impl<T: InnerState+'static> WsSession<'static,T> {
 	
-	fn select_data(&mut self, args: Vec<&str>, compressed: bool){
-		if args.len() < 3 {return }
-		if let Ok(set_id) = args[1].parse::<timeseries_interface::DatasetId>() {
+	fn select_data(&mut self, args: Vec<&str>, compressed: bool) -> Result<(),core::num::ParseIntError>{
+		if args.len() < 5 {return Ok(()) }
+		self.timerange.start = Utc.timestamp(args[1].parse::<i64>()?/1000, (args[1].parse::<i64>()?%1000) as u32);
+		self.timerange.stop = Utc.timestamp(args[2].parse::<i64>()?/1000, (args[2].parse::<i64>()?%1000) as u32);
+		dbg!(self.timerange.start);
+		dbg!(self.timerange.stop);
+
+		if let Ok(set_id) = args[3].parse::<timeseries_interface::DatasetId>() {
 			//check if user has access to the requested dataset
 			if let Some(fields_with_access) = self.timeseries_with_access.read().unwrap().get(&set_id){
 				//parse requested fields
-				if let Ok(field_ids) = args[2..]
+				if let Ok(field_ids) = args[4..]
 					.into_iter()
 					.map(|arg| arg.parse::<timeseries_interface::FieldId>())
 					.collect::<Result<Vec<timeseries_interface::FieldId>,std::num::ParseIntError>>(){
@@ -145,7 +168,7 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 							subbed_fields.push(field_id);
 						} else { 
 							warn!("unautorised field requested");
-							return;
+							return Ok(());
 						}
 					}
 					self.selected_data.insert(set_id, subbed_fields);
@@ -153,6 +176,7 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 				} else { warn!("invalid field requested") };
 			} else { warn!("invalid dataset id"); }
 		} else { warn!("no access to dataset"); }
+		Ok(())
 	}
 
 	fn subscribe(&mut self, websocket_addr: &Addr<websocket_data_router::DataServer>){
@@ -214,11 +238,6 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 			return;
 		}
 
-		let now = Utc::now();
-		//let t_start= now - Duration::hours(196);
-		let t_start= now - Duration::days(20);
-		let t_end = Utc::now();
-
 		let mut reader_infos: Vec<ReaderInfo> = Vec::with_capacity(self.selected_data.len());
 		let mut client_metadata = Vec::with_capacity(self.selected_data.len());
 		let data_handle = ctx.state().inner_state().data.clone();
@@ -227,7 +246,7 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 		for (dataset_id, field_ids) in  &self.selected_data {
 			let mut dataset_client_metadata: DataSetClientMeta = Default::default();
 			let dataset = data.sets.get_mut(dataset_id).unwrap();
-			if let Some(read_state) = dataset.prepare_read(t_start,t_end, field_ids) {
+			if let Some(read_state) = dataset.prepare_read(self.timerange.start, self.timerange.stop, field_ids) {
 				//prepare for reading and calc number of bytes we will be sending
 				const PACKAGE_HEADER_SIZE: usize = 8;
 				let numb_lines = read_state.numb_lines;
@@ -347,8 +366,8 @@ impl<T: InnerState+'static> StreamHandler<ws::Message, ws::ProtocolError> for Ws
 					match args[0] {
 						//select uncompressed will case data to be send without compression
 						//it is used until webassembly is relaiable
-						"/select" => self.select_data(args, true),
-						"/select_uncompressed" => self.select_data(args, false),
+						"/select" => self.select_data(args, true).unwrap(),
+						"/select_uncompressed" => self.select_data(args, false).unwrap(),
 
 						"/sub" => self.subscribe(&ctx.state().inner_state().websocket_addr),
 						"/meta" => self.prepare_data(ctx),

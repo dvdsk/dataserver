@@ -52,13 +52,18 @@ function onOpen(evt){
     }
   }
 
-  var start_timestamp = 0;//placeholder
-  var stop_timestamp = 0;
+  var dateOffset = (24*60*60*1000);//TODO fix this
+  var stop_timestamp = new Date( Date.now() );
+
+  var start_timestamp = new Date();
+  console.log(stop_timestamp.getTime());
+  start_timestamp.setTime(stop_timestamp.getTime() - dateOffset);
+
   //generate and send subscribe string
   for (const [set,fields] of subbed.entries()){
     var s = "/select_uncompressed "
-    +start_timestamp+" "
-    +stop_timestamp+" "
+    +start_timestamp.getTime()+" "
+    +stop_timestamp.getTime()+" "
     +set+" ";
 
     for (var i = 0; i < fields.length; i++ ) {
@@ -166,6 +171,7 @@ function gotDataChunk(evt){ //FIXME only works for one dataset
   //occured
   if (data.getInt16(2, true) == 1) { //check if this was the last package
     //console.log("got last data chunk, creating plot");
+    console.log("lines"); console.log(lines);
     Plotly.newPlot("plot", lines, layout, {responsive: true});
     websocket.onmessage = function(evt) { gotUpdate(evt) };
     doSend("/sub");
@@ -195,11 +201,12 @@ function gotDataChunk(evt){ //FIXME only works for one dataset
   //console.log("numb_of_elements"); console.log(numb_of_elements);
   //console.log("package_size"); console.log(package_size);
 
-  //console.log(numb_of_elements);
+  console.log("pos"); console.log(pos);
   setTimestamps(evt.data, numb_of_elements, fields_to_lines, pos);
   setData(evt.data, numb_of_elements, fields_to_lines, pos);
   pos += numb_of_elements;
 
+  id_map.set(setid, [fields_to_lines, pos]);
   //console.log("lines"); console.log(lines);
 }
 

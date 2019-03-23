@@ -4,6 +4,8 @@ extern crate log;
 extern crate serde_derive;
 #[macro_use]
 extern crate text_io;
+#[macro_use]
+extern crate smallvec;
 extern crate chrono;
 
 extern crate fern;

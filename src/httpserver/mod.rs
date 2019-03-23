@@ -12,15 +12,13 @@ extern crate chrono;
 use std::path::PathBuf;
 
 use self::actix::Addr;
-use self::actix::*;
 
 use self::actix_web::middleware::identity::RequestIdentity;
-use self::actix_web::middleware::identity::{CookieIdentityPolicy, IdentityService};
 use self::actix_web::Error as wError;
 use self::actix_web::Result as wResult;
 use self::actix_web::{
-	fs::NamedFile, http, http::Method, http::StatusCode, middleware, server, ws, App,
-	AsyncResponder, Form, FutureResponse, HttpMessage, HttpRequest, HttpResponse, Responder,
+	fs::NamedFile, http, http::StatusCode, middleware, server, ws,
+	AsyncResponder, Form, FutureResponse, HttpMessage, HttpRequest, HttpResponse,
 };
 
 use self::bytes::Bytes;
@@ -39,8 +37,6 @@ use std::sync::{Arc, RwLock, atomic::{AtomicUsize,Ordering}};
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::mpsc;
-use std::thread;
 use std::time::Duration;
 use self::chrono::{DateTime, Utc};
 

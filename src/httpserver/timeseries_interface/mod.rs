@@ -4,12 +4,11 @@ extern crate minimal_timeseries;
 extern crate walkdir;
 extern crate serde_yaml;
 extern crate chrono;
-extern crate smallvec;
 extern crate num;
 
 use self::byteorder::{ByteOrder, LittleEndian, NativeEndian, NetworkEndian, WriteBytesExt};
 use self::bytes::Bytes;
-use self::smallvec::SmallVec;
+use crate::smallvec::SmallVec;
 
 use std::fs;
 use std::fs::File;
@@ -27,6 +26,7 @@ use super::websocket_client_handler::SetSliceDecodeInfo;
 
 pub mod specifications;
 pub mod compression;
+pub mod read;
 
 use std::f64;
 trait FloatIterExt {
@@ -201,89 +201,6 @@ impl DataSet {
 			recoded_line.write_f32::<LittleEndian>(decoded).unwrap();
 		}
 		recoded_line.to_vec()
-	}
-
-	pub fn prepare_read(&mut self, t_start: DateTime<Utc>, t_end: DateTime<Utc>, requested_fields: &Vec<FieldId>)
-	-> Option<ReadState>{
-		//determine recoding params
-
-		match self.timeseries.get_bounds(t_start, t_end){
-			BoundResult::IoError(error) => {
-				warn!("could not read timeseries, io error: {:?}", error);
-				return None;
-			},
-			BoundResult::NoData => {
-				warn!("no data within the given time points");
-				return None;
-			},
-			BoundResult::Ok((start_byte, stop_byte, decode_params)) => {
-				let fields: Vec<Field<f32>> = requested_fields.into_iter()
-				.map(|id| self.metadata.fields[*id as usize].clone() ).collect();
-
-				let numb_lines = (stop_byte as usize-start_byte as usize)/self.timeseries.full_line_size;
-				let decoded_line_size = fields.len()*std::mem::size_of::<f32>();
-
-				Some( ReadState {
-					timestamps_u64: Vec::with_capacity(numb_lines),
-					line_data: Vec::with_capacity(numb_lines*self.timeseries.line_size),
-					fields,
-					start_byte,
-					stop_byte,
-					decode_params,
-					decoded_line_size,
-					numb_lines
-				})
-			},
-		}
-	}
-
-	pub fn get_data_chunk_uncompressed(&mut self, state: &mut ReadState, chunk_size: usize, package_numb: u16, dataset_id: u16)
-	-> Option<Vec<u8>> {
-
-		//TODO refactor to: timestamps, line_data = self.timeseries.decode_time_into_given
-		let chunk_size_in_lines = chunk_size/(state.decoded_line_size+std::mem::size_of::<f64>());
-		if self.timeseries.decode_time_into_given(
-			&mut state.timestamps_u64,
-			&mut state.line_data,
-			chunk_size_in_lines,
-			&mut state.start_byte,
-			state.stop_byte,
-			&mut state.decode_params).is_ok() {
-
-			dbg!(chunk_size_in_lines);
-			dbg!(state.decoded_line_size);
-			dbg!(state.line_data.len());
-
-			let mut buffer = Vec::with_capacity(chunk_size);
-			dbg!(buffer.len());
-
-			//write packet info
-			buffer.write_u16::<LittleEndian>(package_numb).unwrap();
-			buffer.write_u16::<LittleEndian>(dataset_id).unwrap();
-			//add padding
-			buffer.write_u32::<LittleEndian>(0).unwrap();
-			for ts in &state.timestamps_u64 {
-				buffer.write_f64::<LittleEndian>(*ts as f64).unwrap();
-			}
-
-			for line in state.line_data.chunks(self.timeseries.line_size) {
-				for field in &state.fields {
-					let decoded: f32 = field.decode::<f32>(&line);
-					dbg!(decoded);
-
-					use crate::httpserver::timeseries_interface::compression::decode;
-					println!("decoded: {}", decode(&line, field.offset, field.length));
-
-					buffer.write_f32::<LittleEndian>(decoded).unwrap();
-				}
-			}
-			dbg!(state.timestamps_u64.len());
-			dbg!(state.line_data.len());
-			dbg!(buffer.len());
-			Some(buffer)
-		} else {
-			None
-		}
 	}
 }
 

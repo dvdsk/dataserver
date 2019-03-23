@@ -56,7 +56,7 @@ impl Into<MetaData> for MetaDataSpec {
             let (decode_scale, length, name, decode_add) = match field {
 				FieldSpec::BitLength(field) => {
 					let max_storable = 2_u32.pow(field.numb_of_bits as u32) as f32;
-					let decode_scale = ((field.max_value - field.min_value)/max_storable);
+					let decode_scale = (field.max_value - field.min_value)/max_storable;
 					
 					let length = field.numb_of_bits;
 					let name = field.name;

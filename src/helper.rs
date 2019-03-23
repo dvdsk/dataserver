@@ -11,7 +11,6 @@ use std::path::{Path};
 use std::sync::{Arc, RwLock};
 use std::io::{stdin, stdout, Read, Write};
 use std::collections::HashMap;
-use std::thread;
 
 use crate::byteorder::{NativeEndian, WriteBytesExt};
 use crate::httpserver::timeseries_interface::compression::encode;
@@ -60,7 +59,7 @@ pub fn add_fields_to_user(passw_db: & Arc<RwLock<PasswordDatabase>>){
 			let userdata = passw_db.get_userdata(username).clone();
 			passw_db.add_owner_from_field_id(dataset_id, &fields, userdata);
 		}
-		Err(error) => {
+		Err(_) => {
 			println!("error parsing fields");
 		}
 	}

@@ -12,10 +12,8 @@ extern crate serde_derive;
 extern crate byteorder;
 extern crate crossbeam_utils;
 
-use self::byteorder::{LittleEndian, WriteBytesExt};
-
 use self::actix_web::{Binary,ws};
-use self::chrono::{Utc, Duration};
+use self::chrono::{Utc};
 use super::futures::Future;
 
 use std::sync::{Arc,RwLock};
@@ -30,13 +28,12 @@ use chrono::TimeZone; // We need the trait in scope to use Utc::timestamp().
 
 use super::timeseries_interface;
 use super::websocket_data_router;
-use super::DataServerState;
 use super::super::config;
 use crate::httpserver::InnerState;
 
 pub struct TimesRange {
-	pub start: DateTime::<Utc>,
-	pub stop: DateTime::<Utc>,
+	pub start: DateTime<Utc>,
+	pub stop: DateTime<Utc>,
 }
 
 impl Default for TimesRange {
@@ -232,6 +229,8 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 	//    - no more then one thread can be started
 
 	fn prepare_data(&mut self, ctx: &mut ws::WebsocketContext<Self, T>){
+		let max_lines =	100;
+
 		trace!("sending data to client");
 		if self.file_io_thread.is_some() {
 			warn!("already preparing data!");
@@ -243,20 +242,31 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 		let data_handle = ctx.state().inner_state().data.clone();
 		let mut data = data_handle.write().unwrap();
 
-		for (dataset_id, field_ids) in  &self.selected_data {
+		for (dataset_id, field_ids) in &self.selected_data {
 			let mut dataset_client_metadata: DataSetClientMeta = Default::default();
 			let dataset = data.sets.get_mut(dataset_id).unwrap();
 			if let Some(read_state) = dataset.prepare_read(self.timerange.start, self.timerange.stop, field_ids) {
 				//prepare for reading and calc number of bytes we will be sending
 				const PACKAGE_HEADER_SIZE: usize = 8;
-				let numb_lines = read_state.numb_lines;
-				let bytes_to_send = read_state.numb_lines*(read_state.decoded_line_size+std::mem::size_of::<f64>())+PACKAGE_HEADER_SIZE;
-				let n_packages = divide_ceil(bytes_to_send, config::MAX_BYTES_PER_PACKAGE);
+
+				let averager = minimal_timeseries::Averager::new(max_lines, &dataset.timeseries, read_state.numb_lines as u64);
+				let (max_per_package, numb_lines) = if let Some(ref averager) = averager {
+					//the remainder is taken care of by the timeseries lib
+					let max_per_package = config::MAX_BYTES_PER_PACKAGE
+					- config::MAX_BYTES_PER_PACKAGE % averager.samples_per_line;
+					(max_per_package, std::cmp::min(read_state.numb_lines, max_lines))
+				} else {
+					(config::MAX_BYTES_PER_PACKAGE, read_state.numb_lines)
+				};
+				dbg!((max_per_package, numb_lines));
+				let bytes_to_send = PACKAGE_HEADER_SIZE+numb_lines*(read_state.decoded_line_size+std::mem::size_of::<f64>());
+				let n_packages = divide_ceil(bytes_to_send, max_per_package);
 
 				reader_infos.push(ReaderInfo {
 					dataset_id: *dataset_id,
 					n_packages,
 					read_state,
+					averager,
 				});
 
 				//prepare and send metadata
@@ -269,7 +279,7 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 					});
 					dataset_client_metadata.field_ids.push(field_id);
 				}
-				dataset_client_metadata.n_lines = numb_lines;
+				dataset_client_metadata.n_lines = std::cmp::min(numb_lines, max_lines);
 				dataset_client_metadata.dataset_id = *dataset_id;
 				client_metadata.push(dataset_client_metadata);
 			} else { warn!("no data to send to client"); }
@@ -293,7 +303,8 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 
 		//spawn file io thread
 		let (tx, rx) = sync_channel(2);
-		let thread = thread::spawn(move|| { read_into_buffers(data_handle, tx, reader_infos); });
+		let thread = thread::spawn(move|| {
+			read_into_buffers(data_handle, tx, reader_infos); });
 		self.file_io_thread = Some((thread, rx));
 	}
 
@@ -316,28 +327,53 @@ struct ReaderInfo {
 	dataset_id: timeseries_interface::DatasetId,
 	n_packages: usize,
 	read_state: timeseries_interface::ReadState,
+	averager: Option<minimal_timeseries::Averager>,
 }
 
 fn read_into_buffers(data_handle: Arc<RwLock<timeseries_interface::Data>>, tx: mpsc::SyncSender<Vec<u8>>, reader_infos: Vec<ReaderInfo>){
 
-	for ReaderInfo {dataset_id, n_packages, mut read_state} in reader_infos {
-		for package_numb in (0..n_packages).rev() {
-			let mut data = data_handle.write().unwrap(); //write needed as file needs write
-			let dataset = data.sets.get_mut(&dataset_id).unwrap();
+	for ReaderInfo {dataset_id, n_packages, mut read_state, averager} in reader_infos {
+		if let Some(mut averager) = averager {
+			for package_numb in (0..n_packages).rev() {
+				let mut data = data_handle.write().unwrap(); //write needed as file needs write
+				let dataset = data.sets.get_mut(&dataset_id).unwrap();
 
-			let buffer = dataset.get_data_chunk_uncompressed(
-				&mut read_state,
-				config::MAX_BYTES_PER_PACKAGE,
-				package_numb as u16,
-				dataset_id
-			).unwrap();//FIXME handle possible error!!!
 
-			std::mem::drop(dataset);
-			std::mem::drop(data);
 
-			//block if parent thread has not yet send the previouse n packets
-			//break and end thread if something went wrong
-			if tx.send(buffer).is_err() {break; };
+				let buffer = dataset.get_uncompressed_averaged_chunk(
+					&mut read_state,
+					config::MAX_BYTES_PER_PACKAGE,
+					package_numb as u16,
+					dataset_id,
+					&mut averager,
+				).unwrap();//FIXME handle possible error!!!
+
+				std::mem::drop(dataset);
+				std::mem::drop(data);
+
+				//block if parent thread has not yet send the previouse n packets
+				//break and end thread if something went wrong
+				if tx.send(buffer).is_err() {break; };
+			}
+		} else {
+			for package_numb in (0..n_packages).rev() {
+				let mut data = data_handle.write().unwrap(); //write needed as file needs write
+				let dataset = data.sets.get_mut(&dataset_id).unwrap();
+
+				let buffer = dataset.get_uncompressed_chunk(
+					&mut read_state,
+					config::MAX_BYTES_PER_PACKAGE,
+					package_numb as u16,
+					dataset_id,
+				).unwrap();//FIXME handle possible error!!!
+
+				std::mem::drop(dataset);
+				std::mem::drop(data);
+
+				//block if parent thread has not yet send the previouse n packets
+				//break and end thread if something went wrong
+				if tx.send(buffer).is_err() {break; };
+			}
 		}
 	}
 

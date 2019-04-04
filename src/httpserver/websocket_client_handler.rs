@@ -28,7 +28,6 @@ use chrono::TimeZone; // We need the trait in scope to use Utc::timestamp().
 
 use super::timeseries_interface;
 use super::websocket_data_router;
-use super::super::config;
 use crate::httpserver::InnerState;
 
 pub struct TimesRange {
@@ -71,7 +70,7 @@ struct Trace {
 struct DataSetClientMeta {
 		field_ids: Vec<timeseries_interface::FieldId>,
     traces_meta: Vec<Trace>,
-    n_lines: usize,
+    n_lines: u64,
     dataset_id: timeseries_interface::DatasetId,
 }
 
@@ -229,7 +228,7 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 	//    - no more then one thread can be started
 
 	fn prepare_data(&mut self, ctx: &mut ws::WebsocketContext<Self, T>){
-		let max_plot_points =	100;
+		let max_plot_points: u64 =	100;
 
 		trace!("sending data to client");
 		if self.file_io_thread.is_some() {
@@ -237,7 +236,7 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 			return;
 		}
 
-		let mut reader_infos: Vec<ReaderInfo> = Vec::with_capacity(self.selected_data.len());
+		let mut reader_infos: Vec<timeseries_interface::ReaderInfo> = Vec::with_capacity(self.selected_data.len());
 		let mut client_metadata = Vec::with_capacity(self.selected_data.len());
 		let data_handle = ctx.state().inner_state().data.clone();
 		let mut data = data_handle.write().unwrap();
@@ -247,18 +246,9 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 			let dataset = data.sets.get_mut(dataset_id).unwrap();
 			if let Some(read_state) = dataset.prepare_read(self.timerange.start, self.timerange.stop, field_ids) {
 				//prepare for reading and calc number of bytes we will be sending
-
-				let bytes_to_send = PACKAGE_HEADER_SIZE+numb_lines*(read_state.decoded_line_size+std::mem::size_of::<f64>());
-				let n_packages = divide_ceil(bytes_to_send, max_per_package);
-				dbg!(bytes_to_send);
-				dbg!(max_per_package);
-
-				reader_infos.push(ReaderInfo {
-					dataset_id: *dataset_id,
-					n_packages,
-					read_state,
-					averager,
-				});
+				let n_lines = std::cmp::min(read_state.numb_lines, max_plot_points);
+				reader_infos.push(timeseries_interface::prepare_read_processing(
+					                read_state, &dataset.timeseries, max_plot_points, *dataset_id));
 
 				//prepare and send metadata
 				for field_id in field_ids.iter().map(|id| *id) {
@@ -270,7 +260,7 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 					});
 					dataset_client_metadata.field_ids.push(field_id);
 				}
-				dataset_client_metadata.n_lines = std::cmp::min(numb_lines, max_lines);
+				dataset_client_metadata.n_lines = n_lines;
 				dataset_client_metadata.dataset_id = *dataset_id;
 				client_metadata.push(dataset_client_metadata);
 			} else { warn!("no data to send to client"); }
@@ -279,15 +269,6 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 
 		let json = serde_json::to_string(&client_metadata).unwrap();
 		println!("{:?}", json);
-		//sample output: //TODO adjust plot.js to handle new style of sending metadata
-		// "[
-		// {
-		// \"id_info\":[{\"dataset_id\":0,\"field_id\":0},{\"dataset_id\":0,\"field_id\":1}],
-		// \"lines\":[{\"type\":\"scattergl\",\"mode\":\"markers\",\"name\":\"Temperature\"},
-		//            {\"type\":\"scattergl\",\"mode\":\"markers\",\"name\":\"Humidity\"}],
-		// \"n_lines\":3
-		//  }
-		//  ]"
 
 		ctx.text(json);
 
@@ -295,7 +276,8 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 		//spawn file io thread
 		let (tx, rx) = sync_channel(2);
 		let thread = thread::spawn(move|| {
-			read_into_buffers(data_handle, tx, reader_infos); });
+			dbg!(&reader_infos);
+			timeseries_interface::read_into_packages(data_handle, tx, reader_infos); });
 		self.file_io_thread = Some((thread, rx));
 	}
 

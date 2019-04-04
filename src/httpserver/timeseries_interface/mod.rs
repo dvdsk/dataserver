@@ -27,6 +27,7 @@ use super::websocket_client_handler::SetSliceDecodeInfo;
 pub mod specifications;
 pub mod compression;
 pub mod read;
+pub use read::{prepare_read_processing, read_into_packages, ReaderInfo};
 
 use std::f64;
 trait FloatIterExt {
@@ -120,15 +121,12 @@ pub struct DataSet {
 
 #[derive(Debug)]
 pub struct ReadState {
-	pub timestamps_u64: Vec<u64>,
-	pub line_data: Vec<u8>,
-
 	fields: Vec<Field<f32>>,
 	start_byte: u64,
 	stop_byte: u64,
 	decode_params: DecodeParams,
 	pub decoded_line_size: usize,
-	pub numb_lines: usize,
+	pub numb_lines: u64,
 }
 
 impl DataSet {

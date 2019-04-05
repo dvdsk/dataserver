@@ -22,6 +22,28 @@ var layout = {
 
 //TODO extend id_map to keep track of position is typedArray
 
+Date.prototype.toDateInputValue = (function() {
+    var local = new Date(this);
+    local.setMinutes(this.getMinutes() - this.getTimezoneOffset());
+    return local.toJSON().slice(0,10);
+});
+
+// ensure that after conversion to GMT the date will still be correct
+Date.prototype.toTimeInputValue = (function() {
+    var local = new Date(this);
+    local.setUTCHours(this.getHours(), this.getMinutes(), this.getSeconds(),0);
+    return local;
+});
+
+function onLoad(){
+  var d = new Date();
+  var timeControl = document.getElementById("stop-time");
+  timeControl.valueAsDate = d.toTimeInputValue();
+  var dateControl = document.getElementById("stop-date");
+  dateControl.value = d.toDateInputValue();
+}
+window.addEventListener("load", onLoad, false);
+
 function init(){
   output = document.getElementById("output");
 
@@ -31,6 +53,8 @@ function init(){
   websocket.onclose = function(evt) { onClose(evt) };
   websocket.onerror = function(evt) { onError(evt) };
 }
+
+
 
 function onOpen(evt){
   writeToScreen("CONNECTED");
@@ -52,12 +76,16 @@ function onOpen(evt){
     }
   }
 
-  var dateOffset = (24*60*60*1000);//TODO fix this
-  var stop_timestamp = new Date( Date.now() );
+  //var dateOffset = (24*60*60*1000);//TODO fix this
+  //var stop_timestamp = new Date( Date.now() );
 
-  var start_timestamp = new Date();
-  console.log(stop_timestamp.getTime());
-  start_timestamp.setTime(stop_timestamp.getTime() - dateOffset);
+  //var start_timestamp = new Date();
+  //console.log(stop_timestamp.getTime());
+  //start_timestamp.setTime(stop_timestamp.getTime() - dateOffset);
+
+  //TODO improve
+  var start_timestamp = document.getElementById('start-date').valueAsDate;
+  var stop_timestamp = document.getElementById('stop-date').valueAsDate;
 
   //generate and send subscribe string
   for (const [set,fields] of subbed.entries()){
@@ -266,5 +294,3 @@ function writeToScreen(message){
   pre.innerHTML = message;
   output.appendChild(pre);
 }
-
-//window.addEventListener("load", init, false);

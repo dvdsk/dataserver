@@ -247,23 +247,25 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 			if let Some(read_state) = dataset.prepare_read(self.timerange.start, self.timerange.stop, field_ids) {
 				//prepare for reading and calc number of bytes we will be sending
 				let n_lines = std::cmp::min(read_state.numb_lines, max_plot_points);
-				reader_infos.push(timeseries_interface::prepare_read_processing(
-					                read_state, &dataset.timeseries, max_plot_points, *dataset_id));
+				if let Some(reader_info) = timeseries_interface::prepare_read_processing(
+					                read_state, &dataset.timeseries, max_plot_points, *dataset_id) {
+					reader_infos.push(reader_info);
 
-				//prepare and send metadata
-				for field_id in field_ids.iter().map(|id| *id) {
-					let field = &dataset.metadata.fields[field_id as usize];
-					dataset_client_metadata.traces_meta.push( Trace {
-						r#type: "scattergl".to_string(),
-						mode: "markers".to_string(),
-						name: field.name.to_owned(),
-					});
-					dataset_client_metadata.field_ids.push(field_id);
-				}
-				dataset_client_metadata.n_lines = n_lines;
-				dataset_client_metadata.dataset_id = *dataset_id;
-				client_metadata.push(dataset_client_metadata);
-			} else { warn!("no data to send to client"); }
+					//prepare and send metadata
+					for field_id in field_ids.iter().map(|id| *id) {
+						let field = &dataset.metadata.fields[field_id as usize];
+						dataset_client_metadata.traces_meta.push( Trace {
+							r#type: "scattergl".to_string(),
+							mode: "markers".to_string(),
+							name: field.name.to_owned(),
+						});
+						dataset_client_metadata.field_ids.push(field_id);
+					}
+					dataset_client_metadata.n_lines = n_lines;
+					dataset_client_metadata.dataset_id = *dataset_id;
+					client_metadata.push(dataset_client_metadata);
+				} else { warn!("could not setup read"); }
+			} else { warn!("no data within given window"); }
 		};
 		std::mem::drop(data);
 

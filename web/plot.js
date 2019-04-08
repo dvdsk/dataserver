@@ -84,8 +84,11 @@ function onOpen(evt){
   //start_timestamp.setTime(stop_timestamp.getTime() - dateOffset);
 
   //TODO improve
-  var start_timestamp = document.getElementById('start-date').valueAsDate;
-  var stop_timestamp = document.getElementById('stop-date').valueAsDate;
+  //var start_timestamp = document.getElementById('start-date').valueAsDate;
+  //var stop_timestamp = document.getElementById('stop-date').valueAsDate;
+
+  var start_timestamp = new Date(1553731200000);
+  var stop_timestamp = new Date(1554508800000);
 
   //generate and send subscribe string
   for (const [set,fields] of subbed.entries()){
@@ -197,7 +200,9 @@ function gotDataChunk(evt){ //FIXME only works for one dataset
   var data = new DataView(evt.data);
   //check for server signal that all data has been recieved, or an error has
   //occured
-  if (data.getInt16(2, true) == 1) { //check if this was the last package
+  var chunknumb = data.getInt16(0, true);
+    console.log("chunknumb: "); console.log(chunknumb);
+  if (chunknumb == 0) { //check if this was the last package (package numb=0)
     //console.log("got last data chunk, creating plot");
     console.log("lines"); console.log(lines);
     Plotly.newPlot("plot", lines, layout, {responsive: true});
@@ -206,7 +211,6 @@ function gotDataChunk(evt){ //FIXME only works for one dataset
     return;
   };
 
-  var chunknumb = data.getInt16(0, true);
   var setid = data.getInt16(2, true);
   var [fields_to_lines, pos] = id_map.get(setid);
   //console.log("fields_to_lines:"); console.log(fields_to_lines);

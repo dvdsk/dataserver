@@ -42,6 +42,7 @@ impl DataSet {
 	///figures out what combination of: ignoring some datapoints, averaging, read buffering and
 	///loosse packages should be used to fullfill a data request for a dataset
 	pub fn prepare_read_processing(read_state: ReadState, timeseries: &minimal_timeseries::Timeseries, max_points: u64, dataset_id: DatasetId) -> Option<ReaderInfo> {
+		//ideal read + ideal package size + ram per sample may not exceed free ram
 		const IDEAL_READ_SIZE: usize = 1_000; //in bytes
 		const IDEAL_PACKAGE_SIZE: usize = 1_000;
 		const HEADER_SIZE: usize = 4;
@@ -61,6 +62,16 @@ impl DataSet {
 		//user always wants the max specified lines
 		let requested_lines = u64::min(max_points, lines_in_range as u64);
 		dbg!(requested_lines);
+
+		/*
+		we decide the lines_per_package and lines_per_read based on: (decreasing importance)
+			-both have to fit into ram available for decoding
+			-send a minimum of 2 packages
+			-reads and network packages should be bufferd
+				-always use ideal read size for reading (should never give ram problems).
+				-unless minimal numb of packages, size may not exceed ideal package size.
+		*/
+
 
 		//lines_per_package should be optimal for reading from disk
 		let bytes_to_read_per_packet_line = lines_per_sample*(full_line_size as usize);

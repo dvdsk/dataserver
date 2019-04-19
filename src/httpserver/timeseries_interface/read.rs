@@ -232,6 +232,7 @@ enum PackageResult {
 
 impl ReaderInfo {
 	///writes buffers into packages which are send queued for sending until buffer is empty
+	/// //TODO remove lines_per_sample should get it from "self"
 	fn empty_into_packages(&mut self, tx: &mut mpsc::SyncSender<Vec<u8>>, lines_per_sample: usize) -> PackageResult {
 		let decoded_line_size = self.read_state.decoded_line_size;
 		let mut tstamp_remainder = self.timestamps_buffer.as_slice();
@@ -246,6 +247,9 @@ impl ReaderInfo {
 		
 		let mut bytes_to_fill_package = (self.bytes_per_package - self.package.len())*lines_per_sample;
 		let mut lines_to_fill_package = bytes_to_fill_package /decoded_line_size; //TODO move into struct?
+
+		dbg!(ldate_remainder.len());
+		dbg!(bytes_to_fill_package);
 
 		//FIXME when does this exit? how can that exit fail?
 		//while there is more data available then fits into the current package,
@@ -285,11 +289,12 @@ impl ReaderInfo {
 			dbg!(self.package_numb);
 		}
 		//self.decode_into_package(tstamp_remainder, ldate_remainder);
-		dbg!("REMAINDER");
+		dbg!("LESS DATA READ THEN CAN BE SAMPLED INTO PACKAGE");
+		dbg!(self.lines_per_read/self.selector.as_ref().unwrap().lines_per_sample.clone().get());
+		dbg!(self.bytes_per_package/self.read_state.decoded_line_size);
 
 		Self::decode_into_package(tstamp_remainder, ldate_remainder, &mut self.package, self.line_size,
 			                        &self.read_state, lines_per_sample);
-
 		//still need a new package for the next read or the next dataset
 		let next_package = Self::new_package(self.package_numb, self.dataset_id, self.bytes_per_package);//prepare next package
 		//replace self.package with next package and send the old self.package
@@ -305,7 +310,7 @@ impl ReaderInfo {
 		dbg!(self.package_numb);
 		//TODO what if we hit last package here?
 
-		dbg!("BUFFER EMPTIED");
+		dbg!("READ BUFFER HAS BEEN EMPTIED");
 		dbg!(self.package_numb);
 		PackageResult::BufferEmptied
 	}
@@ -355,15 +360,15 @@ impl ReaderInfo {
 		}//for every sample
 
 		for sample in ldata.chunks_exact(lines_per_sample*line_size) {
-			let mut decoded_fields = vec!(0f32; read_state.fields.len()); //to store averages as they grow
+			let mut decoded_field_sums = vec!(0f32; read_state.fields.len()); //to store averages as they grow
 			for line in sample.chunks_exact(line_size) {
-				for (field, decoded_field) in read_state.fields.iter().zip(&mut decoded_fields) {
+				for (field, decoded_field) in read_state.fields.iter().zip(&mut decoded_field_sums) {
 					let decoded: f32 = field.decode::<f32>(&line);
 					*decoded_field += decoded;
 				}
 			}
-			for decoded in decoded_fields.drain(..){
-				package.write_f32::<LittleEndian>(decoded).unwrap();//FIXME actually do an average here
+			for decoded_sum in decoded_field_sums.drain(..){
+				package.write_f32::<LittleEndian>(decoded_sum/lines_per_sample as f32).unwrap();//FIXME actually do an average here
 			}
 		}//for every sample
 	}

@@ -240,6 +240,10 @@ impl ReaderInfo {
 		//FIXME TODO switch from redefines to incrementive
 
 		//figure out how much extra data can fit into the current package
+		dbg!(self.bytes_per_package);
+		dbg!(self.package.len());
+		dbg!(lines_per_sample);
+		
 		let mut bytes_to_fill_package = (self.bytes_per_package - self.package.len())*lines_per_sample;
 		let mut lines_to_fill_package = bytes_to_fill_package /decoded_line_size; //TODO move into struct?
 
@@ -256,14 +260,16 @@ impl ReaderInfo {
 			let (ldata_left, new_ldate_remainder) = ldate_remainder
 				.split_at(bytes_to_fill_package);
 			tstamp_remainder = new_tstamp_remainder;
-			ldate_remainder =	new_ldate_remainder;
+			ldate_remainder = new_ldate_remainder;
 
 			bytes_to_fill_package = self.bytes_per_package*lines_per_sample; //FIXME recalc not needed after first loop
 			lines_to_fill_package = bytes_to_fill_package /decoded_line_size;
 
 			//self.decode_into_package(tstamp_left, ldata_left);
+			dbg!(self.package.len());
 			Self::decode_into_package(tstamp_left, ldata_left, &mut self.package, self.line_size,
 			                          &self.read_state, lines_per_sample);
+			dbg!(self.package.len());
 
 			let next_package = Self::new_package(self.package_numb, self.dataset_id, self.bytes_per_package);//prepare next package
 			//replace self.package with next package and send the old self.package
@@ -283,7 +289,20 @@ impl ReaderInfo {
 
 		Self::decode_into_package(tstamp_remainder, ldate_remainder, &mut self.package, self.line_size,
 			                        &self.read_state, lines_per_sample);
-		self.package_numb -= 1;
+
+		//still need a new package for the next read or the next dataset
+		let next_package = Self::new_package(self.package_numb, self.dataset_id, self.bytes_per_package);//prepare next package
+		//replace self.package with next package and send the old self.package
+		if tx.send(mem::replace(&mut self.package, next_package)).is_err() {
+			dbg!("failed to send package");
+			return PackageResult::ConnectionDropped
+		}
+		if self.package_numb == 0 {
+			dbg!("last queued");
+			return PackageResult::LastQueued
+		}
+		self.package_numb -= 1; //set package number for next package
+		dbg!(self.package_numb);
 		//TODO what if we hit last package here?
 
 		dbg!("BUFFER EMPTIED");
@@ -333,7 +352,6 @@ impl ReaderInfo {
 
 			let ts_avg =ts_sum/(lines_per_sample as u64);
 			package.write_f64::<LittleEndian>(ts_avg as f64).unwrap();
-			dbg!(ts_avg);
 		}//for every sample
 
 		for sample in ldata.chunks_exact(lines_per_sample*line_size) {
@@ -344,7 +362,6 @@ impl ReaderInfo {
 					*decoded_field += decoded;
 				}
 			}
-			dbg!(decoded_fields.len());
 			for decoded in decoded_fields.drain(..){
 				package.write_f32::<LittleEndian>(decoded).unwrap();//FIXME actually do an average here
 			}

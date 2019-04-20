@@ -23,7 +23,7 @@ impl DataSet {
 				let fields: Vec<Field<f32>> = requested_fields.into_iter()
 				.map(|id| self.metadata.fields[*id as usize].clone() ).collect();
 
-				let numb_lines = (stop_byte-start_byte)/(self.timeseries.full_line_size as u64);
+				let numb_lines = (stop_byte-start_byte)/(self.timeseries.full_line_size as u64) - 1;
 				let decoded_line_size = fields.len()*std::mem::size_of::<f32>()+std::mem::size_of::<f64>();
 
 				Some( ReadState {
@@ -39,7 +39,7 @@ impl DataSet {
 	}
 }
 
-	///figures out what combination of: ignoring some datapoints, averaging, read buffering and
+	///figures out what combination of: ignoring datapoints, averaging, read buffering and
 	///loosse packages should be used to fullfill a data request for a dataset
 	pub fn prepare_read_processing(read_state: ReadState, timeseries: &minimal_timeseries::Timeseries, max_points: u64, dataset_id: DatasetId) -> Option<ReaderInfo> {
 		//ideal read + ideal package size + ram per sample may not exceed free ram
@@ -50,7 +50,7 @@ impl DataSet {
 		let lines_in_range = read_state.numb_lines; //as u64
 
 		dbg!(lines_in_range);
-		if max_points == 0 { warn!("cant create a plot with max zero points"); return None; }
+		if max_points == 0 { warn!("cant create a plot with zero points"); return None; }
 
 		let line_size = timeseries.line_size;
 		let full_line_size = timeseries.full_line_size;
@@ -351,10 +351,8 @@ impl ReaderInfo {
 
 		//add some lines
 		//dbg!(lines_per_sample);
-		dbg!(tstamps.len());
 		for ts_sum in tstamps
 			.chunks_exact(lines_per_sample).map(|chunk| chunk.iter().sum::<u64>()) {
-
 			let ts_avg =ts_sum/(lines_per_sample as u64);
 			package.write_f64::<LittleEndian>(ts_avg as f64).unwrap();
 		}//for every sample

@@ -104,7 +104,7 @@ function onOpen(evt){
   }
 
   websocket.onmessage = function(evt) { gotMeta(evt) };
-  doSend("/meta");
+  doSend("/meta 1000"); //1000 is max numb of lines, paramater is optional
 }
 
 function gotMeta(evt){
@@ -143,8 +143,9 @@ function gotMeta(evt){
     //console.log("n_lines");
     //console.log(n_lines);
 
-    //console.log("lines allocated");
-    //console.log(lines);
+    console.log("lines allocated");
+    console.log(lines);
+    //debugger;
 
     //debugger;
     id_map.set(dataset_id, [field_list, 0]);
@@ -162,6 +163,7 @@ function setTimestamps(data, numb_of_elements, fields_to_lines, pos){
   //console.log(data);
 
   var floatarr = new Float64Array(data, 8, numb_of_elements);
+  console.log("ts_data:"); console.log(floatarr);
   var timestamps = floatarr.map(x => x*1000); //from seconds to milliseconds
   //no need to set for all x-axises as they are linked
   //memcpy equivalent of memcpy(trace+pos, timestamps, len(timestamps));
@@ -201,7 +203,9 @@ function gotDataChunk(evt){ //FIXME only works for one dataset
   //check for server signal that all data has been recieved, or an error has
   //occured
   var chunknumb = data.getInt16(0, true);
-    console.log("chunknumb: "); console.log(chunknumb);
+  console.log("chunknumb: "); console.log(chunknumb);
+  console.log("data: "); console.log(data);
+  console.log("lines: "); console.log(lines);
   if (chunknumb == 0) { //check if this was the last package (package numb=0)
     //console.log("got last data chunk, creating plot");
     console.log("lines"); console.log(lines);

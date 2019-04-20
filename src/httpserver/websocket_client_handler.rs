@@ -52,6 +52,7 @@ pub struct WsSession<'a,T: InnerState> {
 	//pub subscribed_fields: HashMap<timeseries_interface::DatasetId, Vec<SubbedField>>,
 	pub compression_enabled: bool,
 	pub timerange: TimesRange,
+
 	pub selected_data: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::FieldId>>,
 	pub timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
 	pub file_io_thread: Option<(thread::JoinHandle<()>, mpsc::Receiver<Vec<u8>>)>,
@@ -227,8 +228,12 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 	//    - thread handle is stored in websocket session
 	//    - no more then one thread can be started
 
-	fn prepare_data(&mut self, ctx: &mut ws::WebsocketContext<Self, T>){
-		let max_plot_points: u64 =	100;
+	fn prepare_data(&mut self, ctx: &mut ws::WebsocketContext<Self, T>, args: Vec<&str>){
+		let max_plot_points: u64 = if args.len() == 2 {
+			args[1].parse().unwrap_or(100)
+		} else {
+			100
+		};
 
 		trace!("sending data to client");
 		if self.file_io_thread.is_some() {
@@ -248,7 +253,7 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 				//prepare for reading and calc number of bytes we will be sending
 				let n_lines = std::cmp::min(read_state.numb_lines, max_plot_points);
 				if let Some(reader_info) = timeseries_interface::prepare_read_processing(
-					                read_state, &dataset.timeseries, max_plot_points, *dataset_id) {
+					read_state, &dataset.timeseries, max_plot_points, *dataset_id) {
 					reader_infos.push(reader_info);
 
 					//prepare and send metadata
@@ -273,7 +278,6 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 		println!("{:?}", json);
 
 		ctx.text(json);
-
 
 		//spawn file io thread
 		let (tx, rx) = sync_channel(2);
@@ -325,7 +329,7 @@ impl<T: InnerState+'static> StreamHandler<ws::Message, ws::ProtocolError> for Ws
 						"/select_uncompressed" => self.select_data(args, false).unwrap(),
 
 						"/sub" => self.subscribe(&ctx.state().inner_state().websocket_addr),
-						"/meta" => self.prepare_data(ctx),
+						"/meta" => self.prepare_data(ctx, args),//prepares data and returns metadata to client
 						"/RTC" => self.send_data(ctx),//client signals ready to recieve
 
 						//for use with webassembly only

@@ -17,7 +17,9 @@ bytes = "0.4.10"
 walkdir = "2.2.5"
 num = "0.2.0"
 
-acme-client = "0.5.3"
+#acme-client = "0.5.3" replaced with patched version that fixes openssl issues
+acme-client = { git = "https://github.com/janderholm/acme-client"}
+
 
 webpki = "0.18.1"
 webpki-roots = "0.15.0"

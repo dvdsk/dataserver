@@ -84,9 +84,6 @@ where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+
 		//println!("scale: {}, add: {}, numb: {}", self.decode_scale, self.decode_add, numb);
 
 		let to_encode: u32 = num::cast(numb).unwrap();
-		dbg!(to_encode);
-		dbg!(self.offset);
-		dbg!(self.length);
 
 		compression::encode(to_encode, line, self.offset, self.length);
 	}

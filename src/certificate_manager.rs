@@ -15,7 +15,8 @@ use self::acme_client::Directory;
 //use self::acme_client::LETSENCRYPT_INTERMEDIATE_CERT_URL;
 
 use actix_web::Result as wResult;
-use actix_web::{fs, http, server, App, HttpRequest};
+use actix_web::{http, HttpServer, App, HttpRequest, web};
+use actix_files as fs;
 use std::sync::mpsc;
 use std::thread;
 
@@ -136,13 +137,6 @@ fn get_port() -> Result<u32, ()> {
 	}
 }
 
-fn index(req: &HttpRequest) -> wResult<fs::NamedFile> {
-	let mut full_path = PathBuf::from(".tmp/www/.well-known/acme-challenge/");
-	let path: PathBuf = req.match_info().query("tail")?;
-	full_path.push(&path);
-	Ok(fs::NamedFile::open(full_path)?)
-}
-
 fn print(_req: &HttpRequest) -> &'static str {
     "Hello world!"
 }
@@ -156,10 +150,10 @@ pub fn host_server() -> Result<ServerHandle, ()> {
 		let (tx, rx) = mpsc::channel();
 		thread::spawn(move || {
 			let sys = actix::System::new("http-server");
-			let addr = server::new(|| App::new()
+			let addr = HttpServer::new(|| App::new()
 			//handle only requests for certificate challanges
-			.resource("/", |r| r.f(print))
-			.resource(r"/.well-known/acme-challenge/{tail:.*}", |r| r.method(http::Method::GET).f(index))
+			.service(web::resource("/").to(print))
+			.service(fs::Files::new("/.well-known/acme-challenge/", "."))
 			)
 			.bind(&socket).expect(&format!("Can not bind to {}",socket))
 			.shutdown_timeout(5)    // <- Set shutdown timeout to 5 seconds
@@ -178,7 +172,7 @@ pub fn host_server() -> Result<ServerHandle, ()> {
 
 fn stop_server(handle: ServerHandle) {
 	let _ = handle
-		.send(server::StopServer { graceful: true })
+		.send(HttpServer::StopServer { graceful: true })
 		.timeout(Duration::from_secs(5)); // <- Send `StopServer` message to server.
 }
 

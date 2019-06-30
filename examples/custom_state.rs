@@ -3,8 +3,8 @@ extern crate dataserver;
 extern crate actix_web;
 
 use crate::actix_web::actix::Arbiter;
-use crate::actix_web::{server,App,http::Method};
-use crate::actix_web::middleware::identity::{CookieIdentityPolicy, IdentityService};
+use crate::actix_web::{HttpServer,App,http::Method};
+use crate::actix_identity::{CookieIdentityPolicy, IdentityService};
 
 use std::sync::mpsc;
 use std::sync::atomic::{AtomicUsize};
@@ -58,7 +58,7 @@ pub fn start(signed_cert: &str, private_key: &str,
 		let data_server = Arbiter::start(|_| httpserver::websocket_data_router::DataServer::default());
 		let data_server_clone = data_server.clone();
 
-		let web_server = server::new(move || {
+		let web_server = HttpServer::new(move || {
 			// data the webservers functions have access to
 			let state = ExampleState {
 				counter: Arc::new(Mutex::new(0)),
@@ -71,8 +71,9 @@ pub fn start(signed_cert: &str, private_key: &str,
 					free_ws_session_ids: free_ws_session_ids.clone(),
 				},
 		  };
-			App::with_state(state)
-		    .middleware(IdentityService::new(
+			App::new()
+				.data(state)
+		    .wrap(IdentityService::new(
 		      CookieIdentityPolicy::new(&cookie_key[..])
 		      .domain("deviousd.duckdns.org")
 		      .name("auth-cookie")
@@ -83,29 +84,33 @@ pub fn start(signed_cert: &str, private_key: &str,
 					public_roots: vec!(String::from("/commands")),
 					..CheckLogin::default()
 				})
-				// websocket route
-				// note some browsers need already existing http connection to
-				// this server for the upgrade to wss to work
-				.resource("/commands/test_state", |r| r.method(Method::GET).f(test_state))
-				.resource("/ws/", |r| r.method(Method::GET).f(ws_index))
-				.resource("/logout", |r| r.f(logout))
-				.resource("/", |r| r.f(index))
-				.resource(r"/newdata", |r| r.method(Method::POST).f(newdata))
-				.resource("/plot", |r| r.f(plot_data))
-				.resource(r"/list_data.html", |r| r.method(Method::GET).f(list_data))
-				//login route, every uri starting "/login" will be forwarded to the adress
-				//after "/login" once the client has been authenticated
-				.resource(r"/login/{tail:.*}", |r| {
-					r.method(Method::POST).with(login_get_and_check);
-					r.method(Method::GET).f(login_page);
-				})
-				//for all other urls we try to resolve to static files in the "web" dir
-				.resource(r"/{tail:.*}", |r| r.f(serve_file))
-    })
-    .bind_rustls("0.0.0.0:8080", tls_config).unwrap()
+				.service(
+					web::scope("/") //TODO redo from examples (https://github.com/actix/examples/blob/master/basics/src/main.rs)
+						.service(web::resource("commands/test_state").to(test_state))
+						.service(web::resource("ws/").to(ws_index))
+						.service(web::resource("logout").to(logout))
+						.service(web::resource("").to(index))
+						.service(web::resource("newdata").to(newdata))
+						.service(web::resource("plot").to(plot_data))
+						.service(web::resource("list_data").to(list_data))
+						.service(web::resource(r"login/{path}").route(
+							web::get()
+								.method(http::Method::POST)
+								.to(login_get_and_check)
+						))
+						.service(web::resource(r"login/{tail:.*}").route(
+							web::get()
+								.method(http::Method::GET)
+								.to(login_page)
+						))
+						//for all other urls we try to resolve to static files in the "web" dir
+						.service(fs::Files::new("", "."))
+						//.service(web::resource(r"/{tail:.*}").route(serve_file))
+    		)
+    		.bind_rustls("0.0.0.0:8080", tls_config).unwrap()
     //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
-    .shutdown_timeout(5)    // shut down 5 seconds after getting the signal to shut down
-    .start();
+    		.shutdown_timeout(5)    // shut down 5 seconds after getting the signal to shut down
+    		.start(); // end of App::new()
 
 		let _ = tx.send((data_server, web_server));
 		let _ = sys.run();

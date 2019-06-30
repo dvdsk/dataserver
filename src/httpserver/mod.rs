@@ -1,7 +1,3 @@
-extern crate actix;
-extern crate actix_net;
-extern crate actix_web;
-
 extern crate bytes;
 extern crate futures;
 
@@ -11,14 +7,16 @@ extern crate chrono;
 
 use std::path::PathBuf;
 
-use self::actix::Addr;
+use actix::Addr;
 
-use self::actix_web::middleware::identity::RequestIdentity;
-use self::actix_web::Error as wError;
-use self::actix_web::Result as wResult;
-use self::actix_web::{
-	fs::NamedFile, http, http::StatusCode, middleware, server, ws,
-	AsyncResponder, Form, FutureResponse, HttpMessage, HttpRequest, HttpResponse,
+use actix_identity::{CookieIdentityPolicy, IdentityService};
+use actix_files::NamedFile;
+use actix_web_actors::ws;
+use actix_web::Error as wError;
+use actix_web::Result as wResult;
+use actix_web::{
+	http, http::StatusCode, middleware, HttpServer,
+	web, HttpMessage, HttpRequest, HttpResponse,
 };
 
 use self::bytes::Bytes;
@@ -103,30 +101,30 @@ pub struct Logindata {
 	p: String,
 }
 
-pub type ServerHandle = self::actix::Addr<actix_net::server::Server>;
-pub type DataRouterHandle = self::actix::Addr<websocket_data_router::DataServer>;
+pub type ServerHandle = Addr<actix_net::server::Server>;
+pub type DataRouterHandle = Addr<websocket_data_router::DataServer>;
 
-pub fn serve_file<T: InnerState>(req: &HttpRequest<T>) -> wResult<NamedFile> {
-	let file_name: String = req.match_info().query("tail")?;
+// pub fn serve_file<T: InnerState>(req: &HttpRequest<T>) -> wResult<NamedFile> {
+// 	let file_name: String = req.match_info().query("tail")?;
 
-	let mut path: PathBuf = PathBuf::from("web/");
-	path.push(file_name);
-	trace!("returning file: {:?}", &path);
-	Ok(NamedFile::open(path)?)
-}
+// 	let mut path: PathBuf = PathBuf::from("web/");
+// 	path.push(file_name);
+// 	trace!("returning file: {:?}", &path);
+// 	Ok(NamedFile::open(path)?)
+// }
 
-pub fn index<T: InnerState>(req: &HttpRequest<T>) -> String {
+pub fn index(req: &HttpRequest) -> String {
 	format!("Hello {}", req.identity().unwrap_or("Anonymous".to_owned()))
 }
 
-pub fn list_data<T: InnerState>(req: &HttpRequest<T>) -> HttpResponse {
+pub fn list_data<T: InnerState>(state: web::Data<T>, req: &HttpRequest) -> HttpResponse {
 	let mut accessible_fields = String::from("<html><body><table>");
 	
 	let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
-	let sessions = req.state().inner_state().sessions.read().unwrap();
+	let sessions = state.inner_state().sessions.read().unwrap();
 	let session = sessions.get(&session_id).unwrap();
 
-	let data = req.state().inner_state().data.read().unwrap();
+	let data = state.inner_state().data.read().unwrap();
 	for (dataset_id, authorized_fields) in session.timeseries_with_access.read().unwrap().iter() {
 		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
 		let mut dataset_fields = format!("<th>{}</th>", &metadata.name);
@@ -143,9 +141,9 @@ pub fn list_data<T: InnerState>(req: &HttpRequest<T>) -> HttpResponse {
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(accessible_fields)
 }
 
-pub fn plot_data<T: InnerState>(req: &HttpRequest<T>) -> HttpResponse {
+pub fn plot_data<T: InnerState>(state: web::Data<T>, req: &HttpRequest) -> HttpResponse {
 	let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
-	let sessions = req.state().inner_state().sessions.read().unwrap();
+	let sessions = state.inner_state().sessions.read().unwrap();
 	let session = sessions.get(&session_id).unwrap();
 
 	let before_form =include_str!("static_webpages/plot_A.html");
@@ -164,9 +162,9 @@ pub fn plot_data<T: InnerState>(req: &HttpRequest<T>) -> HttpResponse {
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
 
-fn plot_data_debug<T: InnerState>(req: &HttpRequest<T>) -> HttpResponse {
+fn plot_data_debug<T: InnerState>(state: web::Data<T>, req: &HttpRequest<T>) -> HttpResponse {
 	let session_id = req.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
-	let sessions = req.state().inner_state().sessions.read().unwrap();
+	let sessions = state.inner_state().sessions.read().unwrap();
 	let session = sessions.get(&session_id).unwrap();
 
 	let before_form =include_str!("static_webpages/plot_A_debug.html");
@@ -190,59 +188,20 @@ pub fn logout<T: InnerState>(req: &HttpRequest<T>) -> HttpResponse {
 	HttpResponse::Found().finish()
 }
 
-#[derive(Default)]
-pub struct CheckLogin {
-	pub public_urls: Vec<String>,
-	pub public_roots: Vec<String>,
-}
-
-impl <T: InnerState>middleware::Middleware<T> for CheckLogin {
-	// We only need to hook into the `start` for this middleware.
-	fn start(&self, req: &HttpRequest<T>) -> wResult<middleware::Started> {
-		if let Some(id) = req.identity() {
-            //check if valid session
-            if req.state().inner_state().sessions.read().unwrap().contains_key(&id.parse().unwrap()) {
-				return Ok(middleware::Started::Done);
-			}
-		}
-
-		if req.path() == r"/newdata" {
-			//newdata is authenticated through other means
-			return Ok(middleware::Started::Done);
-		}
-		// Don't forward to /login if we are already on /login
-		if req.path().starts_with("/login") {
-			return Ok(middleware::Started::Done);
-		}
-		if self.public_urls.iter().any(|x| x==req.path()) {
-			return Ok(middleware::Started::Done);
-		}
-		if self.public_roots.iter().any(|x| req.path().starts_with(x)) {
-			return Ok(middleware::Started::Done);
-		}
-
-		let path = req.path();
-		Ok(middleware::Started::Response(
-			HttpResponse::Found()
-				.header(http::header::LOCATION, "/login".to_owned() + path)
-				.finish(),
-		))
-	}
-}
-
-pub fn login_page<T: InnerState>(_req: &HttpRequest<T>) -> HttpResponse {
+pub fn login_page(_req: &HttpRequest) -> HttpResponse {
 	let page = include_str!("static_webpages/login.html");
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
 
 /// State and POST Params
 pub fn login_get_and_check<T: InnerState>(
-    (req, params): (HttpRequest<T>, Form<Logindata>),
-) -> wResult<HttpResponse> {
+		state: web::State<T>,
+		params: web::Form<Logindata>,
+		req: HttpRequest) -> wResult<HttpResponse> {
 	
 	trace!("checking login");
     //if login valid (check passwdb) load userinfo
-    let state = req.state().inner_state();
+    let state = state.inner_state();
     let mut passw_db = state.passw_db.write().unwrap();
     
     if passw_db.verify_password(params.u.as_str().as_bytes(), params.p.as_str().as_bytes()).is_err(){
@@ -275,11 +234,15 @@ pub fn login_get_and_check<T: InnerState>(
 	   .finish())
 }
 
-pub fn newdata<T: InnerState+'static>(req: &HttpRequest<T>) -> FutureResponse<HttpResponse> {
+pub fn newdata<T: InnerState+'static>(
+	state: web::State<T>, 
+	req: &HttpRequest)
+	 -> FutureResponse<HttpResponse> {
+	
 	trace!("newdata");
 	let now = Utc::now();
-	let data = req.state().inner_state().data.clone();//clones pointer
-	let websocket_addr = req.state().inner_state().websocket_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
+	let data = state.inner_state().data.clone();//clones pointer
+	let websocket_addr = state.inner_state().websocket_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
 	trace!("got addr");
 	req.body()
 		.from_err()
@@ -303,10 +266,13 @@ pub fn newdata<T: InnerState+'static>(req: &HttpRequest<T>) -> FutureResponse<Ht
 }
 
 /// do websocket handshake and start `MyWebSocket` actor
-pub fn ws_index<T: InnerState+'static>(req: &HttpRequest<T>) -> Result<HttpResponse, wError> {
+pub fn ws_index<T: InnerState+'static>(
+	state: web::State<T>, 
+	req: &HttpRequest) -> wResult<HttpResponse> {
+
 	trace!("websocket connected");
 	let session_id = req.identity().unwrap().parse::<u16>().unwrap();
-	let sessions = req.state().inner_state().sessions.read().unwrap();
+	let sessions = state.inner_state().sessions.read().unwrap();
 	let session = sessions.get(&session_id).unwrap();
 	
 	let timeseries_with_access = session.timeseries_with_access.clone();

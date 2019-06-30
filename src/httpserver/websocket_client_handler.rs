@@ -12,7 +12,7 @@ extern crate serde_derive;
 extern crate byteorder;
 extern crate crossbeam_utils;
 
-use self::actix_web::{Binary,ws};
+use actix_web_actors::ws;
 use self::chrono::{Utc};
 use super::futures::Future;
 
@@ -24,7 +24,7 @@ use std::sync::mpsc;
 use std::sync::mpsc::sync_channel;
 use chrono::DateTime;
 use chrono::TimeZone; // We need the trait in scope to use Utc::timestamp().
-
+use bytes::Bytes;
 
 use super::timeseries_interface;
 use super::websocket_data_router;
@@ -69,7 +69,7 @@ struct Trace {
 
 #[derive(Serialize, Deserialize, Default)]
 struct DataSetClientMeta {
-		field_ids: Vec<timeseries_interface::FieldId>,
+	field_ids: Vec<timeseries_interface::FieldId>,
     traces_meta: Vec<Trace>,
     n_lines: u64,
     dataset_id: timeseries_interface::DatasetId,
@@ -129,7 +129,7 @@ impl<T: InnerState+'static> Handler<websocket_data_router::NewData> for WsSessio
 		std::mem::drop(data);
 		//send update
 		debug!("sending update");
-		ctx.binary(Binary::from(line));
+		ctx.binary(Bytes::from(line));
 	}
 }
 
@@ -200,7 +200,7 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 				let decode_info = dataset.get_decode_info(fields);
 				std::mem::drop(data);
 				let decode_info = bincode::serialize(&decode_info).unwrap();
-				ctx.binary(Binary::from(decode_info));
+				ctx.binary(Bytes::from(decode_info));
 			} else {
 				warn!("tried access to unautorised or non existing dataset");
 			}
@@ -291,13 +291,13 @@ impl<T: InnerState+'static> WsSession<'static,T> {
 		if let Some((_thread, rx)) = self.file_io_thread.take() {
 			while let Ok(buffer) = rx.recv() {
 				if ctx.connected() {
-					ctx.binary(Binary::from(buffer ));
+					ctx.binary(Bytes::from(buffer ));
 				} else {
 					return;
 				}
 			} //send message to signal we are done sending data
 			//third byte set to one signals this
-			ctx.binary(Binary::from(vec!(0u8,0,1,0)));
+			ctx.binary(Bytes::from(vec!(0u8,0,1,0)));
 		}
 	}
 }

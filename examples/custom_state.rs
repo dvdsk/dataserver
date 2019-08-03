@@ -1,6 +1,5 @@
-use crate::actix_web::actix::Arbiter;
-use crate::actix_web::{HttpServer,App,http::Method};
-use crate::actix_identity::{CookieIdentityPolicy, IdentityService};
+use actix_web::{HttpServer,App, web, http};
+use actix_identity::{CookieIdentityPolicy, IdentityService};
 
 use std::sync::mpsc;
 use std::sync::atomic::{AtomicUsize};
@@ -8,9 +7,10 @@ use std::thread;
 
 use dataserver::{certificate_manager, httpserver};
 use dataserver::{helper};
-use dataserver::httpserver::{InnerState, timeseries_interface, ServerHandle, DataRouterHandle, DataServerState, CheckLogin};
-use dataserver::httpserver::{ws_index, index, logout, newdata, plot_data, list_data, login_get_and_check, login_page, serve_file};
-use dataserver::secure_database::{PasswordDatabase, UserDatabase};
+use dataserver::httpserver::{InnerState, timeseries_interface, ServerHandle, DataRouterHandle, DataServerState};
+use dataserver::httpserver::{ws_index, index, logout, newdata, plot_data, list_data, login_get_and_check, login_page};
+use dataserver::httpserver::secure_database::{PasswordDatabase, UserDatabase};
+use dataserver::httpserver::login_redirect::CheckLogin;
 
 use std::sync::{Arc, RwLock, Mutex};
 use std::io::stdin;
@@ -137,12 +137,12 @@ fn main() {
 	let db = sled::Db::start(config).unwrap();
 
 	let passw_db = PasswordDatabase::from_db(db).unwrap();
-	let user_db = 
+	let user_db = UserDatabase::from_db(db).unwrap();
 	let data = Arc::new(RwLock::new(timeseries_interface::init("data").unwrap()));
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 
 	let (data_handle, web_handle) =
-	start("keys/cert.key", "keys/cert.cert", data.clone(), passw_db.clone(), sessions.clone());
+	start("keys/cert.key", "keys/cert.cert", data.clone(), passw_db.clone(), user_db.clone(), sessions.clone());
 	println!("press: t to send test data, n: to add a new user, q to quit, a to add new dataset");
 	loop {
 		let mut input = String::new();
@@ -150,7 +150,7 @@ fn main() {
 		match input.as_str() {
 			"t\n" => helper::send_test_data_over_http(data.clone(), 8070),
 			"d\n" => helper::signal_and_append_test_data(data.clone(), &data_handle), //works
-			"n\n" => helper::add_user(& passw_db),
+			"n\n" => helper::add_user(&passw_db, &user_db),
 			"a\n" => helper::add_dataset(&passw_db, &data),
 			"q\n" => break,
 			_ => println!("unhandled"),

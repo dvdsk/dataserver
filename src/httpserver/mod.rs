@@ -28,6 +28,7 @@ use chrono::{DateTime, Utc};
 
 pub mod timeseries_interface;
 pub mod secure_database;
+pub mod login_redirect;
 
 pub mod websocket_data_router;
 pub mod websocket_client_handler;

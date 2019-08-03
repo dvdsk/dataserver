@@ -1,14 +1,9 @@
-extern crate byteorder;
-extern crate bytes;
-extern crate minimal_timeseries;
-extern crate walkdir;
-extern crate serde_yaml;
-extern crate chrono;
-extern crate num;
+use serde::{Serialize, Deserialize};
+use log::{warn, info, debug, trace, error};
 
-use self::byteorder::{ByteOrder, LittleEndian, NativeEndian, NetworkEndian, WriteBytesExt};
-use self::bytes::Bytes;
-use crate::smallvec::SmallVec;
+use byteorder::{ByteOrder, LittleEndian, NativeEndian, NetworkEndian, WriteBytesExt};
+use bytes::Bytes;
+use smallvec::SmallVec;
 
 use std::fs;
 use std::fs::File;
@@ -17,8 +12,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use chrono::prelude::*;
 
-use self::minimal_timeseries::{Timeseries, BoundResult, DecodeParams};
-use self::walkdir::{DirEntry, WalkDir};
+use minimal_timeseries::{Timeseries, BoundResult, DecodeParams};
+use walkdir::{DirEntry, WalkDir};
 use std::collections::HashMap;
 
 use super::secure_database::{PasswordDatabase, UserInfo};

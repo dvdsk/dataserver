@@ -1,5 +1,5 @@
-extern crate minimal_timeseries;
-extern crate serde_yaml;
+use serde::{Serialize, Deserialize};
+use serde_yaml;
 
 use std::fs;
 use std::io;

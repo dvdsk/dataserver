@@ -1,10 +1,11 @@
 
 use fern::colors::{Color, ColoredLevelConfig};
+use text_io::{try_read, try_scan, read};
 
 #[cfg(test)]
 mod test;
 
-use crate::chrono::Utc;
+use chrono::Utc;
 use crate::httpserver::{timeseries_interface, secure_database::PasswordDatabase, secure_database::UserInfo};
 
 use std::path::{Path};
@@ -12,7 +13,7 @@ use std::sync::{Arc, RwLock};
 use std::io::{stdin, stdout, Read, Write};
 use std::collections::HashMap;
 
-use crate::byteorder::{NativeEndian, WriteBytesExt};
+use byteorder::{NativeEndian, WriteBytesExt};
 use crate::httpserver::timeseries_interface::compression::encode;
 use crate::httpserver::DataRouterHandle;
 

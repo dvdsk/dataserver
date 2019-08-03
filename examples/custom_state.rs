@@ -1,7 +1,3 @@
-extern crate dataserver;
-
-extern crate actix_web;
-
 use crate::actix_web::actix::Arbiter;
 use crate::actix_web::{HttpServer,App,http::Method};
 use crate::actix_identity::{CookieIdentityPolicy, IdentityService};

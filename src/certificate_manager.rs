@@ -1,12 +1,7 @@
-extern crate acme_client;
-extern crate untrusted;
-extern crate webpki;
-extern crate webpki_roots;
+use webpki_roots::TLS_SERVER_ROOTS;
 
-use self::webpki_roots::TLS_SERVER_ROOTS;
-
-use self::acme_client::error::Error as aError;
-use self::acme_client::Directory;
+use acme_client::error::Error as aError;
+use acme_client::Directory;
 //use self::acme_client::LETSENCRYPT_INTERMEDIATE_CERT_URL;
 
 use actix_web::Result as wResult;

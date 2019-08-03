@@ -1,8 +1,5 @@
 use super::*;
-extern crate byteorder;
-extern crate reqwest;
-extern crate chrono;
-use self::byteorder::{NativeEndian, WriteBytesExt};
+use byteorder::{NativeEndian, WriteBytesExt};
 use crate::httpserver::timeseries_interface::compression::encode;
 use std::f32;
 use chrono::{Duration, DateTime, TimeZone, NaiveDateTime, Utc};

@@ -1,7 +1,5 @@
-extern crate actix;
-extern crate actix_web;
-extern crate rand;
-use self::actix::prelude::*;
+use log::{warn, info, debug, trace, error};
+use actix::prelude::*;
 
 use std::collections::{HashMap, HashSet};
 

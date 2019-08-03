@@ -1,4 +1,5 @@
 use super::*;
+use log::{warn, info, debug, trace, error};
 use std::sync::{Arc,RwLock, mpsc};
 use std::mem;
 use minimal_timeseries::Selector;

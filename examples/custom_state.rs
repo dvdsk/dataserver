@@ -48,75 +48,70 @@ pub fn start(signed_cert: &str, private_key: &str,
 	let tls_config = httpserver::make_tls_config(signed_cert, private_key);
 	let cookie_key = httpserver::make_random_cookie_key();
 
-  let free_session_ids = Arc::new(AtomicUsize::new(0));
+	let free_session_ids = Arc::new(AtomicUsize::new(0));
 	let free_ws_session_ids = Arc::new(AtomicUsize::new(0));
 
-	let (tx, rx) = mpsc::channel();
-	thread::spawn(move || {
-		// Start data server actor in separate thread
-		let sys = actix::System::new("http-server");
-		let data_server = Arbiter::start(|_| httpserver::websocket_data_router::DataServer::default());
-		let data_server_clone = data_server.clone();
+	let sys = actix::System::new("http-server");
+	let data_server = Arbiter::start(|_| httpserver::websocket_data_router::DataServer::default());
+	let data_server_clone = data_server.clone();
 
-		let web_server = HttpServer::new(move || {
-			// data the webservers functions have access to
-			let state = ExampleState {
-				counter: Arc::new(Mutex::new(0)),
-				dataserver_state: DataServerState {
-					passw_db: passw_db.clone(),
-					websocket_addr: data_server_clone.clone(),
-					data: data.clone(),
-					sessions: sessions.clone(),
-					free_session_ids: free_session_ids.clone(),
-					free_ws_session_ids: free_ws_session_ids.clone(),
-				},
-		  };
-			App::new()
-				.data(state)
-		    .wrap(IdentityService::new(
-		      CookieIdentityPolicy::new(&cookie_key[..])
-		      .domain("deviousd.duckdns.org")
-		      .name("auth-cookie")
-		      .path("/")
-		      .secure(true),
-		    ))
-				.middleware(CheckLogin{
-					public_roots: vec!(String::from("/commands")),
-					..CheckLogin::default()
-				})
-				.service(
-					web::scope("/") //TODO redo from examples (https://github.com/actix/examples/blob/master/basics/src/main.rs)
-						.service(web::resource("commands/test_state").to(test_state))
-						.service(web::resource("ws/").to(ws_index))
-						.service(web::resource("logout").to(logout))
-						.service(web::resource("").to(index))
-						.service(web::resource("newdata").to(newdata))
-						.service(web::resource("plot").to(plot_data))
-						.service(web::resource("list_data").to(list_data))
-						.service(web::resource(r"login/{path}").route(
-							web::get()
-								.method(http::Method::POST)
-								.to(login_get_and_check)
-						))
-						.service(web::resource(r"login/{tail:.*}").route(
-							web::get()
-								.method(http::Method::GET)
-								.to(login_page)
-						))
-						//for all other urls we try to resolve to static files in the "web" dir
-						.service(fs::Files::new("", "."))
-						//.service(web::resource(r"/{tail:.*}").route(serve_file))
-    		)
-    		.bind_rustls("0.0.0.0:8080", tls_config).unwrap()
-    //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
-    		.shutdown_timeout(5)    // shut down 5 seconds after getting the signal to shut down
-    		.start(); // end of App::new()
+	let web_server = HttpServer::new(move || {
+		// data the webservers functions have access to
+		let state = ExampleState {
+			counter: Arc::new(Mutex::new(0)),
+			dataserver_state: DataServerState {
+				passw_db: passw_db.clone(),
+				websocket_addr: data_server_clone.clone(),
+				data: data.clone(),
+				sessions: sessions.clone(),
+				free_session_ids: free_session_ids.clone(),
+				free_ws_session_ids: free_ws_session_ids.clone(),
+			},
+		};
+		
+		App::new()
+			.data(state)
+			.wrap(IdentityService::new(
+				CookieIdentityPolicy::new(&cookie_key[..])
+				.domain("deviousd.duckdns.org")
+				.name("auth-cookie")
+				.path("/")
+				.secure(true), 
+			))
+			.wrap(CheckLogin)
+			.service(
+				web::scope("/login")
+					.service(web::resource(r"login/{path}").route(
+						web::get()
+							.method(http::Method::POST)
+							.to(login_get_and_check)
+					))
+					.service(web::resource(r"login/{tail:.*}").route(
+						web::get()
+							.method(http::Method::GET)
+							.to(login_page)
+					))
+			)
+			.service(
+				web::scope("/")
+					.service(web::resource("commands/test_state").to(test_state))
+					.service(web::resource("ws/").to(ws_index))
+					.service(web::resource("logout").to(logout))
+					.service(web::resource("").to(index))
+					.service(web::resource("newdata").to(newdata))
+					.service(web::resource("plot").to(plot_data))
+					.service(web::resource("list_data").to(list_data))
+					//for all other urls we try to resolve to static files in the "web" dir
+					.service(fs::Files::new("", "."))
+					//.service(web::resource(r"/{tail:.*}").route(serve_file))
+			)
+			.bind_rustls("0.0.0.0:8080", tls_config).unwrap()
+			//.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
+			.shutdown_timeout(5)    // shut down 5 seconds after getting the signal to shut down
+			.start(); // end of App::new()
 
-		let _ = tx.send((data_server, web_server));
-		let _ = sys.run();
-	});
+	}); //httpserver closure
 
-	let (data_handle, web_handle) = rx.recv().unwrap();
 	(data_handle, web_handle)
 }
 

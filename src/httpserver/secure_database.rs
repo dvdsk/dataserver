@@ -1,17 +1,13 @@
-extern crate ring;
-extern crate chrono;
-extern crate bincode;
-
 use crate::httpserver::timeseries_interface;
 
-use self::bincode::{deserialize_from,serialize_into};
+use bincode::{deserialize_from,serialize_into};
 
-use self::ring::{digest, pbkdf2};
+use ring::{digest, pbkdf2};
 use std::collections::HashMap;
 use std::fs::{OpenOptions,File};
 use std::io::Error as ioError;
 use std::path::PathBuf;
-use self::chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc};
 
 static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;

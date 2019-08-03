@@ -6,7 +6,8 @@ use std::io;
 use std::path::Path;
 
 use super::{Field, FieldId, MetaData};
-use super::super::{rand, rand::{FromEntropy, Rng}};
+use rand;
+use rand::{FromEntropy, Rng};
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct FieldLength {

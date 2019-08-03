@@ -1,12 +1,7 @@
 extern crate acme_client;
-
-extern crate actix_web;
 extern crate untrusted;
 extern crate webpki;
 extern crate webpki_roots;
-
-extern crate actix;
-extern crate actix_net;
 
 use self::webpki_roots::TLS_SERVER_ROOTS;
 
@@ -15,7 +10,7 @@ use self::acme_client::Directory;
 //use self::acme_client::LETSENCRYPT_INTERMEDIATE_CERT_URL;
 
 use actix_web::Result as wResult;
-use actix_web::{http, HttpServer, App, HttpRequest, web};
+use actix_web::{http, HttpServer, App, HttpRequest, web, Responder, HttpResponse};
 use actix_files as fs;
 use std::sync::mpsc;
 use std::thread;
@@ -137,23 +132,24 @@ fn get_port() -> Result<u32, ()> {
 	}
 }
 
-fn print(_req: &HttpRequest) -> &'static str {
-    "Hello world!"
+fn index() -> impl Responder {
+    HttpResponse::Ok().body("Hello world!")
 }
 
-type ServerHandle = self::actix::Addr<actix_net::server::Server>;
-pub fn host_server() -> Result<ServerHandle, ()> {
+//handles only requests for certificate challanges
+pub fn host_server() -> Result<actix_web::dev::Server, ()> {
 	if let Ok(port) = get_port() {
 		let socket = format!("0.0.0.0:{}", port);
 		println!("socket :{}", socket);
 
 		let (tx, rx) = mpsc::channel();
 		thread::spawn(move || {
-			let sys = actix::System::new("http-server");
-			let addr = HttpServer::new(|| App::new()
-			//handle only requests for certificate challanges
-			.service(web::resource("/").to(print))
-			.service(fs::Files::new("/.well-known/acme-challenge/", "."))
+        	let sys = actix_rt::System::new("http-server");
+
+			let addr = HttpServer::new(|| 
+				App::new()
+					.route("/", actix_web::web::get().to(index))
+					.service(fs::Files::new("/.well-known/acme-challenge/", "."))
 			)
 			.bind(&socket).expect(&format!("Can not bind to {}",socket))
 			.shutdown_timeout(5)    // <- Set shutdown timeout to 5 seconds
@@ -170,11 +166,6 @@ pub fn host_server() -> Result<ServerHandle, ()> {
 	}
 }
 
-fn stop_server(handle: ServerHandle) {
-	let _ = handle
-		.send(HttpServer::StopServer { graceful: true })
-		.timeout(Duration::from_secs(5)); // <- Send `StopServer` message to server.
-}
 
 // FIXME
 fn make_domain_list(domain: &str) -> (String, String) {
@@ -245,8 +236,8 @@ pub fn generate_and_sign_keys<T: AsRef<Path>>(
 		http_challenge.validate().unwrap();
 	}
 
-	//done, we can shut this server down
-	stop_server(server);
+	//done, we can shut this server down non gracefully
+	server.stop(false);
 	//clean up challange dir
 	remove_dir_all(".tmp/www")?;
 

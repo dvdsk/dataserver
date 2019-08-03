@@ -133,7 +133,7 @@ impl WsSession {
 			if let Some(fields_with_access) = self.timeseries_with_access.read().unwrap().get(&set_id){
 				//parse requested fields
 				if let Ok(field_ids) = args[4..]
-					.into_iter()
+					.iter()
 					.map(|arg| arg.parse::<timeseries_interface::FieldId>())
 					.collect::<Result<Vec<timeseries_interface::FieldId>,std::num::ParseIntError>>(){
 					

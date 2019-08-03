@@ -33,7 +33,7 @@ pub mod websocket_data_router;
 pub mod websocket_client_handler;
 
 use websocket_client_handler::WsSession;
-use secure_database::{PasswordDatabase};
+use secure_database::{PasswordDatabase, UserDatabase};
 use crate::httpserver::timeseries_interface::{Authorisation};
 
 pub struct Session {//TODO deprecate 
@@ -50,7 +50,8 @@ pub trait InnerState {
 }
 
 pub struct DataServerState {
-	pub passw_db: Arc<RwLock<PasswordDatabase>>,
+	pub passw_db: PasswordDatabase,
+	pub user_db: UserDatabase,
 	pub websocket_addr: Addr<websocket_data_router::DataServer>,
 	pub data: Arc<RwLock<timeseries_interface::Data>>,
 	pub sessions: Arc<RwLock<HashMap<u16,Session>>> ,
@@ -107,7 +108,7 @@ pub type DataRouterHandle = Addr<websocket_data_router::DataServer>;
 // }
 
 pub fn index(id: Identity) -> String {
-	format!("Hello {}", id.identity().unwrap_or("Anonymous".to_owned()))
+	format!("Hello {}", id.identity().unwrap_or_else(||"Anonymous".to_owned()))
 }
 
 pub fn list_data<T: InnerState>(id: Identity, state: Data<T>) -> HttpResponse {
@@ -197,10 +198,9 @@ pub fn login_get_and_check<T: InnerState>(
 	
 	trace!("checking login");
     //if login valid (check passwdb) load userinfo
-    let state = state.inner_state();
-    let mut passw_db = state.passw_db.write().unwrap();
-    
-    if passw_db.verify_password(params.u.as_str().as_bytes(), params.p.as_str().as_bytes()).is_err(){
+    let state = &mut state.inner_state();
+
+    if state.passw_db.verify_password(params.u.as_str().as_bytes(), params.p.as_str().as_bytes()).is_err(){
 		warn!("incorrect password");
 		return Ok(HttpResponse::build(http::StatusCode::UNAUTHORIZED)
         .content_type("text/plain")
@@ -208,8 +208,8 @@ pub fn login_get_and_check<T: InnerState>(
 	} else { info!("user logged in");}
 	
 	//copy userinfo into new session
-	let userinfo = passw_db.get_userdata(&params.u);
-	userinfo.last_login = Utc::now();
+	let userinfo = state.user_db.get_userdata(&params.u).unwrap();
+	//userinfo.last_login = Utc::now();
 	//passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
 	
     let session = Session {

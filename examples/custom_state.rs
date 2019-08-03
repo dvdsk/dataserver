@@ -8,8 +8,9 @@ use std::thread;
 
 use dataserver::{certificate_manager, httpserver};
 use dataserver::{helper};
-use dataserver::httpserver::{InnerState, secure_database::PasswordDatabase, timeseries_interface, ServerHandle, DataRouterHandle, DataServerState, CheckLogin};
+use dataserver::httpserver::{InnerState, timeseries_interface, ServerHandle, DataRouterHandle, DataServerState, CheckLogin};
 use dataserver::httpserver::{ws_index, index, logout, newdata, plot_data, list_data, login_get_and_check, login_page, serve_file};
+use dataserver::secure_database::{PasswordDatabase, UserDatabase};
 
 use std::sync::{Arc, RwLock, Mutex};
 use std::io::stdin;
@@ -128,7 +129,15 @@ fn main() {
 
 	helper::setup_logging(2).expect("could not set up debugging");
 
-	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load("").unwrap()));
+	let config = sled::ConfigBuilder::new()
+			.path("database".to_owned())
+			.flush_every_ms(None) //do not flush to disk unless explicitly asked
+			.build();
+
+	let db = sled::Db::start(config).unwrap();
+
+	let passw_db = PasswordDatabase::from_db(db).unwrap();
+	let user_db = 
 	let data = Arc::new(RwLock::new(timeseries_interface::init("data").unwrap()));
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 

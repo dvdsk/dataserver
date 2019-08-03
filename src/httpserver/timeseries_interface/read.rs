@@ -1,5 +1,5 @@
 use super::*;
-use log::{warn, info, debug, trace, error};
+use log::{warn};
 use std::sync::{Arc,RwLock, mpsc};
 use std::mem;
 use minimal_timeseries::Selector;
@@ -45,7 +45,7 @@ impl DataSet {
 	pub fn prepare_read_processing(read_state: ReadState, timeseries: &minimal_timeseries::Timeseries, max_points: u64, dataset_id: DatasetId) -> Option<ReaderInfo> {
 		//ideal read + ideal package size + ram per sample may not exceed free ram
 		const IDEAL_READ_SIZE: usize = 1_000; //in bytes
-		const IDEAL_PACKAGE_SIZE: usize = 1_000;
+		//const IDEAL_PACKAGE_SIZE: usize = 1_000;
 		const HEADER_SIZE: usize = 4;
 		let free_ram = 1_000_000; //1 mb
 		let lines_in_range = read_state.numb_lines; //as u64

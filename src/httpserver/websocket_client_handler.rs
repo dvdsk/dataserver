@@ -1,6 +1,6 @@
 use actix::*;
 use serde::{Serialize, Deserialize};
-use log::{warn, info, debug, trace, error};
+use log::{warn, info, debug, trace};
 
 use actix_web_actors::ws;
 
@@ -19,7 +19,6 @@ use bytes::Bytes;
 
 use super::timeseries_interface;
 use super::websocket_data_router;
-use crate::httpserver::InnerState;
 
 pub struct TimesRange {
 	pub start: DateTime<Utc>,
@@ -85,7 +84,7 @@ impl Actor for WsSession {
             .wait().unwrap();
 	}
 
-	fn stopping(&mut self, ctx: &mut Self::Context) -> Running {
+	fn stopping(&mut self, _ctx: &mut Self::Context) -> Running {
 		// notify chat server
 		self.websocket_data_router_addr
 			.do_send(websocket_data_router::Disconnect { ws_session_id: self.ws_session_id });
@@ -119,11 +118,6 @@ impl Handler<websocket_data_router::NewData> for WsSession {
 		ctx.binary(Bytes::from(line));
 	}
 }
-
-fn divide_ceil(x: usize, y: usize) -> usize{
-	(x + y - 1) / y
-}
-
 
 impl WsSession {
 	
@@ -173,7 +167,7 @@ impl WsSession {
 	}
 
 	//TODO implement unsubscribe command
-	fn unsubscribe(&mut self, _websocket_addr: &Addr<websocket_data_router::DataServer>){
+	fn unsubscribe(&mut self){
 		unimplemented!();
 	}
 
@@ -316,6 +310,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
 						"/select_uncompressed" => self.select_data(args, false).unwrap(),
 
 						"/sub" => self.subscribe(),
+						"/unsub" => self.unsubscribe(),
 						"/meta" => self.prepare_data(ctx, args),//prepares data and returns metadata to client
 						"/RTC" => self.send_data(ctx),//client signals ready to recieve
 

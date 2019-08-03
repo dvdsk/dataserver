@@ -1,21 +1,16 @@
-use serde::{Serialize, Deserialize};
-use log::{warn, info, debug, trace, error};
-
-use std::path::PathBuf;
+use serde::{ Deserialize};
+use log::{warn, info, trace};
+use chrono;
 
 use actix::Addr;
-use actix_identity::{Identity, CookieIdentityPolicy, IdentityService};
-use actix_files::NamedFile;
+use actix_identity::{Identity};
 use actix_web_actors::ws;
-use actix_web::Error as wError;
 use actix_web::Result as wResult;
 use actix_web::{
-	http, http::StatusCode, middleware, HttpServer,
-	HttpMessage, HttpRequest, HttpResponse, Responder,
+	http, http::StatusCode,
+	HttpRequest, HttpResponse,
 };
 use actix_web::web::{Data, Form, Bytes, Payload};
-
-use futures::future::Future;
 
 use rustls::internal::pemfile::{certs, pkcs8_private_keys};
 use rustls::{NoClientAuth, ServerConfig};
@@ -29,7 +24,6 @@ use std::sync::{Arc, RwLock, atomic::{AtomicUsize,Ordering}};
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::time::Duration;
 use chrono::{DateTime, Utc};
 
 pub mod timeseries_interface;
@@ -43,7 +37,7 @@ use secure_database::{PasswordDatabase};
 use crate::httpserver::timeseries_interface::{Authorisation};
 
 pub struct Session {//TODO deprecate 
-  timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
+	timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
 	username: String,
 	last_login: DateTime<Utc>,
   //add more temporary user specific data as needed
@@ -112,11 +106,11 @@ pub type DataRouterHandle = Addr<websocket_data_router::DataServer>;
 // 	Ok(NamedFile::open(path)?)
 // }
 
-pub fn index(id: Identity, req: &HttpRequest) -> String {
+pub fn index(id: Identity) -> String {
 	format!("Hello {}", id.identity().unwrap_or("Anonymous".to_owned()))
 }
 
-pub fn list_data<T: InnerState>(id: Identity, state: Data<T>, req: &HttpRequest) -> HttpResponse {
+pub fn list_data<T: InnerState>(id: Identity, state: Data<T>) -> HttpResponse {
 	let mut accessible_fields = String::from("<html><body><table>");
 	
 	let session_id = id.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
@@ -140,7 +134,7 @@ pub fn list_data<T: InnerState>(id: Identity, state: Data<T>, req: &HttpRequest)
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(accessible_fields)
 }
 
-pub fn plot_data<T: InnerState>(id: Identity, state: Data<T>, req: &HttpRequest) -> HttpResponse {
+pub fn plot_data<T: InnerState>(id: Identity, state: Data<T>) -> HttpResponse {
 	let session_id = id.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
 	let sessions = state.inner_state().sessions.read().unwrap();
 	let session = sessions.get(&session_id).unwrap();
@@ -161,6 +155,7 @@ pub fn plot_data<T: InnerState>(id: Identity, state: Data<T>, req: &HttpRequest)
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
 
+/*
 fn plot_data_debug<T: InnerState>(id: Identity, state: Data<T>, req: &HttpRequest) -> HttpResponse {
 	let session_id = id.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
 	let sessions = state.inner_state().sessions.read().unwrap();
@@ -181,13 +176,14 @@ fn plot_data_debug<T: InnerState>(id: Identity, state: Data<T>, req: &HttpReques
 	page.push_str(after_form);
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
+*/
 
 pub fn logout<T: InnerState>(id: Identity) -> HttpResponse {
 	id.forget();
 	HttpResponse::Found().finish()
 }
 
-pub fn login_page(_req: &HttpRequest) -> HttpResponse {
+pub fn login_page() -> HttpResponse {
 	let page = include_str!("static_webpages/login.html");
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
@@ -196,8 +192,8 @@ pub fn login_page(_req: &HttpRequest) -> HttpResponse {
 pub fn login_get_and_check<T: InnerState>(
 		id: Identity,
 		state: Data<T>,
-		params: Form<Logindata>,
-		req: HttpRequest) -> wResult<HttpResponse> {
+		req: &HttpRequest,
+		params: Form<Logindata>) -> wResult<HttpResponse> {
 	
 	trace!("checking login");
     //if login valid (check passwdb) load userinfo
@@ -219,7 +215,7 @@ pub fn login_get_and_check<T: InnerState>(
     let session = Session {
 		timeseries_with_access: Arc::new(RwLock::new(userinfo.timeseries_with_access.clone())),
 		username: userinfo.username.clone(),
-		last_login: userinfo.last_login.clone(),
+		last_login: chrono::Utc::now(), //TODO write back to database
 	};
 	//find free session_numb, set new session number and store new session
 	let session_id = state.free_session_ids.fetch_add(1, Ordering::Acquire);
@@ -234,7 +230,7 @@ pub fn login_get_and_check<T: InnerState>(
 	   .finish())
 }
 
-pub fn newdata<T: InnerState+'static>(state: Data<T>, body: Bytes, req: &HttpRequest)
+pub fn newdata<T: InnerState+'static>(state: Data<T>, body: Bytes)
 	 -> HttpResponse {
 	
 	let now = Utc::now();

@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use log::{warn, info, debug, trace, error};
+use log::{warn, info, debug, trace};
 
 use byteorder::{ByteOrder, LittleEndian, NativeEndian, NetworkEndian, WriteBytesExt};
 use bytes::Bytes;

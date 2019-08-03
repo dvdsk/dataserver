@@ -1,4 +1,4 @@
-use log::{warn, info, debug, trace, error};
+use log::{debug, trace};
 use actix::prelude::*;
 
 use std::collections::{HashMap, HashSet};

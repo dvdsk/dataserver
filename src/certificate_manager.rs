@@ -4,8 +4,7 @@ use acme_client::error::Error as aError;
 use acme_client::Directory;
 //use self::acme_client::LETSENCRYPT_INTERMEDIATE_CERT_URL;
 
-use actix_web::Result as wResult;
-use actix_web::{http, HttpServer, App, HttpRequest, web, Responder, HttpResponse};
+use actix_web::{HttpServer, App, Responder, HttpResponse};
 use actix_files as fs;
 use std::sync::mpsc;
 use std::thread;
@@ -17,8 +16,6 @@ use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::path::Path;
-use std::path::PathBuf;
-use std::time::Duration;
 
 fn certificate_valid(_signed_cert: &Path, _private_key: &Path) -> bool {
 	//if signed_cert.exists() && if private_key.exists(){
@@ -204,7 +201,7 @@ pub fn generate_and_sign_keys<T: AsRef<Path>>(
 	};
 
 	// Create a identifier authorization for example.com
-	create_dir(".tmp/www");
+	create_dir(".tmp/www").unwrap();
 	//host server with key saved above
 	let server = host_server().expect("needs to be ran as root");
 

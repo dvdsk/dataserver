@@ -153,7 +153,7 @@ pub fn signal_and_append_test_data(dataset_handle: Arc<RwLock<timeseries_interfa
 
 	let mut line: Vec<u8> = vec!(0;64);
 	//get all measurements
-	let (humidity, temperature, pressure) = (10.,20.,30.);
+	let (humidity, _temperature, _pressure) = (10.,20.,30.);
 	let now = Utc::now();
 
 	//encode all data

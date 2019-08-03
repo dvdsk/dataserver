@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::fs::{OpenOptions,File};
 use std::io::Error as ioError;
 use std::path::PathBuf;
+use std::num::NonZeroU32;
+
 use chrono::{DateTime, Utc};
 
 static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
@@ -34,7 +36,7 @@ pub enum Error {
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct PasswordDatabase {
     path: PathBuf,
-    pub pbkdf2_iterations: u32,
+    pub pbkdf2_iterations: NonZeroU32,
     pub db_salt_component: [u8; 16],
 
     // Normally this would be a persistent database.
@@ -70,7 +72,7 @@ impl PasswordDatabase {
 		
 		let database = PasswordDatabase {
 			path: database_path.clone(),
-			pbkdf2_iterations: 100_000,
+			pbkdf2_iterations: NonZeroU32::new(100_000).unwrap(),
 			db_salt_component: [
 				// This value was generated from a secure PRNG. //TODO check this
 				0xd6, 0x26, 0x98, 0xda, 0xf4, 0xdc, 0x50, 0x52,

@@ -47,8 +47,8 @@ pub struct WsSession {
 	pub timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
 	pub file_io_thread: Option<(thread::JoinHandle<()>, mpsc::Receiver<Vec<u8>>)>,
 	
-	websocket_data_router_addr: Addr<websocket_data_router::DataServer>,
-	data: Arc<RwLock<timeseries_interface::Data>>,
+	pub websocket_data_router_addr: Addr<websocket_data_router::DataServer>,
+	pub data: Arc<RwLock<timeseries_interface::Data>>,
 
 }
 
@@ -162,9 +162,9 @@ impl WsSession {
 		Ok(())
 	}
 
-	fn subscribe(&mut self, websocket_addr: &Addr<websocket_data_router::DataServer>){
+	fn subscribe(&mut self){
 		for set_id in self.selected_data.keys(){
-			websocket_addr.do_send( websocket_data_router::SubscribeToSource {
+			self.websocket_data_router_addr.do_send( websocket_data_router::SubscribeToSource {
 				ws_session_id: self.ws_session_id,
 				set_id: *set_id,
 			});
@@ -314,7 +314,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
 						"/select" => self.select_data(args, true).unwrap(),
 						"/select_uncompressed" => self.select_data(args, false).unwrap(),
 
-						"/sub" => self.subscribe(&self.websocket_data_router_addr),
+						"/sub" => self.subscribe(),
 						"/meta" => self.prepare_data(ctx, args),//prepares data and returns metadata to client
 						"/RTC" => self.send_data(ctx),//client signals ready to recieve
 

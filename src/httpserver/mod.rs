@@ -49,6 +49,7 @@ pub struct Session {//TODO deprecate
 /// standardised interface that the libs handelers use to get the application state they need
 pub trait InnerState {
 	fn inner_state(&self) -> &DataServerState;
+	//fn into_inner(self) -> DataServerState;
 }
 
 pub struct DataServerState {
@@ -63,8 +64,11 @@ pub struct DataServerState {
 //allows to use
 impl InnerState for DataServerState {
 	fn inner_state(&self) -> &Self {
-		self
+		&self
 	}
+	//fn into_inner(self) -> Self {
+	//	self
+	//}
 }
 
 pub fn make_random_cookie_key() -> [u8; 32] {
@@ -264,6 +268,7 @@ pub fn ws_index<T: InnerState+'static>(
 	
 	let timeseries_with_access = session.timeseries_with_access.clone();//TODO security do we want clone here?
 	let ws_session_id = state.inner_state().free_session_ids.fetch_add(1, Ordering::Acquire);
+	
 	let ws_session: WsSession = WsSession {
 		http_session_id: session_id,
 		ws_session_id: ws_session_id  as u16,
@@ -273,8 +278,8 @@ pub fn ws_index<T: InnerState+'static>(
 		timeseries_with_access: timeseries_with_access,
 		file_io_thread: None,
 
-		websocket_data_router_addr: state.inner_state().websocket_addr,
-		data: state.inner_state().data,
+		websocket_data_router_addr: state.inner_state().websocket_addr.clone(),
+		data: state.inner_state().data.clone(),
 	};
 
 	ws::start(

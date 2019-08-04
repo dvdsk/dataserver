@@ -54,7 +54,7 @@ impl From<bincode::Error> for LoadDbError {
 
 
 impl PasswordDatabase {
-	pub fn from_db(db: Db) -> Result<Self,sled::Error> {
+	pub fn from_db(db: &Db) -> Result<Self,sled::Error> {
 		Ok(Self { 
 			storage: db.open_tree("passw_database")?, //created it not exist
 		})
@@ -123,7 +123,7 @@ pub enum UserDbError {
 }
 
 impl UserDatabase {
-	pub fn from_db(db: Db) -> Result<Self,sled::Error> {
+	pub fn from_db(db: &Db) -> Result<Self,sled::Error> {
 		Ok(Self { 
 			storage: db.open_tree("user_database")?, //created it not exist
 		})

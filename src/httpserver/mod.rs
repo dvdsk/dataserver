@@ -194,7 +194,7 @@ pub fn login_page() -> HttpResponse {
 pub fn login_get_and_check<T: InnerState>(
 		id: Identity,
 		state: Data<T>,
-		req: &HttpRequest,
+		req: HttpRequest,
 		params: Form<Logindata>) -> wResult<HttpResponse> {
 	
 	trace!("checking login");
@@ -257,7 +257,7 @@ pub fn newdata<T: InnerState+'static>(state: Data<T>, body: Bytes)
 pub fn ws_index<T: InnerState+'static>(
 	id: Identity,
 	state: Data<T>, 
-	req: &HttpRequest,
+	req: HttpRequest,
 	stream: Payload,
 ) -> wResult<HttpResponse> {
 

@@ -1,5 +1,10 @@
-use actix_web::{HttpServer,App, web, http};
+use actix_web::{HttpServer,App, web, http, HttpRequest};
 use actix_identity::{CookieIdentityPolicy, IdentityService};
+use actix_rt;
+use actix_files as fs;
+
+use actix::{Arbiter};
+use actix::prelude::*;
 
 use std::sync::mpsc;
 use std::sync::atomic::{AtomicUsize};
@@ -24,11 +29,11 @@ struct ExampleState {
 }
 
 /// simple handle
-fn test_state(req: &actix_web::HttpRequest) -> actix_web::HttpResponse {
+fn test_state(req: HttpRequest, state: actix_web::web::Data<ExampleState>) -> actix_web::HttpResponse {
     println!("{:?}", req);
-    *(req.state().counter.lock().unwrap()) += 1;
+    *(state.counter.lock().unwrap()) += 1;
 
-    actix_web::HttpResponse::Ok().body(format!("Num of requests: {}", req.state().counter.lock().unwrap()))
+    actix_web::HttpResponse::Ok().body(format!("Num of requests: {}", state.counter.lock().unwrap()))
 }
 
 impl InnerState for ExampleState{
@@ -39,76 +44,86 @@ impl InnerState for ExampleState{
 
 pub fn start(signed_cert: &str, private_key: &str,
      data: Arc<RwLock<timeseries_interface::Data>>, //
-     passw_db: Arc<RwLock<PasswordDatabase>>,
-     sessions: Arc<RwLock<HashMap<u16, dataserver::httpserver::Session>>>) -> (DataRouterHandle, ServerHandle) {
+     passw_db: PasswordDatabase,
+	 user_db: UserDatabase,
+     sessions: Arc<RwLock<HashMap<u16, dataserver::httpserver::Session>>>) -> (DataRouterHandle, actix_web::dev::Server) {
 
 	let tls_config = httpserver::make_tls_config(signed_cert, private_key);
 	let cookie_key = httpserver::make_random_cookie_key();
 
 	let free_session_ids = Arc::new(AtomicUsize::new(0));
 	let free_ws_session_ids = Arc::new(AtomicUsize::new(0));
+    let (tx, rx) = mpsc::channel();
 
-	let sys = actix::System::new("http-server");
-	let data_server = Arbiter::start(|_| httpserver::websocket_data_router::DataServer::default());
-	let data_server_clone = data_server.clone();
+    thread::spawn(move || {
+		let sys = actix::System::new("http-server");
 
-	let web_server = HttpServer::new(move || {
-		// data the webservers functions have access to
-		let state = ExampleState {
-			counter: Arc::new(Mutex::new(0)),
-			dataserver_state: DataServerState {
-				passw_db: passw_db.clone(),
-				websocket_addr: data_server_clone.clone(),
-				data: data.clone(),
-				sessions: sessions.clone(),
-				free_session_ids: free_session_ids.clone(),
-				free_ws_session_ids: free_ws_session_ids.clone(),
-			},
-		};
-		
-		App::new()
-			.data(state)
-			.wrap(IdentityService::new(
-				CookieIdentityPolicy::new(&cookie_key[..])
-				.domain("deviousd.duckdns.org")
-				.name("auth-cookie")
-				.path("/")
-				.secure(true), 
-			))
-			.wrap(CheckLogin {phantom: std::marker::PhantomData})
-			.service(
-				web::scope("/login")
-					.service(web::resource(r"login/{path}").route(
-						web::get()
-							.method(http::Method::POST)
-							.to(login_get_and_check)
-					))
-					.service(web::resource(r"login/{tail:.*}").route(
-						web::get()
-							.method(http::Method::GET)
-							.to(login_page)
-					))
-			)
-			.service(
-				web::scope("/")
-					.service(web::resource("commands/test_state").to(test_state))
-					.service(web::resource("ws/").to(ws_index))
-					.service(web::resource("logout").to(logout))
-					.service(web::resource("").to(index))
-					.service(web::resource("newdata").to(newdata))
-					.service(web::resource("plot").to(plot_data))
-					.service(web::resource("list_data").to(list_data))
-					//for all other urls we try to resolve to static files in the "web" dir
-					.service(fs::Files::new("", "."))
-					//.service(web::resource(r"/{tail:.*}").route(serve_file))
-			)
-			.bind_rustls("0.0.0.0:8080", tls_config).unwrap()
-			//.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
-			.shutdown_timeout(5)    // shut down 5 seconds after getting the signal to shut down
-			.start(); // end of App::new()
+		let data_server_addr = httpserver::websocket_data_router::DataServer::default().start();
+		let data_server_addr_clone = data_server_addr.clone();
 
+		let web_server = HttpServer::new(move || {
+			// data the webservers functions have access to
+			let data = actix_web::web::Data::new(ExampleState {
+				counter: Arc::new(Mutex::new(0)),
+				dataserver_state: DataServerState {
+					passw_db: passw_db.clone(),
+					user_db: user_db.clone(),
+					websocket_addr: data_server_addr.clone(),
+					data: data.clone(),
+					sessions: sessions.clone(),
+					free_session_ids: free_session_ids.clone(),
+					free_ws_session_ids: free_ws_session_ids.clone(),
+				},
+			});
+			
+			App::new()
+				.register_data(data)
+				.wrap(IdentityService::new(
+					CookieIdentityPolicy::new(&cookie_key[..])
+					.domain("deviousd.duckdns.org")
+					.name("auth-cookie")
+					.path("/")
+					.secure(true), 
+				))
+				.wrap(CheckLogin {phantom: std::marker::PhantomData::<ExampleState>})
+				.service(
+					web::scope("/login")
+						.service(web::resource(r"login/{path}").route(
+							web::get()
+								.method(http::Method::POST)
+								.to(login_get_and_check::<ExampleState>)
+						))
+						.service(web::resource(r"login/{tail:.*}").route(
+							web::get()
+								.method(http::Method::GET)
+								.to(login_page)
+						))
+				)
+				.service(
+					web::scope("/")
+						.service(web::resource("commands/test_state").to(test_state))
+						.service(web::resource("ws/").to(ws_index::<ExampleState>))
+						.service(web::resource("logout").to(logout::<ExampleState>))
+						.service(web::resource("").to(index))
+						.service(web::resource("newdata").to(newdata::<ExampleState>))
+						.service(web::resource("plot").to(plot_data::<ExampleState>))
+						.service(web::resource("list_data").to(list_data::<ExampleState>))
+						//for all other urls we try to resolve to static files in the "web" dir
+						.service(fs::Files::new("", "."))
+						//.service(web::resource(r"/{tail:.*}").route(serve_file))
+				)
+			})
+		.bind_rustls("0.0.0.0:8080", tls_config).unwrap()
+		//.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
+		.shutdown_timeout(5)    // shut down 5 seconds after getting the signal to shut down
+		.start(); // end of App::new()
+
+
+        let _ = tx.send((data_server_addr_clone, web_server));
+        let _ = sys.run();
 	}); //httpserver closure
 
+    let (data_handle, web_handle) = rx.recv().unwrap();
 	(data_handle, web_handle)
 }
 
@@ -136,8 +151,8 @@ fn main() {
 
 	let db = sled::Db::start(config).unwrap();
 
-	let passw_db = PasswordDatabase::from_db(db).unwrap();
-	let user_db = UserDatabase::from_db(db).unwrap();
+	let mut passw_db = PasswordDatabase::from_db(&db).unwrap();
+	let mut user_db = UserDatabase::from_db(&db).unwrap();
 	let data = Arc::new(RwLock::new(timeseries_interface::init("data").unwrap()));
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 
@@ -150,12 +165,12 @@ fn main() {
 		match input.as_str() {
 			"t\n" => helper::send_test_data_over_http(data.clone(), 8070),
 			"d\n" => helper::signal_and_append_test_data(data.clone(), &data_handle), //works
-			"n\n" => helper::add_user(&passw_db, &user_db),
-			"a\n" => helper::add_dataset(&passw_db, &data),
+			"n\n" => helper::add_user(&mut passw_db, &mut user_db),
+			"a\n" => helper::add_dataset(&mut user_db, &data),
 			"q\n" => break,
 			_ => println!("unhandled"),
 		};
 	}
 	println!("shutting down");
-	httpserver::stop(web_handle);
+	web_handle.stop(true);
 }

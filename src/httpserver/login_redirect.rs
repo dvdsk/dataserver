@@ -14,7 +14,7 @@ use actix_identity::{Identity, CookieIdentityPolicy, IdentityService, RequestIde
 
 #[derive(Default)]
 pub struct CheckLogin<T>{
-    phantom: std::marker::PhantomData<*const T>,
+    pub phantom: std::marker::PhantomData<T>,
 }
 
 impl<S, T, B> Transform<S> for CheckLogin<T>
@@ -37,7 +37,7 @@ where
 
 pub struct CheckLoginMiddleware<S,T> {
     service: S,
-    phantom: std::marker::PhantomData<*const T>,
+    phantom: std::marker::PhantomData<T>,
 }
 
 //TODO can we get data into the middleware? look at existing identityservice

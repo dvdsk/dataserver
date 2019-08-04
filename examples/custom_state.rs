@@ -24,7 +24,7 @@ struct ExampleState {
 }
 
 /// simple handle
-fn test_state(req: &actix_web::HttpRequest<ExampleState>) -> actix_web::HttpResponse {
+fn test_state(req: &actix_web::HttpRequest) -> actix_web::HttpResponse {
     println!("{:?}", req);
     *(req.state().counter.lock().unwrap()) += 1;
 
@@ -75,7 +75,7 @@ pub fn start(signed_cert: &str, private_key: &str,
 				.path("/")
 				.secure(true), 
 			))
-			.wrap(CheckLogin)
+			.wrap(CheckLogin {phantom: std::marker::PhantomData})
 			.service(
 				web::scope("/login")
 					.service(web::resource(r"login/{path}").route(

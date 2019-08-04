@@ -13,10 +13,13 @@ use actix_identity::{Identity, CookieIdentityPolicy, IdentityService, RequestIde
 //example to mimic: https://github.com/actix/examples/blob/master/middleware/src/redirect.rs
 
 #[derive(Default)]
-pub struct CheckLogin;
+pub struct CheckLogin<T>{
+    phantom: std::marker::PhantomData<*const T>,
+}
 
-impl<S, B> Transform<S> for CheckLogin
+impl<S, T, B> Transform<S> for CheckLogin<T>
 where
+    T: InnerState + 'static,
     S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
 {
@@ -24,16 +27,17 @@ where
     type Response = ServiceResponse<B>;
     type Error = Error;
     type InitError = ();
-    type Transform = CheckLoginMiddleware<S>;
+    type Transform = CheckLoginMiddleware<S, T>;
     type Future = FutureResult<Self::Transform, Self::InitError>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ok(CheckLoginMiddleware { service })
+        ok(CheckLoginMiddleware { service, phantom: std::marker::PhantomData })
     }
 }
 
-pub struct CheckLoginMiddleware<S> {
+pub struct CheckLoginMiddleware<S,T> {
     service: S,
+    phantom: std::marker::PhantomData<*const T>,
 }
 
 //TODO can we get data into the middleware? look at existing identityservice
@@ -49,8 +53,9 @@ fn is_logged_in<T: InnerState>(state: &web::Data<T>, id: String) -> Result<(),()
 
 }
 
-impl<S, B> Service for CheckLoginMiddleware<S>
+impl<S, T, B> Service for CheckLoginMiddleware<S,T>
 where
+    T: InnerState + 'static,
     S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
 {
@@ -67,22 +72,23 @@ where
         // We only need to hook into the `start` for this middleware.
 
         if let Some(id) = req.get_identity() {
-            if is_logged_in(&req.app_data().unwrap(), id).is_ok() {
+            let data: web::Data<T> = req.app_data().unwrap();
+            if is_logged_in(&data, id).is_ok() {
                 Either::A(self.service.call(req))
             } else {
-                let path = req.path();
+                let redirect = "/login".to_owned()+req.path();
                 Either::B(ok(req.into_response(
                     HttpResponse::Found()
-                        .header(http::header::LOCATION, "/login".to_owned()+path)
+                        .header(http::header::LOCATION, redirect)
                         .finish()
                         .into_body(), //TODO why comma? is needed?
                 )))
             }
         } else {
-            let path = req.path();
+                let redirect = "/login".to_owned()+req.path();
             Either::B(ok(req.into_response(
                 HttpResponse::Found()
-                    .header(http::header::LOCATION, "/login".to_owned()+path)
+                    .header(http::header::LOCATION, redirect)
                     .finish()
                     .into_body(), //TODO why comma? is needed?        
             )))   

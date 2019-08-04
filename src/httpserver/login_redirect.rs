@@ -1,15 +1,13 @@
 use actix_service::{Service, Transform};
 use actix_web::dev::{ServiceRequest, ServiceResponse};
 use actix_web::{http, Error, HttpResponse, web};
-use actix_web::HttpRequest;
-use actix_web::FromRequest;
 
 use futures::future::{ok, Either, FutureResult};
 use futures::Poll;
 
 use super::InnerState;
 
-use actix_identity::{Identity, CookieIdentityPolicy, IdentityService, RequestIdentity};
+use actix_identity::RequestIdentity;
 //example to mimic: https://github.com/actix/examples/blob/master/middleware/src/redirect.rs
 
 #[derive(Default)]

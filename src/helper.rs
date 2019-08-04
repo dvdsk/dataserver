@@ -20,8 +20,7 @@ use crate::httpserver::DataRouterHandle;
 
 pub fn pause() {
 	let mut stdout = stdout();
-	stdout
-		.write_all(b"Press Enter to halt servers and quit...\n");
+	stdout.write_all(b"Press Enter to halt servers and quit...\n").unwrap();
 	stdout.flush().unwrap();
 	stdin().read_exact(&mut [0]).unwrap();
 }
@@ -38,8 +37,8 @@ pub fn add_user(passw_db: &mut PasswordDatabase, user_db: &mut UserDatabase){
 		username: username.clone(),
 	};
 
-	passw_db.set_password(username.as_str().as_bytes(), password.as_str().as_bytes());
-	user_db.set_userdata(user_data);
+	passw_db.set_password(username.as_str().as_bytes(), password.as_str().as_bytes()).unwrap();
+	user_db.set_userdata(user_data).unwrap();
 }
 
 pub fn add_fields_to_user(user_db: &mut UserDatabase){
@@ -57,7 +56,7 @@ pub fn add_fields_to_user(user_db: &mut UserDatabase){
 	match fields {
 		Ok(fields) => {
 			let userdata = user_db.get_userdata(username).unwrap();
-			user_db.add_owner_from_field_id(dataset_id, &fields, userdata);
+			user_db.add_owner_from_field_id(dataset_id, &fields, userdata).unwrap();
 		}
 		Err(_) => {
 			println!("error parsing fields");
@@ -84,7 +83,7 @@ pub fn add_dataset(user_db: &mut UserDatabase, data: &Arc<RwLock<timeseries_inte
 
 		let fields = &data.sets.get(&dataset_id).unwrap().metadata.fields;
 		let userdata = user_db.get_userdata(username).unwrap();
-		user_db.add_owner(dataset_id, fields, userdata);
+		user_db.add_owner(dataset_id, fields, userdata).unwrap();
 	} else {
 		//destroy files
 		println!("could not create new dataset");
@@ -98,7 +97,7 @@ pub fn remove_dataset(user_db: &mut UserDatabase, data: & Arc<RwLock<timeseries_
 		for username in usernames { //TODO finish
 			let mut user_data = user_db.get_userdata(username).unwrap();
 			user_data.timeseries_with_access.remove(&id);
-			user_db.set_userdata(user_data);
+			user_db.set_userdata(user_data).unwrap();
 		}
 	} else {
 		//destroy files

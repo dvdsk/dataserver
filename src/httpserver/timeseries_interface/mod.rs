@@ -16,8 +16,9 @@ use minimal_timeseries::{Timeseries, BoundResult, DecodeParams};
 use walkdir::{DirEntry, WalkDir};
 use std::collections::HashMap;
 
-use super::secure_database::{PasswordDatabase, UserInfo, UserDatabase};
+use super::secure_database::{UserInfo, UserDatabase};
 use super::websocket_client_handler::SetSliceDecodeInfo;
+use crate::error::DResult;
 
 pub mod specifications;
 pub mod compression;
@@ -358,18 +359,22 @@ impl Data {
 }
 
 impl UserDatabase {
-	pub fn add_owner(&mut self, id: DatasetId, fields: &[Field<f32>], mut userinfo: UserInfo){
+	pub fn add_owner(&mut self, id: DatasetId, fields: &[Field<f32>], mut userinfo: UserInfo)
+	-> DResult<()> {
 		let auth_fields: Vec<Authorisation> = fields.iter().map(|field| Authorisation::Owner(field.id)).collect();
 		userinfo.timeseries_with_access.insert(id, auth_fields);
 		
-		self.set_userdata(userinfo );
+		self.set_userdata(userinfo )?;
+		Ok(())
 	}
-	pub fn add_owner_from_field_id(&mut self, id: DatasetId, fields: &[FieldId], mut userinfo: UserInfo){
+	pub fn add_owner_from_field_id(&mut self, id: DatasetId, fields: &[FieldId], mut userinfo: UserInfo)
+	-> DResult<()> {
 		let auth_fields: Vec<Authorisation> = fields.iter().map(|fieldid| Authorisation::Owner(*fieldid)).collect();
 		userinfo.timeseries_with_access.insert(id, auth_fields);
 
 		let username = userinfo.username.clone();
-		self.set_userdata(userinfo );
+		self.set_userdata(userinfo)?;
+		Ok(())
 	}
 	// pub fn remove_owner(&mut self, id: DatasetId, &mut userinfo: UserInfo){
 	// 	userinfo.timeseries_with_access.remove(&id);

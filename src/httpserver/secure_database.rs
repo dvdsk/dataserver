@@ -1,17 +1,11 @@
 use crate::httpserver::timeseries_interface;
 use serde::{Deserialize,Serialize};
-use log::{warn, error};
 
 use sled::{Db,Tree};
 use bincode;
 
-use bincode::{deserialize_from,serialize_into};
-
 use ring::{digest, pbkdf2};
 use std::collections::HashMap;
-use std::fs::{OpenOptions,File};
-use std::io::Error as ioError;
-use std::path::PathBuf;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
@@ -19,8 +13,8 @@ use chrono::{DateTime, Utc};
 
 static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
-const pbkdf2_iterations: NonZeroU32 = unsafe {NonZeroU32::new_unchecked(100_000)};
-const db_salt_component: [u8; 16] = [ // This value was generated from a secure PRNG. //TODO check this
+const PBKDF2_ITERATIONS: NonZeroU32 = unsafe {NonZeroU32::new_unchecked(100_000)};
+const DB_SALT_COMPONENT: [u8; 16] = [ // This value was generated from a secure PRNG. //TODO check this
 	0xd6, 0x26, 0x98, 0xda, 0xf4, 0xdc, 0x50, 0x52,
 	0x24, 0xf2, 0x27, 0xd1, 0xfe, 0x39, 0x01, 0x8a];
 
@@ -36,7 +30,8 @@ pub struct PasswordDatabase {
     pub storage: Arc<Tree>,
 }
 
-enum LoadDbError {
+#[derive(Debug)]
+pub enum LoadDbError {
 	DatabaseError(sled::Error),
 	SerializeError(bincode::Error),
 }
@@ -64,10 +59,10 @@ impl PasswordDatabase {
 	 -> Result<(), sled::Error> {
 		let salt = self.salt(username);
 		let mut credential = [0u8; CREDENTIAL_LEN];
-		pbkdf2::derive(DIGEST_ALG, pbkdf2_iterations, &salt, password, &mut credential);
+		pbkdf2::derive(DIGEST_ALG, PBKDF2_ITERATIONS, &salt, password, &mut credential);
 		
 		self.storage.set(username, &credential)?;
-		self.storage.flush();
+		self.storage.flush()?;
 		Ok(())
 	}
 
@@ -76,7 +71,7 @@ impl PasswordDatabase {
 		if let Ok(db_entry) = self.storage.get(username) {
 			if let Some(credential) = db_entry {
 				let salted_attempt = self.salt(username);
-			 	pbkdf2::verify(DIGEST_ALG, pbkdf2_iterations, &salted_attempt,
+			 	pbkdf2::verify(DIGEST_ALG, PBKDF2_ITERATIONS, &salted_attempt,
 					attempted_password,
 					&credential)
 					.map_err(|_| PasswDbError::WrongPassword)				
@@ -95,8 +90,8 @@ impl PasswordDatabase {
 	// but common case that the user has used the same password for
 	// multiple systems.
 	pub fn salt(&self, username: &[u8]) -> Vec<u8> {
-		let mut salt = Vec::with_capacity(db_salt_component.len() + username.len());
-		salt.extend(db_salt_component.as_ref());
+		let mut salt = Vec::with_capacity(DB_SALT_COMPONENT.len() + username.len());
+		salt.extend(DB_SALT_COMPONENT.as_ref());
 		salt.extend(username);
 		salt
 	}

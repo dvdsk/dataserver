@@ -8,9 +8,10 @@ use actix_web::{HttpServer, App, Responder, HttpResponse};
 use actix_files as fs;
 use std::sync::mpsc;
 use std::thread;
+use std::time::Duration;
 
 use std::env;
-use std::fs::create_dir;
+use std::fs::create_dir_all;
 use std::fs::remove_dir_all;
 use std::fs::File;
 use std::io;
@@ -140,8 +141,8 @@ pub fn host_server() -> Result<actix_web::dev::Server, ()> {
 
 			let addr = HttpServer::new(|| 
 				App::new()
-					.route("/", actix_web::web::get().to(index))
-					.service(fs::Files::new("/.well-known/acme-challenge/", "."))
+				.route("/", actix_web::web::get().to(index))
+				.service(fs::Files::new("/.well-known/acme-challenge", "./.tmp/www/.well-known/acme-challenge"))
 			)
 			.bind(&socket).expect(&format!("Can not bind to {}",socket))
 			.shutdown_timeout(5)    // <- Set shutdown timeout to 5 seconds
@@ -179,8 +180,8 @@ pub fn generate_and_sign_keys<T: AsRef<Path>>(
 	user_private_key: T,
 ) -> Result<(), aError> {
 	let signed_cert = signed_cert.as_ref();
-	let private_key =	private_key.as_ref();
-	let user_private_key =	user_private_key.as_ref();
+	let private_key = private_key.as_ref();
+	let user_private_key = user_private_key.as_ref();
 
 	let (a, b) = make_domain_list(domain);
 	let domains = [a.as_str(), b.as_str()];
@@ -201,19 +202,21 @@ pub fn generate_and_sign_keys<T: AsRef<Path>>(
 	};
 
 	// Create a identifier authorization for example.com
-	create_dir(".tmp/www").unwrap();
+	if !Path::new(".tmp/www").exists(){
+		create_dir_all(".tmp/www").unwrap();
+	}
 	//host server with key saved above
 	let server = host_server().expect("needs to be ran as root");
 
 	//enable to halt signing process and check if signing request server is reachable
-	// loop {
-	// 	let mut input = String::new();
-	// 	std::io::stdin().read_line(&mut input).unwrap();
-	// 	match input.as_str() {
-	// 		"q\n" => break,
-	// 		_ => println!("unhandled"),
-	// 	};
-	// }
+	/* loop {
+	 	let mut input = String::new();
+	 	std::io::stdin().read_line(&mut input).unwrap();
+	 	match input.as_str() {
+	 		"q\n" => break,
+	 		_ => println!("unhandled"),
+	 	};
+	}*/
 
 	for domain in domains.iter() {
 		let authorization = account.authorization(domain).unwrap();
@@ -226,6 +229,7 @@ pub fn generate_and_sign_keys<T: AsRef<Path>>(
 
 		http_challenge.save_key_authorization(".tmp/www").unwrap();
 		http_challenge.validate().unwrap();
+		//thread::sleep(Duration::from_secs(40));
 	}
 
 	//done, we can shut this server down non gracefully

@@ -5,6 +5,8 @@ use actix_web::{http, Error, HttpResponse, web};
 use futures::future::{ok, Either, FutureResult};
 use futures::Poll;
 
+use log::{info};
+
 use super::InnerState;
 
 use actix_identity::RequestIdentity;
@@ -83,7 +85,8 @@ where
                 )))
             }
         } else {
-                let redirect = "/login".to_owned()+req.path();
+            info!("could not get identity thus redirecting");
+            let redirect = "/login".to_owned()+req.path();
             Either::B(ok(req.into_response(
                 HttpResponse::Found()
                     .header(http::header::LOCATION, redirect)

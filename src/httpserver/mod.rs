@@ -198,6 +198,10 @@ pub fn login_get_and_check<T: InnerState>(
 		params: Form<Logindata>) -> wResult<HttpResponse> {
 	
 	trace!("checking login");
+
+	//time function duration
+	let now = std::time::Instant::now();
+
     //if login valid (check passwdb) load userinfo
     let state = &mut state.inner_state();
 
@@ -225,7 +229,11 @@ pub fn login_get_and_check<T: InnerState>(
 	
     //sign and send session id cookie to user 
     id.remember(session_id.to_string());
+	info!("remembering session");
     
+	let end = std::time::Instant::now();
+	println!("{:?}", end-now);
+
     Ok(HttpResponse::Found()
 	   .header(http::header::LOCATION, req.path()["/login".len()..].to_owned())
 	   .finish())

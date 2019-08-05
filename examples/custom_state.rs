@@ -1,9 +1,7 @@
 use actix_web::{HttpServer,App, web, http, HttpRequest};
 use actix_identity::{CookieIdentityPolicy, IdentityService};
-use actix_rt;
 use actix_files as fs;
 
-use actix::{Arbiter};
 use actix::prelude::*;
 
 use std::sync::mpsc;
@@ -12,7 +10,7 @@ use std::thread;
 
 use dataserver::{certificate_manager, httpserver};
 use dataserver::{helper};
-use dataserver::httpserver::{InnerState, timeseries_interface, ServerHandle, DataRouterHandle, DataServerState};
+use dataserver::httpserver::{InnerState, timeseries_interface, DataRouterHandle, DataServerState};
 use dataserver::httpserver::{ws_index, index, logout, newdata, plot_data, list_data, login_get_and_check, login_page};
 use dataserver::httpserver::secure_database::{PasswordDatabase, UserDatabase};
 use dataserver::httpserver::login_redirect::CheckLogin;
@@ -85,22 +83,15 @@ pub fn start(signed_cert: &str, private_key: &str,
 					.path("/")
 					.secure(true), 
 				))
-				.wrap(CheckLogin {phantom: std::marker::PhantomData::<ExampleState>})
 				.service(
 					web::scope("/login")
-						.service(web::resource(r"login/{path}").route(
-							web::get()
-								.method(http::Method::POST)
-								.to(login_get_and_check::<ExampleState>)
-						))
-						.service(web::resource(r"login/{tail:.*}").route(
-							web::get()
-								.method(http::Method::GET)
-								.to(login_page)
-						))
-				)
+						.service(web::resource(r"/{path}")
+							.route(web::post().to(login_get_and_check::<ExampleState>))
+							.route(web::get().to(login_page))
+				))
 				.service(
 					web::scope("/")
+						.wrap(CheckLogin {phantom: std::marker::PhantomData::<ExampleState>})
 						.service(web::resource("commands/test_state").to(test_state))
 						.service(web::resource("ws/").to(ws_index::<ExampleState>))
 						.service(web::resource("logout").to(logout::<ExampleState>))
@@ -110,9 +101,9 @@ pub fn start(signed_cert: &str, private_key: &str,
 						.service(web::resource("list_data").to(list_data::<ExampleState>))
 						//for all other urls we try to resolve to static files in the "web" dir
 						.service(fs::Files::new("", "."))
-						//.service(web::resource(r"/{tail:.*}").route(serve_file))
 				)
 			})
+		// WARNING TLS IS NEEDED FOR THE LOGIN SYSTEM TO FUNCTION
 		.bind_rustls("0.0.0.0:8080", tls_config).unwrap()
 		//.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
 		.shutdown_timeout(5)    // shut down 5 seconds after getting the signal to shut down
@@ -144,9 +135,11 @@ fn main() {
 
 	helper::setup_logging(2).expect("could not set up debugging");
 
-	let config = sled::ConfigBuilder::new()
+	let config = sled::ConfigBuilder::new() //651ms
 			.path("database".to_owned())
 			.flush_every_ms(None) //do not flush to disk unless explicitly asked
+			.async_io(true)
+			.cache_capacity(1024 * 1024 * 32) //32 mb cache 
 			.build();
 
 	let db = sled::Db::start(config).unwrap();

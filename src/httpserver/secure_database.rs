@@ -104,6 +104,7 @@ pub struct UserDatabase {
     pub storage: Arc<Tree>,
 }
 
+type RecieveErrors = bool;
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct UserInfo {
 	pub timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,

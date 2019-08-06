@@ -20,7 +20,7 @@ use rand::Rng;
 use std::fs::File;
 use std::io::BufReader;
 
-use std::sync::{Arc, RwLock, atomic::{AtomicUsize,Ordering}};
+use std::sync::{Arc, RwLock, atomic::{AtomicUsize,Ordering}, Mutex};
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -30,7 +30,8 @@ pub mod timeseries_interface;
 pub mod secure_database;
 pub mod login_redirect;
 
-pub mod websocket_data_router;
+pub mod data_router;
+pub mod error_router;
 pub mod websocket_client_handler;
 
 use websocket_client_handler::WsSession;
@@ -38,7 +39,7 @@ use secure_database::{PasswordDatabase, UserDatabase};
 use crate::httpserver::timeseries_interface::{Authorisation};
 
 pub struct Session {//TODO deprecate 
-	timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
+	timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
 	username: String,
 	last_login: DateTime<Utc>,
   //add more temporary user specific data as needed
@@ -46,22 +47,26 @@ pub struct Session {//TODO deprecate
 
 /// standardised interface that the libs handelers use to get the application state they need
 pub trait InnerState {
-	fn inner_state(&self) -> &DataServerState;
-	//fn into_inner(self) -> DataServerState;
+	fn inner_state(&self) -> &DataRouterState;
+	//fn into_inner(self) -> DataRouterState;
 }
 
-pub struct DataServerState {
+pub struct DataRouterState {
 	pub passw_db: PasswordDatabase,
 	pub user_db: UserDatabase,
-	pub websocket_addr: Addr<websocket_data_router::DataServer>,
+
+	pub data_router_addr: Addr<data_router::DataRouter>,
+	pub error_router_addr: Addr<error_router::ErrorRouter>,
+
 	pub data: Arc<RwLock<timeseries_interface::Data>>,
-	pub sessions: Arc<RwLock<HashMap<u16,Session>>> ,
+
+	pub sessions: Arc<RwLock<HashMap<u16, Arc<Mutex<Session>> >>> ,
 	pub free_session_ids: Arc<AtomicUsize>,
 	pub free_ws_session_ids: Arc<AtomicUsize>,
 }
 
 //allows to use
-impl InnerState for DataServerState {
+impl InnerState for DataRouterState {
 	fn inner_state(&self) -> &Self {
 		&self
 	}
@@ -97,7 +102,8 @@ pub struct Logindata {
 }
 
 pub type ServerHandle = Addr<actix_net::server::Server>;
-pub type DataRouterHandle = Addr<websocket_data_router::DataServer>;
+pub type DataRouterHandle = Addr<data_router::DataRouter>;
+pub type ErrorRouterHandle = Addr<error_router::ErrorRouter>;
 
 // pub fn serve_file<T: InnerState>(req: &HttpRequest) -> wResult<NamedFile> {
 // 	let file_name: String = req.match_info().query("tail")?;
@@ -120,7 +126,7 @@ pub fn list_data<T: InnerState>(id: Identity, state: Data<T>) -> HttpResponse {
 	let session = sessions.get(&session_id).unwrap();
 
 	let data = state.inner_state().data.read().unwrap();
-	for (dataset_id, authorized_fields) in session.timeseries_with_access.read().unwrap().iter() {
+	for (dataset_id, authorized_fields) in session.lock().unwrap().timeseries_with_access.iter() {
 		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
 		let mut dataset_fields = format!("<th>{}</th>", &metadata.name);
 		
@@ -146,7 +152,7 @@ pub fn plot_data<T: InnerState>(id: Identity, state: Data<T>) -> HttpResponse {
 
 	let mut page = String::from(before_form);
 	let data = state.inner_state().data.read().unwrap();
-	for (dataset_id, authorized_fields) in session.timeseries_with_access.read().unwrap().iter() {
+	for (dataset_id, authorized_fields) in session.lock().unwrap().timeseries_with_access.iter() {
 		let metadata = &data.sets.get(&dataset_id).expect("user has access to a database that does no longer exist").metadata;
 		for field_id in authorized_fields{
 			let id = *field_id.as_ref() as usize;
@@ -218,14 +224,14 @@ pub fn login_get_and_check<T: InnerState>(
 	//passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
 	
     let session = Session {
-		timeseries_with_access: Arc::new(RwLock::new(userinfo.timeseries_with_access.clone())),
+		timeseries_with_access: userinfo.timeseries_with_access.clone(),
 		username: userinfo.username.clone(),
 		last_login: chrono::Utc::now(), //TODO write back to database
 	};
 	//find free session_numb, set new session number and store new session
 	let session_id = state.free_session_ids.fetch_add(1, Ordering::Acquire);
 	let mut sessions = state.sessions.write().unwrap();
-	sessions.insert(session_id as u16,session);
+	sessions.insert(session_id as u16, Arc::new(Mutex::new(session)));
 	
     //sign and send session id cookie to user 
     id.remember(session_id.to_string());
@@ -239,18 +245,18 @@ pub fn login_get_and_check<T: InnerState>(
 	   .finish())
 }
 
-pub fn newdata<T: InnerState+'static>(state: Data<T>, body: Bytes)
+pub fn new_data_post<T: InnerState+'static>(state: Data<T>, body: Bytes)
 	 -> HttpResponse {
 	
 	let now = Utc::now();
 	let data = state.inner_state().data.clone();//clones pointer
-	let websocket_addr = state.inner_state().websocket_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
+	let data_router_addr = state.inner_state().data_router_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
 
 	let mut data = data.write().unwrap();
 	match data.store_new_data(body, now) {
 		Ok((set_id, data_string)) => {
 			trace!("stored new data");
-			websocket_addr.do_send(websocket_data_router::NewData {
+			data_router_addr.do_send(data_router::NewData {
 				from_id: set_id,
 				line: data_string,
 				timestamp: now.timestamp()
@@ -274,7 +280,7 @@ pub fn ws_index<T: InnerState+'static>(
 	let sessions = state.inner_state().sessions.read().unwrap();
 	let session = sessions.get(&session_id).unwrap();
 	
-	let timeseries_with_access = session.timeseries_with_access.clone();//TODO security do we want clone here?
+	let session_clone = session.clone();//TODO security do we want clone here?
 	let ws_session_id = state.inner_state().free_session_ids.fetch_add(1, Ordering::Acquire);
 	
 	let ws_session: WsSession = WsSession {
@@ -283,10 +289,10 @@ pub fn ws_index<T: InnerState+'static>(
 		selected_data: HashMap::new(),
 		timerange: websocket_client_handler::TimesRange::default(),
 		compression_enabled: true,
-		timeseries_with_access: timeseries_with_access,
+		session: session_clone,
 		file_io_thread: None,
 
-		websocket_data_router_addr: state.inner_state().websocket_addr.clone(),
+		data_router_addr: state.inner_state().data_router_addr.clone(),
 		data: state.inner_state().data.clone(),
 	};
 
@@ -297,6 +303,29 @@ pub fn ws_index<T: InnerState+'static>(
 	)
 }
 
+//TODO customise
+pub fn new_error_post<T: InnerState+'static>(state: Data<T>, body: Bytes)
+	 -> HttpResponse {
+	
+	let now = Utc::now();
+	let data = state.inner_state().data.clone();//clones pointer
+	let error_router_addr = state.inner_state().error_router_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
+
+	let mut data = data.write().unwrap();
+	match data.authenticate_error_packet(body) {
+		Ok((dataset_id, field_id, error_code)) => {
+			error_router_addr.do_send(error_router::NewError {
+				dataset_id,
+				field_id,
+				error_code,
+				timestamp: now,
+			});
+			HttpResponse::Ok().status(StatusCode::OK).finish() 
+		},
+		Err(_) => HttpResponse::Ok().status(StatusCode::FORBIDDEN).finish(),
+	}
+}
+
 /*
 pub fn stop(handle: ServerHandle) {
 	let _ = handle
@@ -305,7 +334,7 @@ pub fn stop(handle: ServerHandle) {
 }*/
 
 pub fn signal_newdata(handle: &DataRouterHandle, from_id: timeseries_interface::DatasetId, line: Vec<u8>, timestamp: i64) {
-	handle.do_send(websocket_data_router::NewData {
+	handle.do_send(data_router::NewData {
 		from_id,
 		line,
 		timestamp,

@@ -8,7 +8,6 @@ use actix_web::{HttpServer, App, Responder, HttpResponse};
 use actix_files as fs;
 use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
 
 use std::env;
 use std::fs::create_dir_all;

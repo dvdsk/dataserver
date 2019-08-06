@@ -32,7 +32,7 @@ pub fn start(signed_cert: &str, private_key: &str,
 	thread::spawn(move || {
 		// Start data server actor in separate thread
 		let sys = actix::System::new("http-server");
-		let data_server = Arbiter::start(|_| httpserver::websocket_data_router::DataServer::default());
+		let data_server = Arbiter::start(|_| httpserver::data_router::DataServer::default());
 		let data_server_clone = data_server.clone();
 
 		let web_server = server::new(move || {

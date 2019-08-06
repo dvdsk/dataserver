@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use super::secure_database::{UserInfo, UserDatabase};
 use super::websocket_client_handler::SetSliceDecodeInfo;
 use crate::error::DResult;
+use crate::httpserver::error_router::ErrorCode;
 
 pub mod specifications;
 pub mod compression;
@@ -385,6 +386,30 @@ impl UserDatabase {
 }
 
 impl Data {
+
+	pub fn authenticate_error_packet(&mut self, mut data_string: Bytes) -> Result<(DatasetId, FieldId, ErrorCode),()> {
+		if data_string.len() < 11 {
+			warn!("data_string size to small for key, datasetid and any error");
+			return Err(());
+		}
+
+		let dataset_id = NativeEndian::read_u16(&data_string[..2]);
+		let key = NativeEndian::read_u64(&data_string[2..10]);
+		
+		if let Some(set) = self.sets.get_mut(&dataset_id){
+			if key != set.metadata.key { 
+				Err(()) 
+			} else {
+				let field_id = data_string[11];
+				let error_code = data_string[12];
+				Ok((dataset_id, field_id, error_code)) 
+			}
+		} else {
+			warn!("could not find dataset with id: {}", dataset_id);
+			Err(())
+		}
+	}
+
 	pub fn store_new_data(&mut self, mut data_string: Bytes, time: DateTime<Utc>) -> Result<(DatasetId, Vec<u8>), ()> {
 		if data_string.len() < 11 {
 			warn!("data_string size to small for key, datasetid and any data");
@@ -407,8 +432,6 @@ impl Data {
 			if PRINTVALUES {
 				let mut list = String::from("");
 				for field in &set.metadata.fields {
-					//println!("field: {:?}",field);
-					//println!("line: {:?}",line);
 					let decoded: f32 = field.decode::<f32>(&data_string[10..]);
 					list.push_str(&format!("{}: {}\n", field.name, decoded));
 

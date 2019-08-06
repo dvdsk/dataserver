@@ -10,10 +10,13 @@ use std::thread;
 
 use dataserver::{certificate_manager, httpserver};
 use dataserver::{helper};
-use dataserver::httpserver::{InnerState, timeseries_interface, DataRouterHandle, DataServerState};
-use dataserver::httpserver::{ws_index, index, logout, newdata, plot_data, list_data, login_get_and_check, login_page};
+use dataserver::httpserver::{InnerState, timeseries_interface, DataRouterHandle, ErrorRouterHandle, DataRouterState};
+use dataserver::httpserver::{ws_index, index, logout, plot_data, list_data, login_get_and_check, login_page};
+use dataserver::httpserver::{new_data_post, new_error_post};
+
 use dataserver::httpserver::secure_database::{PasswordDatabase, UserDatabase};
 use dataserver::httpserver::login_redirect::CheckLogin;
+use dataserver::httpserver::error_router;
 
 use std::sync::{Arc, RwLock, Mutex};
 use std::io::stdin;
@@ -23,7 +26,7 @@ const FORCE_CERT_REGEN: bool =	false;
 
 struct ExampleState {
 	counter: Arc<Mutex<usize>>,
-	dataserver_state: DataServerState,
+	dataserver_state: DataRouterState,
 }
 
 /// simple handle
@@ -35,7 +38,7 @@ fn test_state(req: HttpRequest, state: actix_web::web::Data<ExampleState>) -> ac
 }
 
 impl InnerState for ExampleState{
-	fn inner_state(&self) -> &DataServerState {
+	fn inner_state(&self) -> &DataRouterState {
 		&self.dataserver_state
 	}
 }
@@ -44,7 +47,9 @@ pub fn start(signed_cert: &str, private_key: &str,
      data: Arc<RwLock<timeseries_interface::Data>>, //
      passw_db: PasswordDatabase,
 	 user_db: UserDatabase,
-     sessions: Arc<RwLock<HashMap<u16, dataserver::httpserver::Session>>>) -> (DataRouterHandle, actix_web::dev::Server) {
+	 db: sled::Db,
+     sessions: Arc<RwLock<HashMap<u16, Arc<Mutex<dataserver::httpserver::Session>>>>>)
+	  -> (DataRouterHandle, ErrorRouterHandle, actix_web::dev::Server) {
 
 	let tls_config = httpserver::make_tls_config(signed_cert, private_key);
 	let cookie_key = httpserver::make_random_cookie_key();
@@ -56,17 +61,20 @@ pub fn start(signed_cert: &str, private_key: &str,
     thread::spawn(move || {
 		let sys = actix::System::new("http-server");
 
-		let data_server_addr = httpserver::websocket_data_router::DataServer::default().start();
-		let data_server_addr_clone = data_server_addr.clone();
+		let data_router_addr = httpserver::data_router::DataRouter::default().start();
+		let error_router_addr = httpserver::error_router::ErrorRouter::load(&db, data.clone()).unwrap().start();
+		let data_router_addr_clone = data_router_addr.clone();
+		let error_router_addr_clone = error_router_addr.clone();
 
 		let web_server = HttpServer::new(move || {
 			// data the webservers functions have access to
 			let data = actix_web::web::Data::new(ExampleState {
 				counter: Arc::new(Mutex::new(0)),
-				dataserver_state: DataServerState {
+				dataserver_state: DataRouterState {
 					passw_db: passw_db.clone(),
 					user_db: user_db.clone(),
-					websocket_addr: data_server_addr.clone(),
+					data_router_addr: data_router_addr_clone.clone(),
+					error_router_addr: error_router_addr_clone.clone(),
 					data: data.clone(),
 					sessions: sessions.clone(),
 					free_session_ids: free_session_ids.clone(),
@@ -89,6 +97,8 @@ pub fn start(signed_cert: &str, private_key: &str,
 							.route(web::post().to(login_get_and_check::<ExampleState>))
 							.route(web::get().to(login_page))
 				))
+				.service(web::resource("/post_data").to(new_data_post::<ExampleState>))
+				.service(web::resource("/post_error").to(new_error_post::<ExampleState>))
 				.service(
 					web::scope("/")
 						.wrap(CheckLogin {phantom: std::marker::PhantomData::<ExampleState>})
@@ -96,7 +106,6 @@ pub fn start(signed_cert: &str, private_key: &str,
 						.service(web::resource("ws/").to(ws_index::<ExampleState>))
 						.service(web::resource("logout").to(logout::<ExampleState>))
 						.service(web::resource("").to(index))
-						.service(web::resource("newdata").to(newdata::<ExampleState>))
 						.service(web::resource("plot").to(plot_data::<ExampleState>))
 						.service(web::resource("list_data").to(list_data::<ExampleState>))
 						//for all other urls we try to resolve to static files in the "web" dir
@@ -110,12 +119,12 @@ pub fn start(signed_cert: &str, private_key: &str,
 		.start(); // end of App::new()
 
 
-        let _ = tx.send((data_server_addr_clone, web_server));
+        let _ = tx.send((data_router_addr, error_router_addr, web_server));
         let _ = sys.run();
 	}); //httpserver closure
 
-    let (data_handle, web_handle) = rx.recv().unwrap();
-	(data_handle, web_handle)
+    let (data_router_addr, error_router_addr, web_handle) = rx.recv().unwrap();
+	(data_router_addr, error_router_addr, web_handle)
 }
 
 fn main() {
@@ -144,13 +153,14 @@ fn main() {
 
 	let db = sled::Db::start(config).unwrap();
 
+	//TODO can a tree be opened multiple times?
 	let mut passw_db = PasswordDatabase::from_db(&db).unwrap();
 	let mut user_db = UserDatabase::from_db(&db).unwrap();
 	let data = Arc::new(RwLock::new(timeseries_interface::init("data").unwrap()));
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 
-	let (data_handle, web_handle) =
-	start("keys/cert.key", "keys/cert.cert", data.clone(), passw_db.clone(), user_db.clone(), sessions.clone());
+	let (data_handle, error_handle, web_handle) =
+	start("keys/cert.key", "keys/cert.cert", data.clone(), passw_db.clone(), user_db.clone(), db, sessions.clone());
 	println!("press: t to send test data, n: to add a new user, q to quit, a to add new dataset");
 	loop {
 		let mut input = String::new();

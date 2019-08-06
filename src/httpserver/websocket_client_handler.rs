@@ -7,7 +7,7 @@ use actix_web_actors::ws;
 use chrono::{Utc};
 use futures::Future;
 
-use std::sync::{Arc,RwLock};
+use std::sync::{Arc,RwLock, Mutex};
 use std::collections::HashMap;
 
 use std::thread;
@@ -18,7 +18,8 @@ use chrono::TimeZone; // We need the trait in scope to use Utc::timestamp().
 use bytes::Bytes;
 
 use super::timeseries_interface;
-use super::websocket_data_router;
+use super::data_router;
+use super::Session;
 
 pub struct TimesRange {
 	pub start: DateTime<Utc>,
@@ -44,10 +45,10 @@ pub struct WsSession {
 	pub timerange: TimesRange,
 
 	pub selected_data: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::FieldId>>,
-	pub timeseries_with_access: Arc<RwLock<HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>>>,
+	pub session: Arc<Mutex<Session>>,
 	pub file_io_thread: Option<(thread::JoinHandle<()>, mpsc::Receiver<Vec<u8>>)>,
 	
-	pub websocket_data_router_addr: Addr<websocket_data_router::DataServer>,
+	pub data_router_addr: Addr<data_router::DataRouter>,
 	pub data: Arc<RwLock<timeseries_interface::Data>>,
 
 }
@@ -69,15 +70,15 @@ struct DataSetClientMeta {
 }
 //TODO check if static needed
 impl Actor for WsSession {
-	//type Context = ws::WebsocketContext<Self, DataServerState>;
+	//type Context = ws::WebsocketContext<Self, DataRouterState>;
 	type Context = ws::WebsocketContext<Self>;
 
 	//fn started<T: InnerState>(&mut self, ctx: &mut Self::Context) {
 	fn started(&mut self, ctx: &mut Self::Context) {
 
 		let addr = ctx.address();
-			self.websocket_data_router_addr
-            .send(websocket_data_router::Connect {
+			self.data_router_addr
+            .send(data_router::Connect {
                 addr: addr.recipient(),
                 ws_session_id: self.ws_session_id,
             })
@@ -86,21 +87,21 @@ impl Actor for WsSession {
 
 	fn stopping(&mut self, _ctx: &mut Self::Context) -> Running {
 		// notify chat server
-		self.websocket_data_router_addr
-			.do_send(websocket_data_router::Disconnect { ws_session_id: self.ws_session_id });
+		self.data_router_addr
+			.do_send(data_router::Disconnect { ws_session_id: self.ws_session_id });
 		Running::Stop
 	}
 }
 
 
 /// send messages to server if requested by dataserver
-impl Handler<websocket_data_router::NewData> for WsSession {
+impl Handler<data_router::NewData> for WsSession {
 	type Result = ();
 
-	fn handle(&mut self, msg: websocket_data_router::NewData, ctx: &mut Self::Context) {
+	fn handle(&mut self, msg: data_router::NewData, ctx: &mut Self::Context) {
 		trace!("client handler recieved signal there is new data");
 		//recode data for this user
-		let websocket_data_router::NewData{from_id, line, timestamp} = msg;
+		let data_router::NewData{from_id, line, timestamp} = msg;
 
 		let fields = self.selected_data.get(&from_id).unwrap();
 		let data = self.data.read().unwrap();
@@ -120,7 +121,6 @@ impl Handler<websocket_data_router::NewData> for WsSession {
 }
 
 impl WsSession {
-	
 	fn select_data(&mut self, args: Vec<&str>, compressed: bool) -> Result<(),core::num::ParseIntError>{
 		if args.len() < 5 {return Ok(()) }
 		self.timerange.start = Utc.timestamp(args[1].parse::<i64>()?/1000, (args[1].parse::<i64>()?%1000) as u32);
@@ -130,7 +130,7 @@ impl WsSession {
 
 		if let Ok(set_id) = args[3].parse::<timeseries_interface::DatasetId>() {
 			//check if user has access to the requested dataset
-			if let Some(fields_with_access) = self.timeseries_with_access.read().unwrap().get(&set_id){
+			if let Some(fields_with_access) = self.session.lock().unwrap().timeseries_with_access.get(&set_id){
 				//parse requested fields
 				if let Ok(field_ids) = args[4..]
 					.iter()
@@ -159,7 +159,7 @@ impl WsSession {
 
 	fn subscribe(&mut self){
 		for set_id in self.selected_data.keys(){
-			self.websocket_data_router_addr.do_send( websocket_data_router::SubscribeToSource {
+			self.data_router_addr.do_send( data_router::SubscribeToSource {
 				ws_session_id: self.ws_session_id,
 				set_id: *set_id,
 			});
@@ -324,7 +324,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
 			ws::Message::Ping(msg) => ctx.pong(&msg),
 			ws::Message::Binary(bin) => ctx.binary(bin),
 			ws::Message::Close(_) => {
-				self.websocket_data_router_addr.do_send(websocket_data_router::Disconnect {ws_session_id: self.ws_session_id,});
+				self.data_router_addr.do_send(data_router::Disconnect {ws_session_id: self.ws_session_id,});
 				ctx.stop();
 			}
 			_ => (),

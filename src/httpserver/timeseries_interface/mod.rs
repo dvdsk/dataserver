@@ -17,7 +17,7 @@ use walkdir::{DirEntry, WalkDir};
 use std::collections::HashMap;
 
 use super::secure_database::{UserInfo, UserDatabase};
-use super::websocket_client_handler::SetSliceDecodeInfo;
+use super::data_router_ws_client::SetSliceDecodeInfo;
 use crate::error::DResult;
 use crate::httpserver::error_router::ErrorCode;
 

@@ -1,4 +1,4 @@
-use actix_web::{HttpServer,App, web, http, HttpRequest};
+use actix_web::{HttpServer,App, web, HttpRequest};
 use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_files as fs;
 
@@ -11,12 +11,11 @@ use std::thread;
 use dataserver::{certificate_manager, httpserver};
 use dataserver::{helper};
 use dataserver::httpserver::{InnerState, timeseries_interface, DataRouterHandle, ErrorRouterHandle, DataRouterState};
-use dataserver::httpserver::{ws_index, index, logout, plot_data, list_data, login_get_and_check, login_page};
+use dataserver::httpserver::{data_router_ws_index, error_router_ws_index, index, logout, plot_data, list_data, login_get_and_check, login_page};
 use dataserver::httpserver::{new_data_post, new_error_post};
 
 use dataserver::httpserver::secure_database::{PasswordDatabase, UserDatabase};
 use dataserver::httpserver::login_redirect::CheckLogin;
-use dataserver::httpserver::error_router;
 
 use std::sync::{Arc, RwLock, Mutex};
 use std::io::stdin;
@@ -103,7 +102,8 @@ pub fn start(signed_cert: &str, private_key: &str,
 					web::scope("/")
 						.wrap(CheckLogin {phantom: std::marker::PhantomData::<ExampleState>})
 						.service(web::resource("commands/test_state").to(test_state))
-						.service(web::resource("ws/").to(ws_index::<ExampleState>))
+						.service(web::resource("ws/data").to(data_router_ws_index::<ExampleState>))
+						.service(web::resource("ws/error").to(error_router_ws_index::<ExampleState>))
 						.service(web::resource("logout").to(logout::<ExampleState>))
 						.service(web::resource("").to(index))
 						.service(web::resource("plot").to(plot_data::<ExampleState>))

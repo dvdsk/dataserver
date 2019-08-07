@@ -27,7 +27,6 @@ num = "0.2.0"
 #acme-client = "0.5.3" replaced with patched version that fixes openssl issues
 acme-client = { git = "https://github.com/janderholm/acme-client"}
 
-
 webpki = "0.19.1"
 webpki-roots = "0.16.0"
 untrusted = "0.6.2"
@@ -55,3 +54,6 @@ minimal_timeseries = { git = "https://github.com/dskleingeld/minimal_timeseries"
 
 smallvec = "0.6.6"
 crossbeam-utils = "0.6"
+
+num-traits = "0.2"
+num-derive = "0.2"

@@ -10,6 +10,9 @@ use std::collections::{HashMap, HashSet};
 use crate::httpserver::timeseries_interface::{Data, DatasetId, FieldId};
 use crate::error::DataserverError;
 
+mod sensor_errors;
+use sensor_errors::RemoteError;
+
 /*
 	Errors for sensors and custom system
 		
@@ -43,11 +46,7 @@ impl ReportedErrors {
 		//---------------------------------------------------------
 		//dataset_id in big endian representation, this allows us
 		//to use ranges in database querys
-
-		let mut key: [u8; 4] = [0u8;4];
-		key[2..4].copy_from_slice(&msg.dataset_id.to_be_bytes());
-		key[1] = msg.field_id;
-		key[0] = msg.error_code;
+		let key = msg.to_error_specific_key().to_be_bytes();
 
 		if let Some(last_reported) = self.tree.get(&key).unwrap(){
 			let last_reported: DateTime<Utc> = bincode::deserialize(&last_reported)?;
@@ -90,9 +89,7 @@ impl NotifyChannels {
 		//dataset_id in big endian representation, this allows us
 		//to use ranges in database querys
 
-		let mut key: [u8; 3] = [0u8;3];
-		key[1..3].copy_from_slice(&msg.dataset_id.to_be_bytes());
-		key[1] = msg.field_id;
+		let key = msg.to_field_specific_key().to_be_bytes();
 		
 		if let Some(to_notify) = self.tree.get(&key)?{
 			let to_notify: Vec<NotifyOptions> = bincode::deserialize(&to_notify)?;
@@ -103,12 +100,17 @@ impl NotifyChannels {
 	}
 }
 
+pub struct Clientinfo {
+	addr: Recipient<NewFormattedError>,
+	subs: Vec<FieldSpecificKey>,
+}
+
 type ClientSessionId = u16;
 //Errors are grouped by dataset
 //TODO add general error log
 pub struct ErrorRouter {
 	sessions: HashMap<ClientSessionId, Clientinfo>,
-	subs: HashMap<DatasetId, HashSet<ClientSessionId>>,
+	ws_subs: HashMap<FieldSpecificKey, HashSet<ClientSessionId>>,
 	
  	//TODO speed this up dramatically by using an in memory representation for reads and updating Db on write
 	clients_to_notify: NotifyChannels, //keys = dataset_id+field_id
@@ -127,6 +129,28 @@ pub struct NewError {
 	pub timestamp: DateTime<Utc>,
 }
 
+pub fn to_field_specific_key(dataset_id: DatasetId, field_id: FieldId) -> FieldSpecificKey {
+	let mut key: FieldSpecificKey = 0;
+	key |= (dataset_id as u32) << 16;
+	key |= (field_id as u32) << 8;
+	key
+}
+
+type ErrorSpecificKey =	u32;
+pub type FieldSpecificKey = u32;
+impl NewError {
+	fn to_error_specific_key(&self) -> ErrorSpecificKey {
+		let mut key: ErrorSpecificKey = 0;
+		key |= (self.dataset_id as u32) << 16;
+		key |= (self.field_id as u32) << 8;
+		key |= self.error_code as u32;
+		key
+	}
+	fn to_field_specific_key(&self) -> FieldSpecificKey {
+		to_field_specific_key(self.dataset_id, self.field_id)
+	}
+}
+
 ///Formats error codes:
 /// if field_id and dataset_id > 0
 /// 	[time] data collection error in set: [dataset name]([dataset description]) specificly [field_id name] reports: [error code explanatin]
@@ -137,10 +161,11 @@ pub struct NewError {
 
 fn format_error_code(data: &Arc<RwLock<Data>>, msg: &NewError) -> Result<String, ()> {
 	//TODO add timestamp
+	let error = RemoteError::from(msg.error_code);
 	if msg.dataset_id == 0 {
 		return Ok(format!("{time} system error occured: {error}", 
 			time=msg.timestamp, 
-			error=msg.error_code
+			error=error
 			).to_string());
 	} 
 	
@@ -151,7 +176,7 @@ fn format_error_code(data: &Arc<RwLock<Data>>, msg: &NewError) -> Result<String,
 				time=msg.timestamp, 
 				dataset_name=metadata.name,
 				dataset_description = metadata.description,
-				error=msg.error_code,
+				error=error,
 				).to_string())
 		} else if let Some(field) = metadata.fields.get(msg.field_id as usize) {
 			Ok(format!("{time} error during data collection, {field_name} in {dataset_name}({dataset_description}) reports: {error}",
@@ -159,7 +184,7 @@ fn format_error_code(data: &Arc<RwLock<Data>>, msg: &NewError) -> Result<String,
 				field_name=field.name,
 				dataset_name=metadata.name,
 				dataset_description = metadata.description,
-				error=msg.error_code,
+				error=error,
 				).to_string())
 		} else {
 			Err(())
@@ -175,16 +200,16 @@ impl Handler<NewError> for ErrorRouter {
 	fn handle(&mut self, msg: NewError, _: &mut Context<Self>) -> Self::Result {
 		if self.reported_errors.recently_reported(&msg).unwrap(){ return; }
 		
-		let error_msg = format_error_code(&self.data, &msg);
+		let error_msg = format_error_code(&self.data, &msg).unwrap();
 		
 		//get a list of clients connected interested in this dataset
-		if let Some(subs) = self.subs.get(&msg.dataset_id){
+		if let Some(subs) = self.ws_subs.get(&msg.to_field_specific_key()){
 			debug!("subs: {:?}", subs);
 			for client_session_id in subs.iter() {
 				// foward new data message to actor that maintains the
 				// websocket connection with this client.
 				let client_websocket_handler = &self.sessions.get(client_session_id).unwrap().addr;
-				client_websocket_handler.do_send(msg.clone()).unwrap();
+				client_websocket_handler.do_send( NewFormattedError{ error_message: error_msg.clone() } ).unwrap();
 			}
 		}
 		//fetch the list of notification channels from
@@ -200,31 +225,45 @@ impl Handler<NewError> for ErrorRouter {
 		}
 	}
 }
+#[derive(Message)]
+pub struct NewFormattedError {
+	pub error_message: String,
+}
 
 /// New chat session is created
 #[derive(Message)]
-#[rtype(u16)]
 pub struct Connect {
-	pub addr: Recipient<NewError>,
+	pub addr: Recipient<NewFormattedError>,
 	pub ws_session_id: u16,
+	pub subscribed_errors: Vec<FieldSpecificKey>,
 }
 
 impl Handler<Connect> for ErrorRouter {
-	type Result = u16;
+	type Result = ();
 
 	fn handle(&mut self, msg: Connect, _: &mut Context<Self>) -> Self::Result {
-		// register session with random id
+		// register session with id
 		let id = msg.ws_session_id;
+		let mut subs = Vec::new();
+		// sub to errors
+		for field_specific_key in msg.subscribed_errors {
+			subs.push(field_specific_key);
+			if let Some(subscribed_clients) = self.ws_subs.get_mut(&field_specific_key){
+				subscribed_clients.insert(msg.ws_session_id);
+			} else {
+				let mut subscribed_clients = HashSet::new();
+				subscribed_clients.insert(msg.ws_session_id);
+				self.ws_subs.insert(field_specific_key, subscribed_clients);
+			}
+		}
+
 		self.sessions.insert(
 			id,
 			Clientinfo {
 				addr: msg.addr,
-				subs: Vec::new(),
+				subs,
 			},
 		);
-
-		// send id back
-		id
 	}
 }
 
@@ -241,7 +280,7 @@ impl Handler<Disconnect> for ErrorRouter {
 		// remove address
 		if let Some(client_info) = self.sessions.remove(&msg.ws_session_id) {
 			for sub in client_info.subs {
-				if let Some(subbed_clients) = self.subs.get_mut(&sub) {
+				if let Some(subbed_clients) = self.ws_subs.get_mut(&sub) {
 					subbed_clients.remove(&msg.ws_session_id);
 					trace!("removed client from: sub:{:?} ", sub);
 				}
@@ -250,47 +289,14 @@ impl Handler<Disconnect> for ErrorRouter {
 	}
 }
 
-/// New chat session is created
-#[derive(Message)]
-pub struct SubscribeToSource {
-	pub ws_session_id: u16,
-	pub set_id: DatasetId,
-}
 
-impl Handler<SubscribeToSource> for ErrorRouter {
-	type Result = ();
-
-	fn handle(&mut self, msg: SubscribeToSource, _: &mut Context<Self>) -> Self::Result {
-		let SubscribeToSource { ws_session_id, set_id } = msg;
-		let client_info = self.sessions.get_mut(&ws_session_id).unwrap();
-		client_info.subs.push(set_id);
-
-		trace!("subscribing to source: {:?}",set_id);
-		//fix when non lexical borrow checker arrives
-		if let Some(subscribers) = self.subs.get_mut(&set_id) {
-			subscribers.insert(ws_session_id);
-			//println!("added new id to subs");
-			return ();
-		}
-
-		let mut subscribers = HashSet::new();
-		subscribers.insert(ws_session_id);
-		self.subs.insert(set_id, subscribers);
-		()
-	}
-}
-
-pub struct Clientinfo {
-	addr: Recipient<NewError>,
-	subs: Vec<DatasetId>,
-}
 
 impl ErrorRouter {
 	pub fn load(db: &sled::Db, data: Arc<RwLock<Data>>) -> Result<ErrorRouter, DataserverError> {
 
 		Ok(ErrorRouter {
 			sessions: HashMap::new(),
-			subs: HashMap::new(),
+			ws_subs: HashMap::new(),
 			clients_to_notify: NotifyChannels::load(&db)?, //keys = dataset_id+field_id
  			client_undisplayed_errors: db.open_tree("undisplayed errors")?,
 
@@ -306,5 +312,3 @@ impl Actor for ErrorRouter {
 	/// with other actors.
 	type Context = Context<Self>;
 }
-
-///////////////////////////////////

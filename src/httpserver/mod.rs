@@ -32,9 +32,9 @@ pub mod login_redirect;
 
 pub mod data_router;
 pub mod error_router;
-pub mod websocket_client_handler;
+pub mod data_router_ws_client; //TODO remove pub
+mod error_router_ws_client;
 
-use websocket_client_handler::WsSession;
 use secure_database::{PasswordDatabase, UserDatabase};
 use crate::httpserver::timeseries_interface::{Authorisation};
 
@@ -268,7 +268,7 @@ pub fn new_data_post<T: InnerState+'static>(state: Data<T>, body: Bytes)
 }
 
 /// do websocket handshake and start `MyWebSocket` actor
-pub fn ws_index<T: InnerState+'static>(
+pub fn data_router_ws_index<T: InnerState+'static>(
 	id: Identity,
 	state: Data<T>, 
 	req: HttpRequest,
@@ -283,17 +283,47 @@ pub fn ws_index<T: InnerState+'static>(
 	let session_clone = session.clone();//TODO security do we want clone here?
 	let ws_session_id = state.inner_state().free_session_ids.fetch_add(1, Ordering::Acquire);
 	
-	let ws_session: WsSession = WsSession {
+	let ws_session: data_router_ws_client::WsSession = data_router_ws_client::WsSession {
 		http_session_id: session_id,
 		ws_session_id: ws_session_id  as u16,
 		selected_data: HashMap::new(),
-		timerange: websocket_client_handler::TimesRange::default(),
+		timerange: data_router_ws_client::TimesRange::default(),
 		compression_enabled: true,
 		session: session_clone,
 		file_io_thread: None,
 
 		data_router_addr: state.inner_state().data_router_addr.clone(),
 		data: state.inner_state().data.clone(),
+	};
+
+	ws::start(
+		ws_session,
+		&req,
+		stream,
+	)
+}
+
+/// do websocket handshake and start `MyWebSocket` actor
+pub fn error_router_ws_index<T: InnerState+'static>(
+	id: Identity,
+	state: Data<T>, 
+	req: HttpRequest,
+	stream: Payload,
+) -> wResult<HttpResponse> {
+
+	trace!("websocket connected");
+	let session_id = id.identity().unwrap().parse::<u16>().unwrap();
+	let sessions = state.inner_state().sessions.read().unwrap();
+	let session = sessions.get(&session_id).unwrap();
+	
+	let session_clone = session.clone();//TODO security do we want clone here?
+	let ws_session_id = state.inner_state().free_session_ids.fetch_add(1, Ordering::Acquire);
+	
+	let ws_session: error_router_ws_client::WsSession = error_router_ws_client::WsSession {
+		http_session_id: session_id,
+		ws_session_id: ws_session_id  as u16,
+		session: session_clone,
+		router_addr: state.inner_state().error_router_addr.clone(),
 	};
 
 	ws::start(

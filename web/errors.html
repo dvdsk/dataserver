@@ -1,0 +1,19 @@
+ <!DOCTYPE html>
+  <meta charset="utf-8" />
+
+<body>
+  <div id="myDiv"><!-- Plotly chart will be drawn inside this DIV --></div>
+  <script>
+	
+	function showMessage(evt){
+  		writeToScreen('<span style="color: blue;">RESPONSE: ' + evt.data+'</span>');
+	}
+	
+	var wsUri = 'wss://deviousd.duckdns.org:8080/ws/error/';
+	
+	ws = new WebSocket(wsUri);
+	ws.onmessage = function(evt) { showMessage(evt) };
+	showMessage(evt);
+	
+  </script>
+</body>

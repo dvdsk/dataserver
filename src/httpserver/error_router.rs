@@ -22,7 +22,7 @@ use sensor_errors::RemoteError;
 	---------------------------------------------------------
 
 	dataset_id zero (0) is reserved for custom errors that should be reported to the web server.
-	field_id zero (0) is reserved for errors not relevant to a field (=sensor) but the entire dataset 
+	field_id zero (255) is reserved for errors not relevant to a field (=sensor) but the entire dataset 
 	the first 124 error codes are generic errors, from 125 and higher are specific to the sensor
 */
 

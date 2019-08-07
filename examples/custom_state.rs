@@ -109,7 +109,7 @@ pub fn start(signed_cert: &str, private_key: &str,
 						.service(web::resource("plot").to(plot_data::<ExampleState>))
 						.service(web::resource("list_data").to(list_data::<ExampleState>))
 						//for all other urls we try to resolve to static files in the "web" dir
-						.service(fs::Files::new("", "."))
+						.service(fs::Files::new("", "./web/"))
 				)
 			})
 		// WARNING TLS IS NEEDED FOR THE LOGIN SYSTEM TO FUNCTION

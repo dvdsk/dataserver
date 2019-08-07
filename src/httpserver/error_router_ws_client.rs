@@ -32,7 +32,7 @@ impl Actor for WsSession {
 			.iter().flat_map(|(set_id, auth)| {
 			auth.iter().map(|auth| auth.as_ref()).map(move |field_id| {
 				error_router::to_field_specific_key(*set_id, *field_id)
-			})
+			}).chain(std::iter::once(error_router::to_field_specific_key(*set_id, u8::max_value())))
 		}).collect();
 
 		let addr = ctx.address();

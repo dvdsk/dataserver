@@ -225,7 +225,7 @@ pub fn init<P: Into<PathBuf>>(dir: P) -> Result<Data, io::Error> {
 		fs::create_dir(&dir)?
 	};
 
-	let mut free_dataset_id: DatasetId = 0;
+	let mut free_dataset_id: DatasetId = 1; //zero is reserved
 	let mut sets: HashMap<DatasetId, DataSet> = HashMap::new();
 
 	fn is_datafile(entry: &DirEntry) -> bool {

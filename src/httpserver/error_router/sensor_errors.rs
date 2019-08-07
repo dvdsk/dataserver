@@ -4,17 +4,23 @@ use num_traits::FromPrimitive;
 #[repr(u8)]
 #[derive(FromPrimitive)]
 pub enum RemoteError {
-    CantFindBme680 = 0,
-    CantConfigureMhz19,
-    Max44009LibError,
-
-    CantOpenFileForWriting,
-    CantOpenFileForReading,
-    CantWriteToFile,
-    FileHasIncorrectSize,
-    ReadMoreThenParams,
+    Unknown = 0,
+ 
+     //general errors start at 1
+    CantOpenFileForWriting = 1,
+    CantWriteToFile=2,
+    CantOpenFileForReading=3,
+    FileHasIncorrectSize=4,
+    ReadMoreThenParams=5,
     
-    InvalidServerResponse,
+    InvalidServerResponse=6,
+
+    CantFindBme680=20,
+    CantConfigureMhz19=21,
+    Max44009LibError=22,
+
+    //node sepecific errors start at 100, still to be implemented (no need as of yet)
+
 }
 
 impl std::convert::From<u8> for RemoteError {
@@ -29,6 +35,7 @@ impl std::fmt::Display for RemoteError {
         // write! macro is expecting. Note that this formatting ignores the
         // various flags provided to format strings.
         match self {
+            RemoteError::Unknown => write!(f, "Unknown error occured"),
             RemoteError::CantFindBme680 => write!(f,"could not find connected bme680"),
             RemoteError::CantConfigureMhz19 => write!(f,"could not find connected mhz19"),
             RemoteError::Max44009LibError => write!(f,"could not find connected max44009"),

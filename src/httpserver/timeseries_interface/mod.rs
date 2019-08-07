@@ -387,7 +387,7 @@ impl UserDatabase {
 
 impl Data {
 
-	pub fn authenticate_error_packet(&mut self, mut data_string: Bytes) -> Result<(DatasetId, FieldId, ErrorCode),()> {
+	pub fn authenticate_error_packet(&mut self, data_string: Bytes) -> Result<(DatasetId, FieldId, ErrorCode),()> {
 		if data_string.len() < 11 {
 			warn!("data_string size to small for key, datasetid and any error");
 			return Err(());

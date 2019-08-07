@@ -1,21 +1,11 @@
 use actix::*;
-use serde::{Serialize, Deserialize};
-use log::{warn, info, debug, trace};
+use log::{trace};
 
 use actix_web_actors::ws;
 
-use chrono::{Utc};
 use futures::Future;
 
-use std::sync::{Arc,RwLock, Mutex};
-use std::collections::HashMap;
-
-use std::thread;
-use std::sync::mpsc;
-use std::sync::mpsc::sync_channel;
-use chrono::DateTime;
-use chrono::TimeZone; // We need the trait in scope to use Utc::timestamp().
-use bytes::Bytes;
+use std::sync::{Arc, Mutex};
 
 use crate::httpserver::Session;
 use super::error_router;

@@ -171,7 +171,7 @@ fn format_error_code(data: &Arc<RwLock<Data>>, msg: &NewError) -> Result<String,
 	
 	if let Some(dataset) = data.read().unwrap().sets.get(&msg.dataset_id) {
 		let metadata = &dataset.metadata;
-		if msg.field_id == 0 {
+		if msg.field_id == u8::max_value() {
 			Ok(format!("{time} error during data collection, {dataset_name}({dataset_description}) reports: {error}",
 				time=msg.timestamp, 
 				dataset_name=metadata.name,

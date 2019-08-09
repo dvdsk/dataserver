@@ -124,7 +124,7 @@ pub struct ErrorRouter {
 #[derive(Message, Clone)]
 pub struct NewError {
 	pub dataset_id: DatasetId,
-	pub field_id: FieldId,
+	pub field_ids: Vec<FieldId>,
 	pub error_code: ErrorCode,
 	pub timestamp: DateTime<Utc>,
 }
@@ -142,12 +142,12 @@ impl NewError {
 	fn to_error_specific_key(&self) -> ErrorSpecificKey {
 		let mut key: ErrorSpecificKey = 0;
 		key |= (self.dataset_id as u32) << 16;
-		key |= (self.field_id as u32) << 8;
+		key |= (self.field_ids[0] as u32) << 8;
 		key |= self.error_code as u32;
 		key
 	}
 	fn to_field_specific_key(&self) -> FieldSpecificKey {
-		to_field_specific_key(self.dataset_id, self.field_id)
+		to_field_specific_key(self.dataset_id, self.field_ids[0])
 	}
 }
 
@@ -171,27 +171,30 @@ fn format_error_code(data: &Arc<RwLock<Data>>, msg: &NewError) -> Result<String,
 	
 	if let Some(dataset) = data.read().unwrap().sets.get(&msg.dataset_id) {
 		let metadata = &dataset.metadata;
-		if msg.field_id == u8::max_value() {
+		if msg.field_ids[0] == u8::max_value() {
 			Ok(format!("{time} error during data collection, {dataset_name}({dataset_description}) reports: {error}",
 				time=msg.timestamp, 
 				dataset_name=metadata.name,
 				dataset_description = metadata.description,
 				error=error,
 				).to_string())
-		} else if let Some(field) = metadata.fields.get(msg.field_id as usize) {
+		} else { 
+			let mut field_names = String::new();
+			for field_id in &msg.field_ids {
+				if let Some(field) = metadata.fields.get(*field_id as usize) {
+					field_names.push_str(&format!("{},", field.name));
+					field_names.pop();
+				} else { return Err(()) }
+			}
 			Ok(format!("{time} error during data collection, {field_name} in {dataset_name}({dataset_description}) reports: {error}",
 				time=msg.timestamp, 
-				field_name=field.name,
+				field_name=field_names,
 				dataset_name=metadata.name,
 				dataset_description = metadata.description,
 				error=error,
 				).to_string())
-		} else {
-			Err(())
 		}
-	} else {
-		Err(())
-	}
+	} else { Err(()) }
 } 
 
 impl Handler<NewError> for ErrorRouter {

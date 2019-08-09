@@ -387,9 +387,9 @@ impl UserDatabase {
 
 impl Data {
 
-	pub fn authenticate_error_packet(&mut self, data_string: Bytes) -> Result<(DatasetId, FieldId, ErrorCode),()> {
-		if data_string.len() < 11 {
-			warn!("data_string size to small for key, datasetid and any error");
+	pub fn authenticate_error_packet(&mut self, data_string: &Bytes) -> Result<DatasetId,()> {
+		if data_string.len() < 12 {
+			warn!("error_string size (={}) to small for key, datasetid and any error (min 12 bytes)", data_string.len());
 			return Err(());
 		}
 
@@ -400,9 +400,7 @@ impl Data {
 			if key != set.metadata.key { 
 				Err(()) 
 			} else {
-				let field_id = data_string[11];
-				let error_code = data_string[12];
-				Ok((dataset_id, field_id, error_code)) 
+				Ok(dataset_id) 
 			}
 		} else {
 			warn!("could not find dataset with id: {}", dataset_id);
@@ -412,7 +410,7 @@ impl Data {
 
 	pub fn store_new_data(&mut self, mut data_string: Bytes, time: DateTime<Utc>) -> Result<(DatasetId, Vec<u8>), ()> {
 		if data_string.len() < 11 {
-			warn!("data_string size to small for key, datasetid and any data");
+			warn!("data_string size (={}) to small for key, datasetid and any data (min 11 bytes)", data_string.len());
 			return Err(());
 		}
 		

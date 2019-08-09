@@ -342,11 +342,13 @@ pub fn new_error_post<T: InnerState+'static>(state: Data<T>, body: Bytes)
 	let error_router_addr = state.inner_state().error_router_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
 
 	let mut data = data.write().unwrap();
-	match data.authenticate_error_packet(body) {
-		Ok((dataset_id, field_id, error_code)) => {
+	match data.authenticate_error_packet(&body) {
+		Ok(dataset_id) => {
+			let error_code = body[10];
+			let field_ids = body.into_iter().skip(11).collect();
 			error_router_addr.do_send(error_router::NewError {
 				dataset_id,
-				field_id,
+				field_ids,
 				error_code,
 				timestamp: now,
 			});

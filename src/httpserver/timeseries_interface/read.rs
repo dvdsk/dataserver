@@ -1,4 +1,5 @@
 use super::*;
+use log::{warn};
 use std::sync::{Arc,RwLock, mpsc};
 use std::mem;
 use minimal_timeseries::Selector;
@@ -44,7 +45,7 @@ impl DataSet {
 	pub fn prepare_read_processing(read_state: ReadState, timeseries: &minimal_timeseries::Timeseries, max_points: u64, dataset_id: DatasetId) -> Option<ReaderInfo> {
 		//ideal read + ideal package size + ram per sample may not exceed free ram
 		const IDEAL_READ_SIZE: usize = 1_000; //in bytes
-		const IDEAL_PACKAGE_SIZE: usize = 1_000;
+		//const IDEAL_PACKAGE_SIZE: usize = 1_000;
 		const HEADER_SIZE: usize = 4;
 		let free_ram = 1_000_000; //1 mb
 		let lines_in_range = read_state.numb_lines; //as u64
@@ -209,7 +210,7 @@ pub fn read_into_packages(data_handle: Arc<RwLock<Data>>, mut tx: mpsc::SyncSend
 			std::mem::drop(dataset);
 			std::mem::drop(data);
 
-			dbg!(&reader.timestamps_buffer.len());
+			//dbg!(&reader.timestamps_buffer.len());
 			let lines_per_sample = reader.selector.as_mut().unwrap().lines_per_sample.get();
 			match reader.empty_into_packages(&mut tx, lines_per_sample){
 				PackageResult::BufferEmptied => continue,
@@ -241,15 +242,15 @@ impl ReaderInfo {
 		//FIXME TODO switch from redefines to incrementive
 
 		//figure out how much extra data can fit into the current package
-		dbg!(self.bytes_per_package);
-		dbg!(self.package.len());
-		dbg!(lines_per_sample);
+		//dbg!(self.bytes_per_package);
+		//dbg!(self.package.len());
+		//dbg!(lines_per_sample);
 		
 		let mut bytes_to_fill_package = (self.bytes_per_package - self.package.len())*lines_per_sample;
 		let mut lines_to_fill_package = bytes_to_fill_package /decoded_line_size; //TODO move into struct?
 
-		dbg!(ldate_remainder.len());
-		dbg!(bytes_to_fill_package);
+		//dbg!(ldate_remainder.len());
+		//dbg!(bytes_to_fill_package);
 
 		//FIXME when does this exit? how can that exit fail?
 		//while there is more data available then fits into the current package,
@@ -270,28 +271,28 @@ impl ReaderInfo {
 			lines_to_fill_package = bytes_to_fill_package /decoded_line_size;
 
 			//self.decode_into_package(tstamp_left, ldata_left);
-			dbg!(self.package.len());
+			//dbg!(self.package.len());
 			Self::decode_into_package(tstamp_left, ldata_left, &mut self.package, self.line_size,
 			                          &self.read_state, lines_per_sample);
-			dbg!(self.package.len());
+			//dbg!(self.package.len());
 
 			let next_package = Self::new_package(self.package_numb, self.dataset_id, self.bytes_per_package);//prepare next package
 			//replace self.package with next package and send the old self.package
 			if tx.send(mem::replace(&mut self.package, next_package)).is_err() {
-				dbg!("failed to send package");
+				//dbg!("failed to send package");
 				return PackageResult::ConnectionDropped
 			}
 			if self.package_numb == 0 {
-				dbg!("last queued");
+				//dbg!("last queued");
 				return PackageResult::LastQueued
 			}
 			self.package_numb -= 1; //set package number for next package
-			dbg!(self.package_numb);
+			//dbg!(self.package_numb);
 		}
 		//self.decode_into_package(tstamp_remainder, ldate_remainder);
-		dbg!("LESS DATA READ THEN CAN BE SAMPLED INTO PACKAGE");
-		dbg!(self.lines_per_read/self.selector.as_ref().unwrap().lines_per_sample.clone().get());
-		dbg!(self.bytes_per_package/self.read_state.decoded_line_size);
+		//dbg!("LESS DATA READ THEN CAN BE SAMPLED INTO PACKAGE");
+		//dbg!(self.lines_per_read/self.selector.as_ref().unwrap().lines_per_sample.clone().get());
+		//dbg!(self.bytes_per_package/self.read_state.decoded_line_size);
 
 		Self::decode_into_package(tstamp_remainder, ldate_remainder, &mut self.package, self.line_size,
 			                        &self.read_state, lines_per_sample);
@@ -299,19 +300,19 @@ impl ReaderInfo {
 		let next_package = Self::new_package(self.package_numb, self.dataset_id, self.bytes_per_package);//prepare next package
 		//replace self.package with next package and send the old self.package
 		if tx.send(mem::replace(&mut self.package, next_package)).is_err() {
-			dbg!("failed to send package");
+			//dbg!("failed to send package");
 			return PackageResult::ConnectionDropped
 		}
 		if self.package_numb == 0 {
-			dbg!("last queued");
+			//dbg!("last queued");
 			return PackageResult::LastQueued
 		}
 		self.package_numb -= 1; //set package number for next package
-		dbg!(self.package_numb);
+		//dbg!(self.package_numb);
 		//TODO what if we hit last package here?
 
-		dbg!("READ BUFFER HAS BEEN EMPTIED");
-		dbg!(self.package_numb);
+		//dbg!("READ BUFFER HAS BEEN EMPTIED");
+		//dbg!(self.package_numb);
 		PackageResult::BufferEmptied
 	}
 

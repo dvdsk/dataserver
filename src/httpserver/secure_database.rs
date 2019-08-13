@@ -1,126 +1,86 @@
-extern crate ring;
-extern crate chrono;
-extern crate bincode;
-
 use crate::httpserver::timeseries_interface;
+use serde::{Deserialize,Serialize};
 
-use self::bincode::{deserialize_from,serialize_into};
+use sled::{Db,Tree};
+use bincode;
 
-use self::ring::{digest, pbkdf2};
+use ring::{digest, pbkdf2};
 use std::collections::HashMap;
-use std::fs::{OpenOptions,File};
-use std::io::Error as ioError;
-use std::path::PathBuf;
-use self::chrono::{DateTime, Utc};
+use std::num::NonZeroU32;
+use std::sync::Arc;
+
+use chrono::{DateTime, Utc};
 
 static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
-pub type Credential = [u8; CREDENTIAL_LEN];
+const PBKDF2_ITERATIONS: NonZeroU32 = unsafe {NonZeroU32::new_unchecked(100_000)};
+const DB_SALT_COMPONENT: [u8; 16] = [ // This value was generated from a secure PRNG. //TODO check this
+	0xd6, 0x26, 0x98, 0xda, 0xf4, 0xdc, 0x50, 0x52,
+	0x24, 0xf2, 0x27, 0xd1, 0xfe, 0x39, 0x01, 0x8a];
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub struct User {
-	password: Credential,
-	pub user_data: UserInfo,
-}
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub struct UserInfo {
-	pub timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
-	pub last_login: DateTime<Utc>, 
-	pub username: String,
-}
-
-pub enum Error {
+pub enum PasswDbError {
 	WrongUsername,
 	WrongPassword,
+	Internal,
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct PasswordDatabase {
-    path: PathBuf,
-    pub pbkdf2_iterations: u32,
-    pub db_salt_component: [u8; 16],
-
-    // Normally this would be a persistent database.
-    // use some embedded database
-    pub storage: HashMap<Vec<u8>, User>,
+    pub storage: Arc<Tree>,
 }
+
+#[derive(Debug)]
+pub enum LoadDbError {
+	DatabaseError(sled::Error),
+	SerializeError(bincode::Error),
+}
+
+impl From<sled::Error> for LoadDbError {
+    fn from(error: sled::Error) -> Self {
+        LoadDbError::DatabaseError(error)
+    }
+}
+impl From<bincode::Error> for LoadDbError {
+    fn from(error: bincode::Error) -> Self {
+        LoadDbError::SerializeError(error)
+    }
+}
+
 
 impl PasswordDatabase {
-	pub fn load<P: Into<PathBuf>>(root_path: P) -> Result<Self,ioError> {
-		let root_path: PathBuf = root_path.into();
-		let mut database_path = root_path.clone();
-		database_path.push("userdb.hm");
-		
-		if database_path.exists() {
-			if let Ok(f) = OpenOptions::new().read(true).write(true).open(&database_path) {
-				if let Ok(database) = deserialize_from::<File, PasswordDatabase>(f) {
-					println!("{:?}", database);
-					Ok(database)
-				} else { warn!("could not parse: {:?}", database_path); Self::new(root_path) }
-			} else { warn!("could not open file: {:?}", database_path); Self::new(root_path) }
-		} else { warn!("could not find the path: {:?}", database_path); Self::new(root_path) }
+	pub fn from_db(db: &Db) -> Result<Self,sled::Error> {
+		Ok(Self { 
+			storage: db.open_tree("passw_database")?, //created it not exist
+		})
 	}
 	
-	pub fn write(&mut self) {
-		let f = OpenOptions::new().write(true).create(false).
-									             truncate(true).open(&self.path).unwrap();
-		serialize_into::<File, PasswordDatabase>(f, self).unwrap();		
-	}
-	
-	pub fn new<P: Into<PathBuf>>(root_path: P) -> Result<Self,ioError> {
-		let mut database_path: PathBuf = root_path.into();
-		database_path.push("userdb.hm");
-		
-		let database = PasswordDatabase {
-			path: database_path.clone(),
-			pbkdf2_iterations: 100_000,
-			db_salt_component: [
-				// This value was generated from a secure PRNG. //TODO check this
-				0xd6, 0x26, 0x98, 0xda, 0xf4, 0xdc, 0x50, 0x52,
-				0x24, 0xf2, 0x27, 0xd1, 0xfe, 0x39, 0x01, 0x8a
-			],
-				storage: HashMap::new(),
-		};
-		let f = OpenOptions::new().write(true).create(true).
-									             truncate(true).open(&database_path)?;
-
-		serialize_into::<File, PasswordDatabase>(f, &database).unwrap();
-		warn!("created new database: {:?}", database_path);
-		Ok(database)
-	}
-	
-	pub fn store_user(&mut self, username: &[u8], password: &[u8], user_data: UserInfo) {
+	pub fn set_password(&mut self, username: &[u8], password: &[u8])
+	 -> Result<(), sled::Error> {
 		let salt = self.salt(username);
-		let mut to_store: Credential = [0u8; CREDENTIAL_LEN];
-		pbkdf2::derive(DIGEST_ALG, self.pbkdf2_iterations, &salt,
-									 password, &mut to_store);
+		let mut credential = [0u8; CREDENTIAL_LEN];
+		pbkdf2::derive(DIGEST_ALG, PBKDF2_ITERATIONS, &salt, password, &mut credential);
 		
-		let new_user = User {password: to_store, user_data: user_data};
-		self.storage.insert(Vec::from(username), new_user);
-		self.write();
+		self.storage.set(username, &credential)?;
+		self.storage.flush()?;
+		Ok(())
 	}
 
 	pub fn verify_password(&self, username: &[u8], attempted_password: &[u8])
-	-> Result<(), Error> {
-		match self.storage.get(username) {
-		 Some(user) => {
-			 let actual_password: Credential = user.password;
-			 let salt = self.salt(username);
-			 pbkdf2::verify(DIGEST_ALG, self.pbkdf2_iterations, &salt,
-											attempted_password,
-											&actual_password)
-										 .map_err(|_| Error::WrongPassword)
-		 },
-		 None => Err(Error::WrongUsername)
-		}
+	-> Result<(), PasswDbError> {
+		if let Ok(db_entry) = self.storage.get(username) {
+			if let Some(credential) = db_entry {
+				let salted_attempt = self.salt(username);
+			 	pbkdf2::verify(DIGEST_ALG, PBKDF2_ITERATIONS, &salted_attempt,
+					attempted_password,
+					&credential)
+					.map_err(|_| PasswDbError::WrongPassword)				
+			} else { Err(PasswDbError::WrongUsername) }
+		} else { Err(PasswDbError::Internal )}
 	}
 
-	pub fn is_user_in_database(&self, username: &[u8]) -> bool {
-		match self.storage.get(username) {
-			Some(_) => true,
-			None => false,
-		}
+	pub fn is_user_in_database(&self, username: &[u8]) -> Result<bool,sled::Error> {
+		self.storage.contains_key(username)
 	}
 
 	// The salt should have a user-specific component so that an attacker
@@ -130,35 +90,74 @@ impl PasswordDatabase {
 	// but common case that the user has used the same password for
 	// multiple systems.
 	pub fn salt(&self, username: &[u8]) -> Vec<u8> {
-		let mut salt = Vec::with_capacity(self.db_salt_component.len() + username.len());
-		salt.extend(self.db_salt_component.as_ref());
+		let mut salt = Vec::with_capacity(DB_SALT_COMPONENT.len() + username.len());
+		salt.extend(DB_SALT_COMPONENT.as_ref());
 		salt.extend(username);
 		salt
 	}
 }
 
-impl PasswordDatabase {
-	pub fn get_userdata<T: AsRef<str>>(&mut self, username: T) -> &mut UserInfo {
-		let username = username.as_ref().as_bytes();
-		match self.storage.get_mut(username) {
-			Some(user) => &mut user.user_data,
-			None => panic!("User database corrupt!"),
+/////////////////////////////////////////////////////////////////////////////////
+ 
+#[derive(Debug, Clone)]
+pub struct UserDatabase {
+    pub storage: Arc<Tree>,
+}
+
+type RecieveErrors = bool;
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub struct UserInfo {
+	pub timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
+	pub last_login: DateTime<Utc>, 
+	pub username: String,
+}
+
+#[derive(Debug)]
+pub enum UserDbError {
+	UserNotInDb,
+	DatabaseError(sled::Error),
+	SerializeError(bincode::Error),
+}
+
+impl From<sled::Error> for UserDbError {
+    fn from(error: sled::Error) -> Self {
+        UserDbError::DatabaseError(error)
+    }
+}
+impl From<bincode::Error> for UserDbError {
+    fn from(error: bincode::Error) -> Self {
+        UserDbError::SerializeError(error)
+    }
+}
+
+
+impl UserDatabase {
+	pub fn from_db(db: &Db) -> Result<Self,sled::Error> {
+		Ok(Self { 
+			storage: db.open_tree("user_database")?, //created it not exist
+		})
+	}
+
+	pub fn get_userdata<T: AsRef<[u8]>>(&self, username: T) -> Result<UserInfo, UserDbError> {
+		let username = username.as_ref();
+		if let Some(user_data) = self.storage.get(username)? {
+			let user_info = bincode::deserialize(&user_data)?;
+			Ok(user_info)
+		} else {
+			Err(UserDbError::UserNotInDb)
 		}
 	}
 	
-	#[allow(dead_code)]
-	pub fn set_userdata(&mut self, username: &[u8], user_data: UserInfo) {
-		match self.storage.remove(username) {
-			Some(mut user) => {
-				user.user_data = user_data;
-				self.storage.insert(Vec::from(username), user);
-				self.write();
-			},
-			None => panic!("user not found in database!"),
-		}
+	pub fn set_userdata(&mut self, user_info: UserInfo) 
+	-> Result <(),UserDbError> {
+		let username = user_info.username.as_str().as_bytes();
+		let user_data =	bincode::serialize(&user_info)?;
+		self.storage.set(username,user_data)?;
+		self.storage.flush()?;
+		Ok(())
 	}
 	
-	pub fn update_last_login(&mut self, username: &[u8]) {
+	/*pub fn update_last_login(&mut self, username: &[u8]) {
 		match self.storage.remove(username) {
 			Some(mut user) => {
 				user.user_data.last_login = Utc::now();
@@ -167,5 +166,5 @@ impl PasswordDatabase {
 			},
 			None => panic!("user not found in database!"),
 		}
-	}
+	}*/
 }

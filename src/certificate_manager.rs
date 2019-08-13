@@ -1,33 +1,21 @@
-extern crate acme_client;
+use webpki_roots::TLS_SERVER_ROOTS;
 
-extern crate actix_web;
-extern crate untrusted;
-extern crate webpki;
-extern crate webpki_roots;
-
-extern crate actix;
-extern crate actix_net;
-
-use self::webpki_roots::TLS_SERVER_ROOTS;
-
-use self::acme_client::error::Error as aError;
-use self::acme_client::Directory;
+use acme_client::error::Error as aError;
+use acme_client::Directory;
 //use self::acme_client::LETSENCRYPT_INTERMEDIATE_CERT_URL;
 
-use actix_web::Result as wResult;
-use actix_web::{fs, http, server, App, HttpRequest};
+use actix_web::{HttpServer, App, Responder, HttpResponse};
+use actix_files as fs;
 use std::sync::mpsc;
 use std::thread;
 
 use std::env;
-use std::fs::create_dir;
+use std::fs::create_dir_all;
 use std::fs::remove_dir_all;
 use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::path::Path;
-use std::path::PathBuf;
-use std::time::Duration;
 
 fn certificate_valid(_signed_cert: &Path, _private_key: &Path) -> bool {
 	//if signed_cert.exists() && if private_key.exists(){
@@ -136,30 +124,24 @@ fn get_port() -> Result<u32, ()> {
 	}
 }
 
-fn index(req: &HttpRequest) -> wResult<fs::NamedFile> {
-	let mut full_path = PathBuf::from(".tmp/www/.well-known/acme-challenge/");
-	let path: PathBuf = req.match_info().query("tail")?;
-	full_path.push(&path);
-	Ok(fs::NamedFile::open(full_path)?)
+fn index() -> impl Responder {
+    HttpResponse::Ok().body("Hello world!")
 }
 
-fn print(_req: &HttpRequest) -> &'static str {
-    "Hello world!"
-}
-
-type ServerHandle = self::actix::Addr<actix_net::server::Server>;
-pub fn host_server() -> Result<ServerHandle, ()> {
+//handles only requests for certificate challanges
+pub fn host_server() -> Result<actix_web::dev::Server, ()> {
 	if let Ok(port) = get_port() {
 		let socket = format!("0.0.0.0:{}", port);
 		println!("socket :{}", socket);
 
 		let (tx, rx) = mpsc::channel();
 		thread::spawn(move || {
-			let sys = actix::System::new("http-server");
-			let addr = server::new(|| App::new()
-			//handle only requests for certificate challanges
-			.resource("/", |r| r.f(print))
-			.resource(r"/.well-known/acme-challenge/{tail:.*}", |r| r.method(http::Method::GET).f(index))
+        	let sys = actix_rt::System::new("http-server");
+
+			let addr = HttpServer::new(|| 
+				App::new()
+				.route("/", actix_web::web::get().to(index))
+				.service(fs::Files::new("/.well-known/acme-challenge", "./.tmp/www/.well-known/acme-challenge"))
 			)
 			.bind(&socket).expect(&format!("Can not bind to {}",socket))
 			.shutdown_timeout(5)    // <- Set shutdown timeout to 5 seconds
@@ -176,11 +158,6 @@ pub fn host_server() -> Result<ServerHandle, ()> {
 	}
 }
 
-fn stop_server(handle: ServerHandle) {
-	let _ = handle
-		.send(server::StopServer { graceful: true })
-		.timeout(Duration::from_secs(5)); // <- Send `StopServer` message to server.
-}
 
 // FIXME
 fn make_domain_list(domain: &str) -> (String, String) {
@@ -202,8 +179,8 @@ pub fn generate_and_sign_keys<T: AsRef<Path>>(
 	user_private_key: T,
 ) -> Result<(), aError> {
 	let signed_cert = signed_cert.as_ref();
-	let private_key =	private_key.as_ref();
-	let user_private_key =	user_private_key.as_ref();
+	let private_key = private_key.as_ref();
+	let user_private_key = user_private_key.as_ref();
 
 	let (a, b) = make_domain_list(domain);
 	let domains = [a.as_str(), b.as_str()];
@@ -224,19 +201,21 @@ pub fn generate_and_sign_keys<T: AsRef<Path>>(
 	};
 
 	// Create a identifier authorization for example.com
-	create_dir(".tmp/www");
+	if !Path::new(".tmp/www").exists(){
+		create_dir_all(".tmp/www").unwrap();
+	}
 	//host server with key saved above
 	let server = host_server().expect("needs to be ran as root");
 
 	//enable to halt signing process and check if signing request server is reachable
-	// loop {
-	// 	let mut input = String::new();
-	// 	std::io::stdin().read_line(&mut input).unwrap();
-	// 	match input.as_str() {
-	// 		"q\n" => break,
-	// 		_ => println!("unhandled"),
-	// 	};
-	// }
+	/* loop {
+	 	let mut input = String::new();
+	 	std::io::stdin().read_line(&mut input).unwrap();
+	 	match input.as_str() {
+	 		"q\n" => break,
+	 		_ => println!("unhandled"),
+	 	};
+	}*/
 
 	for domain in domains.iter() {
 		let authorization = account.authorization(domain).unwrap();
@@ -249,10 +228,11 @@ pub fn generate_and_sign_keys<T: AsRef<Path>>(
 
 		http_challenge.save_key_authorization(".tmp/www").unwrap();
 		http_challenge.validate().unwrap();
+		//thread::sleep(Duration::from_secs(40));
 	}
 
-	//done, we can shut this server down
-	stop_server(server);
+	//done, we can shut this server down non gracefully
+	server.stop(false);
 	//clean up challange dir
 	remove_dir_all(".tmp/www")?;
 

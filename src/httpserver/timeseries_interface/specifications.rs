@@ -1,12 +1,14 @@
-extern crate minimal_timeseries;
-extern crate serde_yaml;
+use log::{error};
+use serde::{Serialize, Deserialize};
+use serde_yaml;
 
 use std::fs;
 use std::io;
 use std::path::Path;
 
 use super::{Field, FieldId, MetaData};
-use super::super::{rand, rand::{FromEntropy, Rng}};
+use rand;
+use rand::{FromEntropy, Rng};
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct FieldLength {
@@ -53,6 +55,7 @@ impl Into<MetaData> for MetaDataSpec {
         let mut start_bit = 0;
         //convert every field enum in the fields vector into a field
         for (id, field) in self.fields.drain(..).enumerate() {
+			if id==u8::max_value as usize {error!("can only have {} fields", u8::max_value()); break;}
             let (decode_scale, length, name, decode_add) = match field {
 				FieldSpec::BitLength(field) => {
 					let max_storable = 2_u32.pow(field.numb_of_bits as u32) as f32;

@@ -1,31 +1,31 @@
 
 use fern::colors::{Color, ColoredLevelConfig};
+use text_io::{try_read, try_scan, read};
 
 #[cfg(test)]
 mod test;
 
-use crate::chrono::Utc;
-use crate::httpserver::{timeseries_interface, secure_database::PasswordDatabase, secure_database::UserInfo};
+use chrono::Utc;
+use crate::httpserver::{timeseries_interface};
+use crate::httpserver::secure_database::{UserDatabase, PasswordDatabase, UserInfo};
 
 use std::path::{Path};
 use std::sync::{Arc, RwLock};
 use std::io::{stdin, stdout, Read, Write};
 use std::collections::HashMap;
 
-use crate::byteorder::{NativeEndian, WriteBytesExt};
+use byteorder::{NativeEndian, WriteBytesExt};
 use crate::httpserver::timeseries_interface::compression::encode;
 use crate::httpserver::DataRouterHandle;
 
 pub fn pause() {
 	let mut stdout = stdout();
-	stdout
-		.write(b"Press Enter to halt servers and quit...\n")
-		.unwrap();
+	stdout.write_all(b"Press Enter to halt servers and quit...\n").unwrap();
 	stdout.flush().unwrap();
-	stdin().read(&mut [0]).unwrap();
+	stdin().read_exact(&mut [0]).unwrap();
 }
 
-pub fn add_user(passw_db: & Arc<RwLock<PasswordDatabase>>){
+pub fn add_user(passw_db: &mut PasswordDatabase, user_db: &mut UserDatabase){
 	println!("enter username:");
 	let username: String = read!("{}\n");
 	println!("enter password:");
@@ -37,11 +37,11 @@ pub fn add_user(passw_db: & Arc<RwLock<PasswordDatabase>>){
 		username: username.clone(),
 	};
 
-	let mut passw_db = passw_db.write().unwrap();
-	passw_db.store_user(username.as_str().as_bytes(), password.as_str().as_bytes(), user_data);
+	passw_db.set_password(username.as_str().as_bytes(), password.as_str().as_bytes()).unwrap();
+	user_db.set_userdata(user_data).unwrap();
 }
 
-pub fn add_fields_to_user(passw_db: & Arc<RwLock<PasswordDatabase>>){
+pub fn add_fields_to_user(user_db: &mut UserDatabase){
 	use timeseries_interface::{DatasetId, FieldId};
 
 	println!("enter username:");
@@ -55,9 +55,8 @@ pub fn add_fields_to_user(passw_db: & Arc<RwLock<PasswordDatabase>>){
 	let fields: Result<Vec<_>, _> = fields.split_whitespace().map(|x| x.parse::<FieldId>() ).collect();
 	match fields {
 		Ok(fields) => {
-			let mut passw_db = passw_db.write().unwrap();
-			let userdata = passw_db.get_userdata(username).clone();
-			passw_db.add_owner_from_field_id(dataset_id, &fields, userdata);
+			let userdata = user_db.get_userdata(username).unwrap();
+			user_db.add_owner_from_field_id(dataset_id, &fields, userdata).unwrap();
 		}
 		Err(_) => {
 			println!("error parsing fields");
@@ -65,7 +64,7 @@ pub fn add_fields_to_user(passw_db: & Arc<RwLock<PasswordDatabase>>){
 	}
 }
 
-pub fn add_dataset(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<timeseries_interface::Data>>){
+pub fn add_dataset(user_db: &mut UserDatabase, data: &Arc<RwLock<timeseries_interface::Data>>){
 
 	if !Path::new("specs/template.yaml").exists() {
 		timeseries_interface::specifications::write_template().unwrap();
@@ -83,21 +82,22 @@ pub fn add_dataset(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock
 		let username: String = read!("{}\n");
 
 		let fields = &data.sets.get(&dataset_id).unwrap().metadata.fields;
-		let mut passw_db = passw_db.write().unwrap();
-		let userdata = passw_db.get_userdata(username).clone();
-		passw_db.add_owner(dataset_id, fields, userdata);
+		let userdata = user_db.get_userdata(username).unwrap();
+		user_db.add_owner(dataset_id, fields, userdata).unwrap();
 	} else {
 		//destroy files
 		println!("could not create new dataset");
 	}
 }
 
-pub fn remove_dataset(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<timeseries_interface::Data>>, id: timeseries_interface::DatasetId){
+pub fn remove_dataset(user_db: &mut UserDatabase, data: & Arc<RwLock<timeseries_interface::Data>>, id: timeseries_interface::DatasetId){
 	let mut data = data.write().unwrap();
 	if data.remove_set(id).is_ok(){
-		let mut passw_db = passw_db.write().unwrap();
-		for user in passw_db.storage.values_mut() { //TODO finish
-			user.user_data.timeseries_with_access.remove(&id);
+		let usernames: Vec<Vec<u8>> = user_db.storage.keys(&[0]).filter_map(Result::ok).collect();
+		for username in usernames { //TODO finish
+			let mut user_data = user_db.get_userdata(username).unwrap();
+			user_data.timeseries_with_access.remove(&id);
+			user_db.set_userdata(user_data).unwrap();
 		}
 	} else {
 		//destroy files
@@ -152,7 +152,7 @@ pub fn signal_and_append_test_data(dataset_handle: Arc<RwLock<timeseries_interfa
 
 	let mut line: Vec<u8> = vec!(0;64);
 	//get all measurements
-	let (humidity, temperature, pressure) = (10.,20.,30.);
+	let (humidity, _temperature, _pressure) = (10.,20.,30.);
 	let now = Utc::now();
 
 	//encode all data

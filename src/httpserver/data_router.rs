@@ -1,15 +1,45 @@
-extern crate actix;
-extern crate actix_web;
-extern crate rand;
-use self::actix::prelude::*;
+use log::{debug, trace};
+use actix::prelude::*;
 
 use std::collections::{HashMap, HashSet};
 
 use crate::httpserver::timeseries_interface::{DatasetId};
 
-pub struct DataServer {
-	sessions: HashMap<u16, Clientinfo>,
-	subs: HashMap<DatasetId, HashSet<u16>>,
+//TODO extract alarms to theire own module and finish
+// -add database tree for storing data_alarms
+// -add handler for setting and removing data_alarms
+// -add function for httpserver to list data_alarms
+
+enum SimpleAlarmVariant {
+	Over,
+	Under,
+}
+
+struct NotifyMethod {
+	email: Option<String>,
+	telegram: Option<()>,
+	custom: bool,
+}
+
+struct SimpleAlarm {
+	field_id: u16,
+	threshold_value: f32,
+	variant: SimpleAlarmVariant,
+	nofify: NotifyMethod,
+	message: String,
+}
+
+impl SimpleAlarm {
+	fn evalute(&self, msg: &NewData) {
+		unimplemented!();
+	}
+}
+
+type ClientSessionId = u16;
+pub struct DataRouter {
+	sessions: HashMap<ClientSessionId, Clientinfo>,
+	subs: HashMap<DatasetId, HashSet<ClientSessionId>>,
+	alarms : HashMap<DatasetId, HashSet<SimpleAlarm>>,
 }
 
 
@@ -20,20 +50,27 @@ pub struct NewData {
 	pub timestamp: i64,
 }
 
-impl Handler<NewData> for DataServer {
+impl Handler<NewData> for DataRouter {
 	type Result = ();
 
 	fn handle(&mut self, msg: NewData, _: &mut Context<Self>) -> Self::Result {
 		//debug!("NewData, subs: {:?}", self.subs);
 		let updated_dataset_id = msg.from_id;
 		//get a list of clients connected to the datasource with new data
+		
+		if let Some(alarms) = self.alarms.get(&updated_dataset_id){
+			for alarm in alarms {
+				alarm.evalute(&msg);
+			}
+		}
+		
 		if let Some(subs) = self.subs.get(&updated_dataset_id){
 			debug!("subs: {:?}", subs);
-			for client_session_id in subs.iter() {
+			for websocket_session_id in subs.iter() {
 				//println!("sending signal");
 				// foward new data message to actor that maintains the
 				// websocket connection with this client.
-				let client_websocket_handler = &self.sessions.get(client_session_id).unwrap().addr;
+				let client_websocket_handler = &self.sessions.get(websocket_session_id).unwrap().addr;
 				client_websocket_handler.do_send(msg.clone()).unwrap();
 			}
 		}
@@ -48,7 +85,7 @@ pub struct Connect {
 	pub ws_session_id: u16,
 }
 
-impl Handler<Connect> for DataServer {
+impl Handler<Connect> for DataRouter {
 	type Result = u16;
 
 	fn handle(&mut self, msg: Connect, _: &mut Context<Self>) -> Self::Result {
@@ -73,7 +110,7 @@ pub struct Disconnect {
 }
 
 /// Handler for Disconnect message.
-impl Handler<Disconnect> for DataServer {
+impl Handler<Disconnect> for DataRouter {
 	type Result = ();
 
 	fn handle(&mut self, msg: Disconnect, _: &mut Context<Self>) {
@@ -96,7 +133,7 @@ pub struct SubscribeToSource {
 	pub set_id: DatasetId,
 }
 
-impl Handler<SubscribeToSource> for DataServer {
+impl Handler<SubscribeToSource> for DataRouter {
 	type Result = ();
 
 	fn handle(&mut self, msg: SubscribeToSource, _: &mut Context<Self>) -> Self::Result {
@@ -124,19 +161,20 @@ pub struct Clientinfo {
 	subs: Vec<DatasetId>,
 }
 
-impl Default for DataServer {
-	fn default() -> DataServer {
+impl Default for DataRouter {
+	fn default() -> DataRouter {
 		let subs = HashMap::new();
 
-		DataServer {
+		DataRouter {
 			sessions: HashMap::new(),
 			subs: subs,
+			alarms: HashMap::new(),
 		}
 	}
 }
 
 /// Make actor from `ChatServer`
-impl Actor for DataServer {
+impl Actor for DataRouter {
 	/// We are going to use simple Context, we just need ability to communicate
 	/// with other actors.
 	type Context = Context<Self>;

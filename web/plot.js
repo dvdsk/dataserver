@@ -1,5 +1,5 @@
 var loc = window.location;
-var wsUri = "wss://"+loc.hostname+":"+loc.port+"/ws/";
+var wsUri = "wss://"+loc.hostname+":"+loc.port+"/ws/data/";
 
 var plotmeta = new Map();
 var output;
@@ -76,19 +76,20 @@ function onOpen(evt){
     }
   }
 
-  //var dateOffset = (24*60*60*1000);//TODO fix this
-  //var stop_timestamp = new Date( Date.now() );
+  //var dateOffset = (7*24*60*60*1000);//TODO fix this
+  var dateOffset = (5*60*1000);//TODO fix this
+  var stop_timestamp = new Date( Date.now() );
 
-  //var start_timestamp = new Date();
+  var start_timestamp = new Date();
   //console.log(stop_timestamp.getTime());
-  //start_timestamp.setTime(stop_timestamp.getTime() - dateOffset);
+  start_timestamp.setTime(stop_timestamp.getTime() - dateOffset);
 
   //TODO improve
   //var start_timestamp = document.getElementById('start-date').valueAsDate;
   //var stop_timestamp = document.getElementById('stop-date').valueAsDate;
 
-  var start_timestamp = new Date(1553731200000);
-  var stop_timestamp = new Date(1554508800000);
+  //var start_timestamp = new Date(1553731200000);
+  //var stop_timestamp = new Date(1554508800000);
 
   //generate and send subscribe string
   for (const [set,fields] of subbed.entries()){
@@ -145,7 +146,6 @@ function gotMeta(evt){
 
     console.log("lines allocated");
     console.log(lines);
-    //debugger;
 
     //debugger;
     id_map.set(dataset_id, [field_list, 0]);
@@ -163,7 +163,7 @@ function setTimestamps(data, numb_of_elements, fields_to_lines, pos){
   //console.log(data);
 
   var floatarr = new Float64Array(data, 8, numb_of_elements);
-  console.log("ts_data:"); console.log(floatarr);
+  //console.log("ts_data:"); console.log(floatarr);
   var timestamps = floatarr.map(x => x*1000); //from seconds to milliseconds
   //no need to set for all x-axises as they are linked
   //memcpy equivalent of memcpy(trace+pos, timestamps, len(timestamps));
@@ -203,12 +203,12 @@ function gotDataChunk(evt){ //FIXME only works for one dataset
   //check for server signal that all data has been recieved, or an error has
   //occured
   var chunknumb = data.getInt16(0, true);
-  console.log("chunknumb: "); console.log(chunknumb);
-  console.log("data: "); console.log(data);
-  console.log("lines: "); console.log(lines);
+  //console.log("chunknumb: "); console.log(chunknumb);
+  //console.log("data: "); console.log(data);
+  //console.log("lines: "); console.log(lines);
   if (chunknumb == 0) { //check if this was the last package (package numb=0)
     //console.log("got last data chunk, creating plot");
-    console.log("lines"); console.log(lines);
+    //console.log("lines"); console.log(lines);
     Plotly.newPlot("plot", lines, layout, {responsive: true});
     websocket.onmessage = function(evt) { gotUpdate(evt) };
     doSend("/sub");
@@ -222,9 +222,9 @@ function gotDataChunk(evt){ //FIXME only works for one dataset
   //console.log("setid:"); console.log(setid);
 
   var numb_of_elements = (evt.data.byteLength-8)/(4*(fields_to_lines.length)+8);
-  //console.log("numb_of_elements"); console.log(numb_of_elements);
-  //console.log("evt.data"); console.log(evt.data);
-  //console.log(fields_to_lines.length);
+  console.log("numb_of_elements"); console.log(numb_of_elements);
+  console.log("evt.data.byteLength"); console.log(evt.data.byteLength);
+  console.log("fields_to_lines.length"); console.log(fields_to_lines.length);
 
   //FIXME NEEDS TO MOVE TO META DATA, NO TIME TO PRE ALLOC CURRENTLY
   //next package arrives and is handled before this is done
@@ -237,7 +237,7 @@ function gotDataChunk(evt){ //FIXME only works for one dataset
   //console.log("numb_of_elements"); console.log(numb_of_elements);
   //console.log("package_size"); console.log(package_size);
 
-  console.log("pos"); console.log(pos);
+  //console.log("pos"); console.log(pos);
   setTimestamps(evt.data, numb_of_elements, fields_to_lines, pos);
   setData(evt.data, numb_of_elements, fields_to_lines, pos);
   pos += numb_of_elements;
@@ -268,9 +268,9 @@ function gotUpdate(evt){
     x_update.push(new Float64Array([timestamp*1000]));
     y_update.push(new Float32Array([data.getFloat32(4*i+10, true)]));
   }
-  console.log(x_update);
-  console.log(y_update);
-  console.log(lines);
+  //console.log(x_update);
+  //console.log(y_update);
+  //console.log(lines);
   Plotly.extendTraces("plot", {x: x_update, y: y_update}, updated_traces);
 
   writeToScreen("Got Update");

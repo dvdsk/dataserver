@@ -1,14 +1,9 @@
-extern crate byteorder;
-extern crate bytes;
-extern crate minimal_timeseries;
-extern crate walkdir;
-extern crate serde_yaml;
-extern crate chrono;
-extern crate num;
+use serde::{Serialize, Deserialize};
+use log::{warn, info, debug, trace};
 
-use self::byteorder::{ByteOrder, LittleEndian, NativeEndian, NetworkEndian, WriteBytesExt};
-use self::bytes::Bytes;
-use crate::smallvec::SmallVec;
+use byteorder::{ByteOrder, LittleEndian, NativeEndian, NetworkEndian, WriteBytesExt};
+use bytes::Bytes;
+use smallvec::SmallVec;
 
 use std::fs;
 use std::fs::File;
@@ -17,12 +12,14 @@ use std::path::Path;
 use std::path::PathBuf;
 use chrono::prelude::*;
 
-use self::minimal_timeseries::{Timeseries, BoundResult, DecodeParams};
-use self::walkdir::{DirEntry, WalkDir};
+use minimal_timeseries::{Timeseries, BoundResult, DecodeParams};
+use walkdir::{DirEntry, WalkDir};
 use std::collections::HashMap;
 
-use super::secure_database::{PasswordDatabase, UserInfo};
-use super::websocket_client_handler::SetSliceDecodeInfo;
+use super::secure_database::{UserInfo, UserDatabase};
+use super::data_router_ws_client::SetSliceDecodeInfo;
+use crate::error::DResult;
+use crate::httpserver::error_router::ErrorCode;
 
 pub mod specifications;
 pub mod compression;
@@ -70,8 +67,8 @@ where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+
 		//println!("add: {}", self.decode_add);
 		//println!("scale: {}", self.decode_scale);
 
-		decoded += num::cast(self.decode_add).unwrap();
 		decoded *= num::cast(self.decode_scale).unwrap();//FIXME flip decode scale / and *
+		decoded += num::cast(self.decode_add).unwrap();
 	
 		decoded
 	}
@@ -79,8 +76,8 @@ where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+
 	where D: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::AddAssign+std::ops::DivAssign{
 
 		//println!("org: {}",numb);
-		numb /= num::cast(self.decode_scale).unwrap();
 		numb -= num::cast(self.decode_add).unwrap();
+		numb /= num::cast(self.decode_scale).unwrap();
 		//println!("scale: {}, add: {}, numb: {}", self.decode_scale, self.decode_add, numb);
 
 		let to_encode: u32 = num::cast(numb).unwrap();
@@ -189,10 +186,10 @@ impl DataSet {
 		recoded_line.write_u16::<LittleEndian>(setid).unwrap();
 		recoded_line.write_f64::<LittleEndian>(timestamp as f64).unwrap();
 		for field in allowed_fields.into_iter().map(|id| &self.metadata.fields[*id as usize]) {
-			//println!("field: {:?}",field);
+			println!("field: {:?}",field);
 			//println!("line: {:?}",line);
 			let decoded: f32 = field.decode::<f32>(&line);
-			//println!("decoded: {}", decoded);
+			println!("decoded: {}", decoded);
 			recoded_line.write_f32::<LittleEndian>(decoded).unwrap();
 		}
 		recoded_line.to_vec()
@@ -228,7 +225,7 @@ pub fn init<P: Into<PathBuf>>(dir: P) -> Result<Data, io::Error> {
 		fs::create_dir(&dir)?
 	};
 
-	let mut free_dataset_id: DatasetId = 0;
+	let mut free_dataset_id: DatasetId = 1; //zero is reserved
 	let mut sets: HashMap<DatasetId, DataSet> = HashMap::new();
 
 	fn is_datafile(entry: &DirEntry) -> bool {
@@ -268,8 +265,6 @@ pub fn load_data(data: &mut HashMap<DatasetId,DataSet>, datafile_path: &Path, da
 	info_path.set_extension("yaml");
 	if let Ok(metadata_file) = fs::OpenOptions::new().read(true).write(false).create(false).open(&info_path) {
 		if let Ok(metadata) = serde_yaml::from_reader::<std::fs::File, MetaData>(metadata_file) {
-			//let line_size: u16 = metadata.fields.iter().map(|field| field.length as u16).sum::<u16>() / 8;
-
 			let line_size = metadata.fieldsum();
 
 			if let Ok(timeserie) = Timeseries::open(datafile_path, line_size as usize){
@@ -362,20 +357,23 @@ impl Data {
 	}
 }
 
-impl PasswordDatabase {
-	pub fn add_owner(&mut self, id: DatasetId, fields: &Vec<Field<f32>>, mut userinfo: UserInfo){
-		let auth_fields: Vec<Authorisation> = fields.into_iter().map(|field| Authorisation::Owner(field.id)).collect();
+impl UserDatabase {
+	pub fn add_owner(&mut self, id: DatasetId, fields: &[Field<f32>], mut userinfo: UserInfo)
+	-> DResult<()> {
+		let auth_fields: Vec<Authorisation> = fields.iter().map(|field| Authorisation::Owner(field.id)).collect();
 		userinfo.timeseries_with_access.insert(id, auth_fields);
 		
-		let username = userinfo.username.clone();
-		self.set_userdata(username.as_str().as_bytes(), userinfo );
+		self.set_userdata(userinfo )?;
+		Ok(())
 	}
-	pub fn add_owner_from_field_id(&mut self, id: DatasetId, fields: &Vec<FieldId>, mut userinfo: UserInfo){
-		let auth_fields: Vec<Authorisation> = fields.into_iter().map(|fieldid| Authorisation::Owner(*fieldid)).collect();
+	pub fn add_owner_from_field_id(&mut self, id: DatasetId, fields: &[FieldId], mut userinfo: UserInfo)
+	-> DResult<()> {
+		let auth_fields: Vec<Authorisation> = fields.iter().map(|fieldid| Authorisation::Owner(*fieldid)).collect();
 		userinfo.timeseries_with_access.insert(id, auth_fields);
 
 		let username = userinfo.username.clone();
-		self.set_userdata(username.as_str().as_bytes(), userinfo );
+		self.set_userdata(userinfo)?;
+		Ok(())
 	}
 	// pub fn remove_owner(&mut self, id: DatasetId, &mut userinfo: UserInfo){
 	// 	userinfo.timeseries_with_access.remove(&id);
@@ -386,9 +384,31 @@ impl PasswordDatabase {
 }
 
 impl Data {
+
+	pub fn authenticate_error_packet(&mut self, data_string: &Bytes) -> Result<DatasetId,()> {
+		if data_string.len() < 12 {
+			warn!("error_string size (={}) to small for key, datasetid and any error (min 12 bytes)", data_string.len());
+			return Err(());
+		}
+
+		let dataset_id = NativeEndian::read_u16(&data_string[..2]);
+		let key = NativeEndian::read_u64(&data_string[2..10]);
+		
+		if let Some(set) = self.sets.get_mut(&dataset_id){
+			if key != set.metadata.key { 
+				Err(()) 
+			} else {
+				Ok(dataset_id) 
+			}
+		} else {
+			warn!("could not find dataset with id: {}", dataset_id);
+			Err(())
+		}
+	}
+
 	pub fn store_new_data(&mut self, mut data_string: Bytes, time: DateTime<Utc>) -> Result<(DatasetId, Vec<u8>), ()> {
 		if data_string.len() < 11 {
-			warn!("data_string size to small for key, datasetid and any data");
+			warn!("data_string size (={}) to small for key, datasetid and any data (min 11 bytes)", data_string.len());
 			return Err(());
 		}
 		
@@ -404,15 +424,12 @@ impl Data {
 				warn!("invalid key: {}, on store new data", key);
 				return Err(());
 			}
-			const PRINTVALUES: bool = false; //for debugging
+			const PRINTVALUES: bool = true; //for debugging
 			if PRINTVALUES {
 				let mut list = String::from("");
 				for field in &set.metadata.fields {
-					//println!("field: {:?}",field);
-					//println!("line: {:?}",line);
 					let decoded: f32 = field.decode::<f32>(&data_string[10..]);
 					list.push_str(&format!("{}: {}\n", field.name, decoded));
-
 				}
 				println!("{}", list);
 			}

@@ -115,8 +115,21 @@ pub struct UserInfo {
 #[derive(Debug)]
 pub enum UserDbError {
 	UserNotInDb,
-	Internal,
+	DatabaseError(sled::Error),
+	SerializeError(bincode::Error),
 }
+
+impl From<sled::Error> for UserDbError {
+    fn from(error: sled::Error) -> Self {
+        UserDbError::DatabaseError(error)
+    }
+}
+impl From<bincode::Error> for UserDbError {
+    fn from(error: bincode::Error) -> Self {
+        UserDbError::SerializeError(error)
+    }
+}
+
 
 impl UserDatabase {
 	pub fn from_db(db: &Db) -> Result<Self,sled::Error> {
@@ -127,8 +140,8 @@ impl UserDatabase {
 
 	pub fn get_userdata<T: AsRef<[u8]>>(&self, username: T) -> Result<UserInfo, UserDbError> {
 		let username = username.as_ref();
-		if let Some(user_data) = self.storage.get(username).map_err(|_| UserDbError::Internal)? {
-			let user_info = bincode::deserialize(&user_data).map_err(|_| UserDbError::Internal)?;
+		if let Some(user_data) = self.storage.get(username)? {
+			let user_info = bincode::deserialize(&user_data)?;
 			Ok(user_info)
 		} else {
 			Err(UserDbError::UserNotInDb)
@@ -138,8 +151,9 @@ impl UserDatabase {
 	pub fn set_userdata(&mut self, user_info: UserInfo) 
 	-> Result <(),UserDbError> {
 		let username = user_info.username.as_str().as_bytes();
-		let user_data =	bincode::serialize(&user_info).map_err(|_| UserDbError::Internal)?;
-		self.storage.set(username,user_data).map_err(|_| UserDbError::Internal)?;
+		let user_data =	bincode::serialize(&user_info)?;
+		self.storage.set(username,user_data)?;
+		self.storage.flush()?;
 		Ok(())
 	}
 	

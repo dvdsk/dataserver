@@ -67,8 +67,8 @@ where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+
 		//println!("add: {}", self.decode_add);
 		//println!("scale: {}", self.decode_scale);
 
-		decoded += num::cast(self.decode_add).unwrap();
 		decoded *= num::cast(self.decode_scale).unwrap();//FIXME flip decode scale / and *
+		decoded += num::cast(self.decode_add).unwrap();
 	
 		decoded
 	}
@@ -76,8 +76,8 @@ where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+
 	where D: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::AddAssign+std::ops::DivAssign{
 
 		//println!("org: {}",numb);
-		numb /= num::cast(self.decode_scale).unwrap();
 		numb -= num::cast(self.decode_add).unwrap();
+		numb /= num::cast(self.decode_scale).unwrap();
 		//println!("scale: {}, add: {}, numb: {}", self.decode_scale, self.decode_add, numb);
 
 		let to_encode: u32 = num::cast(numb).unwrap();
@@ -186,10 +186,10 @@ impl DataSet {
 		recoded_line.write_u16::<LittleEndian>(setid).unwrap();
 		recoded_line.write_f64::<LittleEndian>(timestamp as f64).unwrap();
 		for field in allowed_fields.into_iter().map(|id| &self.metadata.fields[*id as usize]) {
-			//println!("field: {:?}",field);
+			println!("field: {:?}",field);
 			//println!("line: {:?}",line);
 			let decoded: f32 = field.decode::<f32>(&line);
-			//println!("decoded: {}", decoded);
+			println!("decoded: {}", decoded);
 			recoded_line.write_f32::<LittleEndian>(decoded).unwrap();
 		}
 		recoded_line.to_vec()
@@ -265,8 +265,6 @@ pub fn load_data(data: &mut HashMap<DatasetId,DataSet>, datafile_path: &Path, da
 	info_path.set_extension("yaml");
 	if let Ok(metadata_file) = fs::OpenOptions::new().read(true).write(false).create(false).open(&info_path) {
 		if let Ok(metadata) = serde_yaml::from_reader::<std::fs::File, MetaData>(metadata_file) {
-			//let line_size: u16 = metadata.fields.iter().map(|field| field.length as u16).sum::<u16>() / 8;
-
 			let line_size = metadata.fieldsum();
 
 			if let Ok(timeserie) = Timeseries::open(datafile_path, line_size as usize){
@@ -426,13 +424,12 @@ impl Data {
 				warn!("invalid key: {}, on store new data", key);
 				return Err(());
 			}
-			const PRINTVALUES: bool = false; //for debugging
+			const PRINTVALUES: bool = true; //for debugging
 			if PRINTVALUES {
 				let mut list = String::from("");
 				for field in &set.metadata.fields {
 					let decoded: f32 = field.decode::<f32>(&data_string[10..]);
 					list.push_str(&format!("{}: {}\n", field.name, decoded));
-
 				}
 				println!("{}", list);
 			}

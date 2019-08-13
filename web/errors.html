@@ -9,11 +9,11 @@
   		writeToScreen('<span style="color: blue;">RESPONSE: ' + evt.data+'</span>');
 	}
 	
-	var wsUri = 'wss://deviousd.duckdns.org:8080/ws/error/';
+	var loc = window.location;
+	var wsUri = "wss://"+loc.hostname+":"+loc.port+"/ws/data/";
 	
 	ws = new WebSocket(wsUri);
 	ws.onmessage = function(evt) { showMessage(evt) };
-	showMessage(evt);
 	
   </script>
 </body>

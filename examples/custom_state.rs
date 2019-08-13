@@ -102,7 +102,7 @@ pub fn start(signed_cert: &str, private_key: &str,
 					web::scope("/")
 						.wrap(CheckLogin {phantom: std::marker::PhantomData::<ExampleState>})
 						.service(web::resource("commands/test_state").to(test_state))
-						.service(web::resource("ws/data").to(data_router_ws_index::<ExampleState>))
+						.service(web::resource("ws/data/").to(data_router_ws_index::<ExampleState>))
 						.service(web::resource("ws/error").to(error_router_ws_index::<ExampleState>))
 						.service(web::resource("logout").to(logout::<ExampleState>))
 						.service(web::resource("").to(index))
@@ -161,7 +161,7 @@ fn main() {
 
 	let (data_handle, error_handle, web_handle) =
 	start("keys/cert.key", "keys/cert.cert", data.clone(), passw_db.clone(), user_db.clone(), db, sessions.clone());
-	println!("press: t to send test data, n: to add a new user, q to quit, a to add new dataset");
+	println!("press: t to send test data, n: to add a new user, q to quit, a to add new dataset, o add owner to db");
 	loop {
 		let mut input = String::new();
 		stdin().read_line(&mut input).unwrap();
@@ -170,6 +170,7 @@ fn main() {
 			"d\n" => helper::signal_and_append_test_data(data.clone(), &data_handle), //works
 			"n\n" => helper::add_user(&mut passw_db, &mut user_db),
 			"a\n" => helper::add_dataset(&mut user_db, &data),
+			"o\n" => helper::add_fields_to_user(&mut user_db),
 			"q\n" => break,
 			_ => println!("unhandled"),
 		};

@@ -10,7 +10,6 @@ pub enum DataserverError {
     DatabaseLoadError(secure_database::LoadDbError),
     UserDatabaseError(secure_database::UserDbError),
     SerializationError(bincode::Error),
-
 }
 
 impl From<sled::Error> for DataserverError {

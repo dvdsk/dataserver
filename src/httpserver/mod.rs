@@ -261,7 +261,6 @@ pub fn new_data_post<T: InnerState+'static>(state: Data<T>, body: Bytes)
 				line: data_string,
 				timestamp: now.timestamp()
 			});
-			trace!("done websocket send");
 			HttpResponse::Ok().status(StatusCode::OK).finish() },
 		Err(_) => HttpResponse::Ok().status(StatusCode::FORBIDDEN).finish(),
 	}
@@ -275,7 +274,7 @@ pub fn data_router_ws_index<T: InnerState+'static>(
 	stream: Payload,
 ) -> wResult<HttpResponse> {
 
-	trace!("websocket connected");
+	info!("websocket connected");
 	let session_id = id.identity().unwrap().parse::<u16>().unwrap();
 	let sessions = state.inner_state().sessions.read().unwrap();
 	let session = sessions.get(&session_id).unwrap();

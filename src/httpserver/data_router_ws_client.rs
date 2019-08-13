@@ -116,6 +116,7 @@ impl Handler<data_router::NewData> for WsSession {
 		std::mem::drop(data);
 		//send update
 		debug!("sending update");
+		dbg!(&line);
 		ctx.binary(Bytes::from(line));
 	}
 }
@@ -272,6 +273,7 @@ impl WsSession {
 		if let Some((_thread, rx)) = self.file_io_thread.take() {
 			while let Ok(buffer) = rx.recv() {
 				if ctx.state().alive() {
+					dbg!(buffer.len());
 					ctx.binary(Bytes::from(buffer ));
 				} else {
 					return;

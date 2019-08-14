@@ -16,6 +16,7 @@ use dataserver::httpserver::{new_data_post, new_error_post};
 
 use dataserver::httpserver::secure_database::{PasswordDatabase, UserDatabase};
 use dataserver::httpserver::login_redirect::CheckLogin;
+use dataserver::telegram_bot::handle_bot_message;
 
 use std::sync::{Arc, RwLock, Mutex};
 use std::io::stdin;
@@ -98,6 +99,8 @@ pub fn start(signed_cert: &str, private_key: &str,
 				))
 				.service(web::resource("/post_data").to(new_data_post::<ExampleState>))
 				.service(web::resource("/post_error").to(new_error_post::<ExampleState>))
+				.service(web::resource("/secret_telegram_token").to(handle_bot_message::<ExampleState>))
+				
 				.service(
 					web::scope("/")
 						.wrap(CheckLogin {phantom: std::marker::PhantomData::<ExampleState>})

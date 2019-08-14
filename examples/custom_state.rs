@@ -16,12 +16,14 @@ use dataserver::httpserver::{new_data_post, new_error_post};
 
 use dataserver::httpserver::secure_database::{PasswordDatabase, UserDatabase};
 use dataserver::httpserver::login_redirect::CheckLogin;
-use dataserver::telegram_bot::handle_bot_message;
+use dataserver::telegram_bot::{handle_bot_message, set_webhook};
 
 use std::sync::{Arc, RwLock, Mutex};
 use std::io::stdin;
 use std::collections::HashMap;
 
+mod debug_middleware;
+mod config;
 const FORCE_CERT_REGEN: bool =	false;
 
 struct ExampleState {
@@ -43,7 +45,7 @@ impl InnerState for ExampleState{
 	}
 }
 
-pub fn start(signed_cert: &str, private_key: &str,
+pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
      data: Arc<RwLock<timeseries_interface::Data>>, //
      passw_db: PasswordDatabase,
 	 user_db: UserDatabase,
@@ -51,7 +53,7 @@ pub fn start(signed_cert: &str, private_key: &str,
      sessions: Arc<RwLock<HashMap<u16, Arc<Mutex<dataserver::httpserver::Session>>>>>)
 	  -> (DataRouterHandle, ErrorRouterHandle, actix_web::dev::Server) {
 
-	let tls_config = httpserver::make_tls_config(signed_cert, private_key);
+	let tls_config = httpserver::make_tls_config(signed_cert, public_key, intermediate_cert);
 	let cookie_key = httpserver::make_random_cookie_key();
 
 	let free_session_ids = Arc::new(AtomicUsize::new(0));
@@ -86,11 +88,12 @@ pub fn start(signed_cert: &str, private_key: &str,
 				.register_data(data)
 				.wrap(IdentityService::new(
 					CookieIdentityPolicy::new(&cookie_key[..])
-					.domain("deviousd.duckdns.org")
+					.domain(config::DOMAIN)
 					.name("auth-cookie")
 					.path("/")
 					.secure(true), 
 				))
+				.wrap(debug_middleware::SayHi)
 				.service(
 					web::scope("/login")
 						.service(web::resource(r"/{path}")
@@ -99,8 +102,9 @@ pub fn start(signed_cert: &str, private_key: &str,
 				))
 				.service(web::resource("/post_data").to(new_data_post::<ExampleState>))
 				.service(web::resource("/post_error").to(new_error_post::<ExampleState>))
-				.service(web::resource("/secret_telegram_token").to(handle_bot_message::<ExampleState>))
-				
+				.service(web::resource(&format!("/{}", config::TOKEN)).to(handle_bot_message::<ExampleState>))
+				//.service(web::resource("/test").to(handle_bot_message::<ExampleState>))
+
 				.service(
 					web::scope("/")
 						.wrap(CheckLogin {phantom: std::marker::PhantomData::<ExampleState>})
@@ -116,7 +120,8 @@ pub fn start(signed_cert: &str, private_key: &str,
 				)
 			})
 		// WARNING TLS IS NEEDED FOR THE LOGIN SYSTEM TO FUNCTION
-		.bind_rustls("0.0.0.0:8080", tls_config).unwrap()
+		.bind_rustls("0.0.0.0:8443", tls_config).unwrap()
+		//.bind_rustls("0.0.0.0:8080", tls_config).unwrap()
 		//.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
 		.shutdown_timeout(5)    // shut down 5 seconds after getting the signal to shut down
 		.start(); // end of App::new()
@@ -136,7 +141,7 @@ fn main() {
 	if FORCE_CERT_REGEN {
 		//generate_and_sign_keys
 		if let Err(error) = certificate_manager::generate_and_sign_keys(
-			"deviousd.duckdns.org",
+			config::DOMAIN,
 			"keys/cert.key",
 			"keys/cert.cert",
 			"keys/user.key",
@@ -163,8 +168,10 @@ fn main() {
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 
 	let (data_handle, error_handle, web_handle) =
-	start("keys/cert.key", "keys/cert.cert", data.clone(), passw_db.clone(), user_db.clone(), db, sessions.clone());
+	start("keys/cert.key", "keys/cert.cert", "keys/intermediate.cert", data.clone(), passw_db.clone(), user_db.clone(), db, sessions.clone());
 	println!("press: t to send test data, n: to add a new user, q to quit, a to add new dataset, o add owner to db");
+	set_webhook(config::DOMAIN, config::TOKEN).unwrap();
+	
 	loop {
 		let mut input = String::new();
 		stdin().read_line(&mut input).unwrap();

@@ -82,11 +82,18 @@ pub fn make_random_cookie_key() -> [u8; 32] {
 	cookie_private_key
 }
 
-pub fn make_tls_config<P: AsRef<Path>>(signed_cert_path: P, private_key_path: P) -> rustls::ServerConfig{
+pub fn make_tls_config<P: AsRef<Path>>(cert_path: P, key_path: P, 
+    intermediate_cert_path: P) 
+-> rustls::ServerConfig{
+
 	let mut tls_config = ServerConfig::new(NoClientAuth::new());
-	let cert_file = &mut BufReader::new(File::open(signed_cert_path).unwrap());
-	let key_file = &mut BufReader::new(File::open(private_key_path).unwrap());
-	let cert_chain = certs(cert_file).unwrap();
+	let cert_file = &mut BufReader::new(File::open(cert_path).unwrap());
+	let intermediate_file = &mut BufReader::new(File::open(intermediate_cert_path).unwrap());
+	let key_file = &mut BufReader::new(File::open(key_path).unwrap());
+	
+	let mut cert_chain = certs(cert_file).unwrap();
+	cert_chain.push(certs(intermediate_file).unwrap().pop().unwrap());
+
 	let mut key = pkcs8_private_keys(key_file).unwrap();
 
 	tls_config

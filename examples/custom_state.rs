@@ -103,7 +103,6 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
 				.service(web::resource("/post_data").to(new_data_post::<ExampleState>))
 				.service(web::resource("/post_error").to(new_error_post::<ExampleState>))
 				.service(web::resource(&format!("/{}", config::TOKEN)).to(handle_bot_message::<ExampleState>))
-				//.service(web::resource("/test").to(handle_bot_message::<ExampleState>))
 
 				.service(
 					web::scope("/")

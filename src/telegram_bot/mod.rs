@@ -38,17 +38,20 @@ pub fn handle_bot_message<T: InnerState+'static>(state: Data<T>, raw_update: Byt
 	match &update.kind{
 	 	UpdateKind::Message(message) => {
 			dbg!(&message.kind);
-			let testmessage = format!("{{\"method\": sendMessage, \"chat_id\": {chat_id}, \"text\": {text}}}"
+
+//apiRequest("sendMessage", array('chat_id' => $chat_id, "text" => 'Nice to meet you'));
+
+			let testmessage = format!(r#"{{"method": "sendMessage", "chat_id": {chat_id}, "text": "{text}"}}"#
 				,chat_id=message.chat.id()
 				,text="hello world2");
 
-			//dbg!(&testmessage);
-			test_delivery(message, TOKEN);
+			println!("{}",testmessage);
+			//test_delivery(message, TOKEN);
 			HttpResponse::Ok()
 				.status(StatusCode::OK)
-				//.set_header(header::CONTENT_TYPE, "application/json")
-				//.body(testmessage)
-				.finish()
+				.set_header(header::CONTENT_TYPE, "application/json")
+				.body(testmessage)
+				//.finish()
 				//TODO try using hand formatted test message
 		}
 	 	_ => {

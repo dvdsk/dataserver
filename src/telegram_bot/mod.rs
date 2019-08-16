@@ -7,7 +7,7 @@
 //plot generation using: https://github.com/38/plotters/tree/master/examples
 
 use actix_web::web::{HttpResponse, Data, Form, Bytes};
-use actix_web::http::StatusCode;
+use actix_web::http::{StatusCode, header};
 
 use reqwest;
 use log::{warn, info ,error};
@@ -38,16 +38,17 @@ pub fn handle_bot_message<T: InnerState+'static>(state: Data<T>, raw_update: Byt
 	match &update.kind{
 	 	UpdateKind::Message(message) => {
 			dbg!(&message.kind);
-			//let testmessage = format!("{{\"method\": sendMessage, \"chat_id\": {chat_id}, \"text\": {text}}}"
-			//	,chat_id=message.chat.id()
-			//	,text="hello world");
+			let testmessage = format!("{{\"method\": sendMessage, \"chat_id\": {chat_id}, \"text\": {text}}}"
+				,chat_id=message.chat.id()
+				,text="hello world2");
 
+			//dbg!(&testmessage);
 			test_delivery(message, TOKEN);
 			HttpResponse::Ok()
 				.status(StatusCode::OK)
-				.finish()
+				//.set_header(header::CONTENT_TYPE, "application/json")
 				//.body(testmessage)
-				//.json(SendMessage::new(&message.chat, "hi"))
+				.finish()
 				//TODO try using hand formatted test message
 		}
 	 	_ => {
@@ -65,6 +66,7 @@ fn test_delivery(message: &telegram_bot::types::message::Message, token: &str){
 		,chat_id=message.chat.id()
 		,text="hello world");
 
+	let testmessage = r#"{"chat_id": 15997283, "text": "hello world"}"#;
 	let test = message.chat.id().to_string();
 	let params = [("chat_id", test.as_str())
 	             ,("text", "hello world")];
@@ -72,12 +74,15 @@ fn test_delivery(message: &telegram_bot::types::message::Message, token: &str){
 	println!("{}", &testmessage);
 	let client = reqwest::Client::new();
 	let mut res = client.post(&url)
-		//.body(testmessage)
-	    .form(&params)
-		//.header(reqwest::header::CONTENT_TYPE, "application/json")
+		.body(testmessage)
+	    //.form(&params)
+		.header(reqwest::header::CONTENT_TYPE, "application/json")
 		.send().unwrap();
 	dbg!(&res);
 	dbg!(res.text());
+
+	//let client_debug = client.post(&url).form(&params);
+	//dbg!(client_debug);
 }
 
 #[derive(Debug)]

@@ -34,18 +34,57 @@ pub fn handle_bot_message<T: InnerState+'static>(state: Data<T>, raw_update: Byt
 	pub const TOKEN: &str = "109451485:AAE6Yghjq1qJsxu75uureFkvaMB_Zrt7YsY";
 
 	let update: Update = serde_json::from_slice(&raw_update.to_vec()).unwrap();
-	
+
 	match &update.kind{
-		UpdateKind::Message(message) => send_test_reply(&message.chat, TOKEN).unwrap(),
-		_ => warn!("unhandled message type"),
+	 	UpdateKind::Message(message) => {
+			dbg!(&message.kind);
+			//let testmessage = format!("{{\"method\": sendMessage, \"chat_id\": {chat_id}, \"text\": {text}}}"
+			//	,chat_id=message.chat.id()
+			//	,text="hello world");
+
+			test_delivery(message, TOKEN);
+			HttpResponse::Ok()
+				.status(StatusCode::OK)
+				.finish()
+				//.body(testmessage)
+				//.json(SendMessage::new(&message.chat, "hi"))
+				//TODO try using hand formatted test message
+		}
+	 	_ => {
+			warn!("unhandled message type");
+			HttpResponse::Ok()
+				.status(StatusCode::OK)
+				.body("{}")
+		 }
 	}
-	HttpResponse::Ok().status(StatusCode::OK).finish()
+}
+
+fn test_delivery(message: &telegram_bot::types::message::Message, token: &str){
+	let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
+	let testmessage = format!(r#"{{"chat_id": {chat_id}, "text": {text}}}"#
+		,chat_id=message.chat.id()
+		,text="hello world");
+
+	let test = message.chat.id().to_string();
+	let params = [("chat_id", test.as_str())
+	             ,("text", "hello world")];
+
+	println!("{}", &testmessage);
+	let client = reqwest::Client::new();
+	let mut res = client.post(&url)
+		//.body(testmessage)
+	    .form(&params)
+		//.header(reqwest::header::CONTENT_TYPE, "application/json")
+		.send().unwrap();
+	dbg!(&res);
+	dbg!(res.text());
 }
 
 #[derive(Debug)]
 pub enum BotError{
 	HttpClientError(reqwest::Error),
 	CouldNotSetWebhook,
+	InvalidServerResponse,
 }
 
 impl From<reqwest::Error> for BotError {
@@ -57,25 +96,23 @@ impl From<reqwest::Error> for BotError {
 fn send_test_reply<C: ToChatRef>(chat: C, token: &str) -> Result<(), BotError>{//add as arg generic ToChatRef (should get from Update)
 	//TODO create a SendMessage, serialise it (use member function serialize) 
 	//then use the HttpRequest fields, (url, method, and body) to send to telegram
+	let url = format!("https://api.telegram.org/bot{}/sendMessage", token);	
 	let text = String::from("hi");
-	let request = SendMessage::new(chat, text).serialize().unwrap();
-	//dbg!(&request);
-	let HttpRequest {url: request_url, body, method: _} = request;
+	let body = serde_json::to_string(&SendMessage::new(chat, text)).unwrap();
+	dbg!(&body);
 
-	match body {
-		telegram_bot::Body::Empty => warn!("ERROR body empty"),
-		telegram_bot::Body::Json(body) => {
-			dbg!(&body);
-			dbg!(&request_url.url(token));
-			let client = reqwest::Client::new();
-			client.post(request_url.url(token).as_str())
-			      .body(body)
-				  .send()?;
-			info!("send message")
-		},
-		_ => warn!("Error unhandled body type"),
+	let client = reqwest::Client::new();
+	let res = client.post(&url)
+			.body(body)
+			.send()?;
+	
+	if res.status() != reqwest::StatusCode::OK {
+		dbg!(res);
+		Err(BotError::InvalidServerResponse)
+	} else {
+		info!("send message");
+		Ok(())
 	}
-	Ok(())
 }
 
 pub fn set_webhook(domain: &str, token: &str) -> Result<(), BotError> {
@@ -87,6 +124,7 @@ pub fn set_webhook(domain: &str, token: &str) -> Result<(), BotError> {
 	let res = client.post(url.as_str())
 	      .form(&params)
 		  .send()?;
+	
 	if res.status() != reqwest::StatusCode::OK {
 		dbg!(res);
 		Err(BotError::CouldNotSetWebhook)

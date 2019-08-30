@@ -22,6 +22,7 @@ use telegram_bot::types::update::UpdateKind;
 use telegram_bot::types::HttpResponse as telegramResponse;
 
 use crate::httpserver::InnerState;
+mod botplot;
 
 pub fn handle_bot_message<T: InnerState+'static>(state: Data<T>, raw_update: Bytes)
 	 -> HttpResponse {
@@ -37,55 +38,86 @@ pub fn handle_bot_message<T: InnerState+'static>(state: Data<T>, raw_update: Byt
 
 	match &update.kind{
 	 	UpdateKind::Message(message) => {
-			dbg!(&message.kind);
-
-//apiRequest("sendMessage", array('chat_id' => $chat_id, "text" => 'Nice to meet you'));
-
-			let testmessage = format!(r#"{{"method": "sendMessage", "chat_id": {chat_id}, "text": "{text}"}}"#
-				,chat_id=message.chat.id()
-				,text="hello world2");
-
-			println!("{}",testmessage);
-			//test_delivery(message, TOKEN);
+			test_delivery(&message, TOKEN);
 			HttpResponse::Ok()
 				.status(StatusCode::OK)
-				.set_header(header::CONTENT_TYPE, "application/json")
+				.body("{}")
+
+			/*
+			let mut plot = botplot::plot().unwrap();
+			//let mut plot = vec!(1,2,3,4);
+			//modify from source https://docs.rs/crate/actix-files/0.1.4/source/src/named.rs
+			let testmessage = format!(r#"{{"method": "sendPhoto", "chat_id": {chat_id}, "photo": "#
+				,chat_id=message.chat.id());
+			let mut testmessage = testmessage.into_bytes();
+			testmessage.append(&mut plot);
+			testmessage.push('}' as u8);
+			//dbg!(&testmessage);
+
+			HttpResponse::Ok()
+				.status(StatusCode::OK)
+				.set_header(header::CONTENT_TYPE, "multipart/form-data")
 				.body(testmessage)
-				//.finish()
-				//TODO try using hand formatted test message
+			*/
+			// dbg!(&message.kind);
+			// let plot = botplot::plot();
+
+			// let testmessage = format!(r#"{{"method": "sendMessage", "chat_id": {chat_id}, "text": "{text}"}}"#
+			// 	,chat_id=message.chat.id()
+			// 	,text="hello world2");
+
+			// println!("{}",testmessage);
+			// HttpResponse::Ok()
+			// 	.status(StatusCode::OK)
+			// 	.set_header(header::CONTENT_TYPE, "application/json")
+			// 	.body(testmessage)
 		}
 	 	_ => {
 			warn!("unhandled message type");
 			HttpResponse::Ok()
 				.status(StatusCode::OK)
 				.body("{}")
-		 }
+		}
 	}
 }
 
 fn test_delivery(message: &telegram_bot::types::message::Message, token: &str){
-	let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
-	let testmessage = format!(r#"{{"chat_id": {chat_id}, "text": {text}}}"#
-		,chat_id=message.chat.id()
-		,text="hello world");
 
-	let testmessage = r#"{"chat_id": 15997283, "text": "hello world"}"#;
-	let test = message.chat.id().to_string();
-	let params = [("chat_id", test.as_str())
-	             ,("text", "hello world")];
+	//let mut plot = botplot::plot().unwrap();
+	//let photo_part = reqwest::multipart::Part::bytes(plot);
 
-	println!("{}", &testmessage);
+	//let form = reqwest::multipart::Form::new()
+		//.file("photo", "testplot.png").unwrap();
+		//.part("photo", photo_part);
+
+	let url = format!("https://api.telegram.org/bot{}/sendPhoto", token);
+
+	let form = reqwest::multipart::Form::new()
+		.file("photo", "testplot.png").unwrap()
+		.text("chat_id", message.chat.id().to_string());
+
 	let client = reqwest::Client::new();
-	let mut res = client.post(&url)
-		.body(testmessage)
-	    //.form(&params)
-		.header(reqwest::header::CONTENT_TYPE, "application/json")
-		.send().unwrap();
-	dbg!(&res);
-	dbg!(res.text());
+	let resp = client.post(&url)
+		.multipart(form).send().unwrap();
 
-	//let client_debug = client.post(&url).form(&params);
-	//dbg!(client_debug);
+	dbg!(resp);
+
+
+
+	/*
+	let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
+
+	let form = reqwest::multipart::Form::new()
+		//.file("photo", "testplot.png").unwrap();
+		.text("text", "hi")
+		.text("chat_id", message.chat.id().to_string());
+
+	let client = reqwest::Client::new();
+	let resp = client.post(&url)
+		.multipart(form).send().unwrap();
+
+	dbg!(resp);
+	*/
 }
 
 #[derive(Debug)]

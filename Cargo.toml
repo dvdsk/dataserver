@@ -59,3 +59,4 @@ num-traits = "0.2"
 num-derive = "0.2"
 
 telegram-bot = "0.6"
+plotters = "0.2.2"

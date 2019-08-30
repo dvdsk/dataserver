@@ -83,41 +83,23 @@ pub fn handle_bot_message<T: InnerState+'static>(state: Data<T>, raw_update: Byt
 
 fn test_delivery(message: &telegram_bot::types::message::Message, token: &str){
 
-	//let mut plot = botplot::plot().unwrap();
-	//let photo_part = reqwest::multipart::Part::bytes(plot);
+	let plot = botplot::plot().unwrap();
 
-	//let form = reqwest::multipart::Form::new()
-		//.file("photo", "testplot.png").unwrap();
-		//.part("photo", photo_part);
+	let photo_part = reqwest::multipart::Part::bytes(plot)
+		.mime_str("image/png").unwrap()
+		.file_name("testplot.png");
 
 	let url = format!("https://api.telegram.org/bot{}/sendPhoto", token);
 
 	let form = reqwest::multipart::Form::new()
-		.file("photo", "testplot.png").unwrap()
-		.text("chat_id", message.chat.id().to_string());
+		.text("chat_id", message.chat.id().to_string())
+		.part("photo", photo_part);
 
 	let client = reqwest::Client::new();
 	let resp = client.post(&url)
 		.multipart(form).send().unwrap();
 
 	dbg!(resp);
-
-
-
-	/*
-	let url = format!("https://api.telegram.org/bot{}/sendMessage", token);
-
-	let form = reqwest::multipart::Form::new()
-		//.file("photo", "testplot.png").unwrap();
-		.text("text", "hi")
-		.text("chat_id", message.chat.id().to_string());
-
-	let client = reqwest::Client::new();
-	let resp = client.post(&url)
-		.multipart(form).send().unwrap();
-
-	dbg!(resp);
-	*/
 }
 
 #[derive(Debug)]

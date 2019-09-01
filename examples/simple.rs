@@ -8,8 +8,9 @@ use std::thread;
 
 use dataserver::{certificate_manager, httpserver};
 use dataserver::helper;
-use dataserver::httpserver::{secure_database::PasswordDatabase, timeseries_interface, ServerHandle, DataRouterHandle, DataServerState, CheckLogin};
+use dataserver::httpserver::{timeseries_interface, ServerHandle, DataRouterHandle, DataServerState, CheckLogin};
 use dataserver::httpserver::{ws_index, index, logout, newdata, plot_data, list_data, login_get_and_check, login_page, serve_file};
+use dataserver::databases::PasswordDatabase;
 
 use std::sync::{Arc, RwLock};
 use std::io::stdin;

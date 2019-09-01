@@ -27,7 +27,6 @@ use std::path::Path;
 use chrono::{DateTime, Utc};
 
 pub mod timeseries_interface;
-pub mod secure_database;
 pub mod login_redirect;
 
 pub mod data_router;
@@ -35,7 +34,7 @@ pub mod error_router;
 pub mod data_router_ws_client; //TODO remove pub
 mod error_router_ws_client;
 
-use secure_database::{PasswordDatabase, UserDatabase};
+use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
 use crate::httpserver::timeseries_interface::{Authorisation};
 
 pub struct Session {//TODO deprecate 
@@ -53,7 +52,8 @@ pub trait InnerState {
 
 pub struct DataRouterState {
 	pub passw_db: PasswordDatabase,
-	pub user_db: UserDatabase,
+	pub web_user_db: WebUserDatabase,
+	pub bot_user_db: BotUserDatabase,
 
 	pub data_router_addr: Addr<data_router::DataRouter>,
 	pub error_router_addr: Addr<error_router::ErrorRouter>,
@@ -226,7 +226,7 @@ pub fn login_get_and_check<T: InnerState>(
 	} else { info!("user logged in");}
 	
 	//copy userinfo into new session
-	let userinfo = state.user_db.get_userdata(&params.u).unwrap();
+	let userinfo = state.web_user_db.get_userdata(&params.u).unwrap();
 	//userinfo.last_login = Utc::now();
 	//passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
 	

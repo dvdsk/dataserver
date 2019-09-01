@@ -100,13 +100,13 @@ impl PasswordDatabase {
 /////////////////////////////////////////////////////////////////////////////////
  
 #[derive(Debug, Clone)]
-pub struct UserDatabase {
+pub struct WebUserDatabase {
     pub storage: Arc<Tree>,
 }
 
 type RecieveErrors = bool;
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub struct UserInfo {
+pub struct WebUserInfo {
 	pub timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
 	pub last_login: DateTime<Utc>, 
 	pub username: String,
@@ -131,14 +131,14 @@ impl From<bincode::Error> for UserDbError {
 }
 
 
-impl UserDatabase {
+impl WebUserDatabase {
 	pub fn from_db(db: &Db) -> Result<Self,sled::Error> {
-		Ok(Self { 
-			storage: db.open_tree("user_database")?, //created it not exist
+		Ok(WebUserDatabase { 
+			storage: db.open_tree("web_user_database")?, //created it not exist
 		})
 	}
 
-	pub fn get_userdata<T: AsRef<[u8]>>(&self, username: T) -> Result<UserInfo, UserDbError> {
+	pub fn get_userdata<T: AsRef<[u8]>>(&self, username: T) -> Result<WebUserInfo, UserDbError> {
 		let username = username.as_ref();
 		if let Some(user_data) = self.storage.get(username)? {
 			let user_info = bincode::deserialize(&user_data)?;
@@ -148,7 +148,7 @@ impl UserDatabase {
 		}
 	}
 	
-	pub fn set_userdata(&mut self, user_info: UserInfo) 
+	pub fn set_userdata(&mut self, user_info: WebUserInfo) 
 	-> Result <(),UserDbError> {
 		let username = user_info.username.as_str().as_bytes();
 		let user_data =	bincode::serialize(&user_info)?;
@@ -167,4 +167,44 @@ impl UserDatabase {
 			None => panic!("user not found in database!"),
 		}
 	}*/
+}
+
+#[derive(Debug, Clone)]
+pub struct BotUserDatabase {
+    pub storage: Arc<Tree>,
+}
+
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub struct BotUserInfo {
+	pub timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
+	pub username: String,
+	pub aliases: HashMap<String, String>,
+}
+
+use telegram_bot::types::refs::UserId;
+impl BotUserDatabase {
+	pub fn from_db(db: &Db) -> Result<Self,sled::Error> {
+		Ok(Self { 
+			storage: db.open_tree("bot_user_database")?, //created it not exist
+		})
+	}
+
+	pub fn get_userdata(&self, user_id: UserId) -> Result<BotUserInfo, UserDbError> {
+		let user_id = &user_id.to_string();
+		if let Some(user_data) = self.storage.get(user_id.as_bytes())? {
+			let user_info = bincode::deserialize(&user_data)?;
+			Ok(user_info)
+		} else {
+			Err(UserDbError::UserNotInDb)
+		}
+	}
+	
+	pub fn set_userdata(&mut self, user_info: BotUserInfo, user_id: UserId) 
+	-> Result <(),UserDbError> {
+		let user_id = &user_id.to_string();
+		let user_data =	bincode::serialize(&user_info)?;
+		self.storage.set(user_id.as_bytes(),user_data)?;
+		self.storage.flush()?;
+		Ok(())
+	}
 }

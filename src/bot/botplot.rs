@@ -9,6 +9,8 @@ use image::{png::PNGEncoder, RGB};
 use log::{warn, error};
 
 use crate::httpserver::{DataRouterState, InnerState, timeseries_interface};
+use crate::databases::UserDbError;
+
 use timeseries_interface::{FieldId, DatasetId, Data};
 use timeseries_interface::read_to_array::{ReaderInfo, prepare_read_processing, read_into_arrays};
 
@@ -24,6 +26,7 @@ pub enum Error{
     NoDataWithinRange,
     PlotLibError,
     EncodingError(std::io::Error),
+	BotDatabaseError(UserDbError),
 }
 
 impl From<std::num::ParseIntError> for Error {
@@ -32,7 +35,13 @@ impl From<std::num::ParseIntError> for Error {
 	}
 }
 
-pub fn plot(text: String, state: &DataRouterState)-> Result<Vec<u8>, Error>{
+impl From<UserDbError> for Error {
+	fn from(error: UserDbError) -> Self {
+		Error::BotDatabaseError(error)
+	}
+}
+
+pub fn plot(text: String, state: &DataRouterState, user_id: UserId)-> Result<Vec<u8>, Error>{
 
     let args = vec!(String::from("1"), 
         String::from("2"), 
@@ -41,14 +50,35 @@ pub fn plot(text: String, state: &DataRouterState)-> Result<Vec<u8>, Error>{
         String::from("3")); //TODO actual args here
 
     let (timerange, set_id, field_ids) = parse_plot_arguments(args)?;
-    let selected_datasets = select_data(state, set_id, field_ids)?;
+    let selected_datasets = select_data(state, set_id, field_ids, user_id)?;
 
     let dimensions = (900, 900);
-    let (mut cc, buffer) = init_plot(&timerange, dimensions)?;   
+
+    //Init plot
+    let mut subpixelbuffer: Vec<u8> = Vec::new();
+    let root = BitMapBackend::with_buffer(&mut subpixelbuffer, dimensions).into_drawing_area();
+    //let root = BitMapBackend::new("sample2.png", (width, height)).into_drawing_area();
+    root.fill(&WHITE).map_err(|_| Error::PlotLibError)?;
+
+    let (to_date, from_date) = timerange;
+    let (to_date, from_date) = (to_date.timestamp(), from_date.timestamp());
+
+    let mut chart = ChartBuilder::on(&root)
+        .x_label_area_size(40)
+        .y_label_area_size(40)
+        //.caption("MSFT Stock Price", ("Arial", 50.0).into_font())
+        .build_ranged(from_date..to_date, 110f32..135f32)
+        .map_err(|_| Error::PlotLibError)?;
+    chart
+        .configure_mesh()
+        .line_style_2(&WHITE)
+        .draw().map_err(|_| Error::PlotLibError)?;   
+
+    //add lines
     for selected_data in selected_datasets {
-        let (shared_x, mut y_datas, mut labels) = read_data(selected_data, state.inner_state().data, timerange)?;
-        for (y, label) in y_datas.drain(..).zip(labels.drain(..)) {
-            cc.draw_series(LineSeries::new(
+        let (shared_x, mut y_datas, mut labels) = read_data(selected_data, &state.inner_state().data, timerange)?;
+        for (mut y, label) in y_datas.drain(..).zip(labels.drain(..)) {
+            chart.draw_series(LineSeries::new(
                 shared_x.iter().map(|x| *x)
                 .zip(y.drain(..)),
                 &RED)
@@ -56,8 +86,21 @@ pub fn plot(text: String, state: &DataRouterState)-> Result<Vec<u8>, Error>{
             .label(label.1);
         }
     }
-    let plot = finish_plot(cc, buffer, dimensions)?;
-    return Ok(plot);
+    chart
+        .configure_series_labels()
+        .background_style(&WHITE.mix(0.8))
+        .border_style(&BLACK)
+        .draw().map_err(|_| Error::PlotLibError);
+
+    drop(chart);
+    drop(root);
+
+    let mut image = Vec::new();
+    PNGEncoder::new(&mut image)
+        .encode(&subpixelbuffer, dimensions.0, dimensions.1, RGB(8))
+        .map_err(|io_error| Error::EncodingError(io_error))?;
+
+    return Ok(image);
 }
 
 fn parse_plot_arguments(args: Vec<String>)
@@ -76,13 +119,14 @@ fn parse_plot_arguments(args: Vec<String>)
     Ok((timerange, set_id, field_ids))
 }
 
-fn select_data(data: &DataRouterState, set_id: timeseries_interface::DatasetId, field_ids: Vec<FieldId>)
+use super::UserId;
+fn select_data(data: &DataRouterState, set_id: timeseries_interface::DatasetId, field_ids: Vec<FieldId>, user_id: UserId)
      -> Result<HashMap<DatasetId, Vec<FieldId>>,Error>{
 
     //get timeseries_with_access for this user
-    let timeseries_with_access = unimplemented!();
+    let timeseries_with_access = data.bot_user_db.get_userdata(user_id)?.timeseries_with_access;
 
-    let selected_data = HashMap::new();
+    let mut selected_data = HashMap::new();
     //check if user has access to the requested dataset
     if let Some(fields_with_access) = timeseries_with_access.get(&set_id){
         let mut subbed_fields = Vec::with_capacity(field_ids.len());
@@ -105,35 +149,8 @@ fn select_data(data: &DataRouterState, set_id: timeseries_interface::DatasetId, 
     Ok(selected_data)
 }
 
-
-
-fn init_plot(timerange: &(DateTime<Utc>, DateTime<Utc>), dimensions: (u32,u32))
- -> Result<(ChartContext<BitMapBackend, RangedCoord<RangedCoordi64, RangedCoordf32>>, (DrawingArea<BitMapBackend, Shift>,Vec<u8>)), Error> {
-    //TODO check if telegram can do svg and if thats smaller/prettier
-    let mut subpixelbuffer = Vec::new();
-    let root = BitMapBackend::with_buffer(&mut subpixelbuffer, dimensions).into_drawing_area();
-    //let root = BitMapBackend::new("sample2.png", (width, height)).into_drawing_area();
-    root.fill(&WHITE).map_err(|_| Error::PlotLibError)?;
-
-    let (to_date, from_date) = timerange;
-    let (to_date, from_date) = (to_date.timestamp(), from_date.timestamp());
-
-    let mut chart = ChartBuilder::on(&root)
-        .x_label_area_size(40)
-        .y_label_area_size(40)
-        //.caption("MSFT Stock Price", ("Arial", 50.0).into_font())
-        .build_ranged(from_date..to_date, 110f32..135f32)
-        .map_err(|_| Error::PlotLibError)?;
-    chart
-        .configure_mesh()
-        .line_style_2(&WHITE)
-        .draw().map_err(|_| Error::PlotLibError)?;
-    
-    return Ok((chart, (root, subpixelbuffer)));
-}
-
 fn read_data(selected_data: (DatasetId, Vec<FieldId>), 
-    data: Arc<RwLock<Data>>, timerange: (DateTime<Utc>, DateTime<Utc>))
+    data: &Arc<RwLock<Data>>, timerange: (DateTime<Utc>, DateTime<Utc>))
      -> Result<(Vec<i64>, Vec<Vec<f32>>,Vec<(FieldId, String)>),Error>{
     
     let max_plot_points = 1000;
@@ -169,24 +186,4 @@ fn read_data(selected_data: (DatasetId, Vec<FieldId>),
         warn!("no data within given window");
         return Err(Error::NoDataWithinRange);
     }
-}
- 
-fn finish_plot<'a>(mut chart: ChartContext<'a, BitMapBackend<'a>, RangedCoord<RangedCoordi64, RangedCoordf32>>, buffer: (DrawingArea<BitMapBackend, Shift> ,Vec<u8>), dimensions: (u32,u32))
-     -> Result<Vec<u8>, Error> {
-    
-    chart
-        .configure_series_labels()
-        .background_style(&WHITE.mix(0.8))
-        .border_style(&BLACK)
-        .draw().map_err(|_| Error::PlotLibError);
-    
-    let (root, subpixelbuffer) = buffer;
-    drop(chart);
-    drop(root);
-
-    let mut image = Vec::new();
-    PNGEncoder::new(&mut image)
-        .encode(&subpixelbuffer, dimensions.0, dimensions.1, RGB(8))
-        .map_err(|io_error| Error::EncodingError(io_error))?;
-    Ok(image)
 }

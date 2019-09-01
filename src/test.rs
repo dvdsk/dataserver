@@ -187,7 +187,7 @@ fn insert_timecheck_set() {
 	let username = String::from("test");
 	let password = String::from("test");
 
-	let user_data = UserInfo{
+	let user_data = WebUserInfo{
 		timeseries_with_access: HashMap::new(),
 		last_login: Utc::now(),
 		username: username.clone(),
@@ -251,7 +251,7 @@ fn insert_test_set() {
 	let username = String::from("test");
 	let password = String::from("test");
 
-	let user_data = UserInfo{
+	let user_data = WebUserInfo{
 		timeseries_with_access: HashMap::new(),
 		last_login: Utc::now(),
 		username: username.clone(),

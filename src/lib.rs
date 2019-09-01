@@ -6,4 +6,5 @@ pub mod httpserver;
 pub mod config;
 pub mod helper;
 pub mod error;
-pub mod telegram_bot;
+pub mod bot;
+pub mod databases;

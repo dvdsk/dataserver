@@ -52,18 +52,18 @@ pub struct ReaderInfo {
 }
 
 fn create_vector_of_vectors(numb_vectors: usize) -> Vec<Vec<f32>>{
-	let vec = Vec::new();
+	let mut vec = Vec::new();
 	for _ in 0..numb_vectors {
 		vec.push(Vec::new());
 	}
 	return vec;
 }
 
-pub fn read_into_arrays(data_handle: Arc<RwLock<Data>>, reader: ReaderInfo)
+pub fn read_into_arrays(data_handle: Arc<RwLock<Data>>, mut reader: ReaderInfo)
 	-> (Vec<i64>, Vec<Vec<f32>>) {
 	
-	let shared_x = Vec::new();
-	let y_datas = create_vector_of_vectors(reader.read_state.fields.len());
+	let mut shared_x = Vec::new();
+	let mut y_datas = create_vector_of_vectors(reader.read_state.fields.len());
 	
 	if reader.selector.is_none() {
 		dbg!("HANDELING NON SELECTOR READ");
@@ -84,7 +84,7 @@ pub fn read_into_arrays(data_handle: Arc<RwLock<Data>>, reader: ReaderInfo)
 		std::mem::drop(dataset);
 		std::mem::drop(data);
 
-		decode_into_array(&reader, &mut shared_x, &mut y_datas);
+		decode_into_array(&mut reader, &mut shared_x, &mut y_datas);
 		return (shared_x, y_datas);
 	}
 
@@ -110,15 +110,16 @@ pub fn read_into_arrays(data_handle: Arc<RwLock<Data>>, reader: ReaderInfo)
 		std::mem::drop(data);
 
 		//dbg!(&reader.timestamps_buffer.len());
-		decode_into_array(&reader, &mut shared_x, &mut y_datas);
+		decode_into_array(&mut reader, &mut shared_x, &mut y_datas);
 	}
 	return (shared_x, y_datas);	
 }
 
-fn decode_into_array(reader: &ReaderInfo, shared_x: &mut Vec<i64>, y_datas: &mut Vec<Vec<f32>>) {
+fn decode_into_array(reader: &mut ReaderInfo, shared_x: &mut Vec<i64>, y_datas: &mut Vec<Vec<f32>>) {
 
 	let ReaderInfo {dataset_id, read_state, selector,
 		lines_per_read, line_size, timestamps, line_data } = reader;
+	let line_size = *line_size;
 	let lines_per_sample = selector
 		.as_mut().unwrap()
 		.lines_per_sample.get();
@@ -131,15 +132,15 @@ fn decode_into_array(reader: &ReaderInfo, shared_x: &mut Vec<i64>, y_datas: &mut
 		shared_x.push(ts_avg as i64);
 	}//for every sample
 
-	for sample in reader.line_data.chunks_exact(lines_per_sample*line_size) {
+	for sample in reader.line_data.chunks_exact(lines_per_sample* line_size) {
 		let mut decoded_field_sums = vec!(0f32; read_state.fields.len()); //to store averages as they grow
-		for line in sample.chunks_exact(*line_size) {
+		for line in sample.chunks_exact(line_size) {
 			for (field, decoded_field) in read_state.fields.iter().zip(&mut decoded_field_sums) {
 				let decoded: f32 = field.decode::<f32>(&line);
 				*decoded_field += decoded;
 			}
 		}
-		for (decoded_sum,y) in decoded_field_sums.drain(..).zip(y_datas){
+		for (decoded_sum,y) in decoded_field_sums.drain(..).zip(y_datas.iter_mut()){
 			y.push(decoded_sum/lines_per_sample as f32);
 		}
 	}//for every sample

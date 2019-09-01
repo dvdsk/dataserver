@@ -19,7 +19,8 @@ use telegram_bot::types::update::UpdateKind;
 use telegram_bot::types::message::MessageKind;
 use telegram_bot::types::refs::{ChatId, UserId};
 
-use crate::httpserver::InnerState;
+use crate::httpserver::{InnerState, DataRouterState};
+use crate::databases::{BotUserDatabase, BotUserInfo, UserDbError};
 mod botplot;
 
 #[derive(Debug)]
@@ -29,6 +30,7 @@ pub enum Error{
 	InvalidServerResponse,
 	UnhandledUpdateKind,
 	UnhandledMessageKind,
+	BotDatabaseError(UserDbError),
 }
 
 impl From<reqwest::Error> for Error {
@@ -37,9 +39,14 @@ impl From<reqwest::Error> for Error {
 	}
 }
 
+impl From<UserDbError> for Error {
+	fn from(error: UserDbError) -> Self {
+		Error::BotDatabaseError(error)
+	}
+}
+
 
 fn to_string_and_ids(update: Update) -> Result<(String, ChatId, UserId),Error>{
-
 	if let UpdateKind::Message(message) = update.kind {
 		let chat_id = message.chat.id();
 		let user_id = message.from.id;
@@ -55,6 +62,14 @@ fn to_string_and_ids(update: Update) -> Result<(String, ChatId, UserId),Error>{
 	}
 }
 
+fn resolve_alias(possible_alias: &str, db: &BotUserDatabase, user_id: UserId) -> Result<Option<String>, Error> {
+	if let Some(alias) = db.get_userdata(user_id)?.aliases.get(possible_alias){
+		Ok(Some(alias.to_owned()))
+	} else {
+		Ok(None)
+	}
+}
+
 pub fn handle_bot_message<T: InnerState+'static>(state: Data<T>, raw_update: Bytes)
 	 -> HttpResponse {
 	
@@ -67,12 +82,21 @@ pub fn handle_bot_message<T: InnerState+'static>(state: Data<T>, raw_update: Byt
 
 	let update: Update = serde_json::from_slice(&raw_update.to_vec()).unwrap();
 
-	let (text, chat_id, user_id) = to_string_and_ids(update).unwrap();
-	let command = text.as_str().split_whitespace().next().unwrap_or_default();
-	match command {
-		"test" => send_test_reply(chat_id, TOKEN).unwrap(),
-		"plot" => send_plot(chat_id, user_id, state.inner_state(), TOKEN, text).unwrap(),
-		&_ => warn!("no known command in: {:?}", text),
+	//TODO error handling by moving this into function
+	let (mut text, chat_id, user_id) = to_string_and_ids(update).unwrap();
+	loop {
+		let command = text.as_str().split_whitespace().next().unwrap_or_default();
+		match command {
+			"test" => {send_test_reply(chat_id, TOKEN).unwrap(); break;}
+			"plot" => {send_plot(chat_id, user_id, state.inner_state(), TOKEN, text).unwrap(); break;}
+			&_ => {}
+		}
+		if let Some(alias_text) = resolve_alias(command, &state.inner_state().bot_user_db, user_id).unwrap(){
+			text = alias_text; //FIXME //TODO allows loops in aliasses, thats fun right? (fix after fun)
+		} else {
+			warn!("no known command or alias: {:?}", command);
+			break;
+		}
 	}
 
 	HttpResponse::Ok()
@@ -83,7 +107,7 @@ pub fn handle_bot_message<T: InnerState+'static>(state: Data<T>, raw_update: Byt
 fn send_plot(chat_id: ChatId, user_id: UserId, state: &InnerState, token: &str, text: String)
 	 -> Result<(), Error>{
 
-	let plot = botplot::plot(text, state.inner_state()).unwrap();
+	let plot = botplot::plot(text, state.inner_state(), user_id).unwrap();
 
 	let photo_part = reqwest::multipart::Part::bytes(plot)
 		.mime_str("image/png").unwrap()
@@ -142,14 +166,3 @@ pub fn set_webhook(domain: &str, token: &str) -> Result<(), Error> {
 		Ok(())
 	}
 }
-
-/*
-fn send_plot(){
-	//"sendChatAction" photo (shows taking photo)
-	//The status is set for 5 seconds or less (when a message arrives from your bot, Telegram clients clear its typing status).
-	//keep sending every 5 seconds
-
-	//send inputMediaPhoto with media string "attach://<file_attach_name>"
-	//Post the file using multipart/form-data to "<file_attach_name>"
-	//When sending by URL the target file must have the correct MIME type (e.g., audio/mpeg for sendAudio, etc.).
-}*/

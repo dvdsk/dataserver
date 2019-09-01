@@ -7,7 +7,7 @@ mod test;
 
 use chrono::Utc;
 use crate::httpserver::{timeseries_interface};
-use crate::httpserver::secure_database::{UserDatabase, PasswordDatabase, UserInfo};
+use crate::databases::{WebUserDatabase, PasswordDatabase, WebUserInfo};
 
 use std::path::{Path};
 use std::sync::{Arc, RwLock};
@@ -25,13 +25,13 @@ pub fn pause() {
 	stdin().read_exact(&mut [0]).unwrap();
 }
 
-pub fn add_user(passw_db: &mut PasswordDatabase, user_db: &mut UserDatabase){
+pub fn add_user(passw_db: &mut PasswordDatabase, user_db: &mut WebUserDatabase){
 	println!("enter username:");
 	let username: String = read!("{}\n");
 	println!("enter password:");
 	let password: String = read!("{}\n");
 
-	let user_data = UserInfo{
+	let user_data = WebUserInfo{
 		timeseries_with_access: HashMap::new(),
 		last_login: Utc::now(),
 		username: username.clone(),
@@ -41,7 +41,7 @@ pub fn add_user(passw_db: &mut PasswordDatabase, user_db: &mut UserDatabase){
 	user_db.set_userdata(user_data).unwrap();
 }
 
-pub fn add_fields_to_user(user_db: &mut UserDatabase){
+pub fn add_fields_to_user(user_db: &mut WebUserDatabase){
 	use timeseries_interface::{DatasetId, FieldId};
 
 	println!("enter username:");
@@ -64,7 +64,7 @@ pub fn add_fields_to_user(user_db: &mut UserDatabase){
 	}
 }
 
-pub fn add_dataset(user_db: &mut UserDatabase, data: &Arc<RwLock<timeseries_interface::Data>>){
+pub fn add_dataset(user_db: &mut WebUserDatabase, data: &Arc<RwLock<timeseries_interface::Data>>){
 
 	if !Path::new("specs/template.yaml").exists() {
 		timeseries_interface::specifications::write_template().unwrap();
@@ -90,7 +90,7 @@ pub fn add_dataset(user_db: &mut UserDatabase, data: &Arc<RwLock<timeseries_inte
 	}
 }
 
-pub fn remove_dataset(user_db: &mut UserDatabase, data: & Arc<RwLock<timeseries_interface::Data>>, id: timeseries_interface::DatasetId){
+pub fn remove_dataset(user_db: &mut WebUserDatabase, data: & Arc<RwLock<timeseries_interface::Data>>, id: timeseries_interface::DatasetId){
 	let mut data = data.write().unwrap();
 	if data.remove_set(id).is_ok(){
 		let usernames: Vec<Vec<u8>> = user_db.storage.keys(&[0]).filter_map(Result::ok).collect();

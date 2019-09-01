@@ -14,9 +14,9 @@ use dataserver::httpserver::{InnerState, timeseries_interface, DataRouterHandle,
 use dataserver::httpserver::{data_router_ws_index, error_router_ws_index, index, logout, plot_data, list_data, login_get_and_check, login_page};
 use dataserver::httpserver::{new_data_post, new_error_post};
 
-use dataserver::httpserver::secure_database::{PasswordDatabase, UserDatabase};
+use dataserver::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
 use dataserver::httpserver::login_redirect::CheckLogin;
-use dataserver::telegram_bot::{handle_bot_message, set_webhook};
+use dataserver::bot::{handle_bot_message, set_webhook};
 
 use std::sync::{Arc, RwLock, Mutex};
 use std::io::stdin;
@@ -48,7 +48,8 @@ impl InnerState for ExampleState{
 pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
      data: Arc<RwLock<timeseries_interface::Data>>, //
      passw_db: PasswordDatabase,
-	 user_db: UserDatabase,
+	 web_user_db: WebUserDatabase,
+	 bot_user_db: BotUserDatabase,
 	 db: sled::Db,
      sessions: Arc<RwLock<HashMap<u16, Arc<Mutex<dataserver::httpserver::Session>>>>>)
 	  -> (DataRouterHandle, ErrorRouterHandle, actix_web::dev::Server) {
@@ -74,7 +75,8 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
 				counter: Arc::new(Mutex::new(0)),
 				dataserver_state: DataRouterState {
 					passw_db: passw_db.clone(),
-					user_db: user_db.clone(),
+					web_user_db: web_user_db.clone(),
+					bot_user_db: bot_user_db.clone(),
 					data_router_addr: data_router_addr_clone.clone(),
 					error_router_addr: error_router_addr_clone.clone(),
 					data: data.clone(),
@@ -162,12 +164,13 @@ fn main() {
 
 	//TODO can a tree be opened multiple times?
 	let mut passw_db = PasswordDatabase::from_db(&db).unwrap();
-	let mut user_db = UserDatabase::from_db(&db).unwrap();
+	let mut web_user_db = WebUserDatabase::from_db(&db).unwrap();
+	let mut bot_user_db = BotUserDatabase::from_db(&db).unwrap();
 	let data = Arc::new(RwLock::new(timeseries_interface::init("data").unwrap()));
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 
 	let (data_handle, error_handle, web_handle) =
-	start("keys/cert.key", "keys/cert.cert", "keys/intermediate.cert", data.clone(), passw_db.clone(), user_db.clone(), db, sessions.clone());
+	start("keys/cert.key", "keys/cert.cert", "keys/intermediate.cert", data.clone(), passw_db.clone(), web_user_db.clone(), bot_user_db.clone(), db, sessions.clone());
 	println!("press: t to send test data, n: to add a new user, q to quit, a to add new dataset, o add owner to db");
 	set_webhook(config::DOMAIN, config::TOKEN).unwrap();
 	
@@ -177,9 +180,9 @@ fn main() {
 		match input.as_str() {
 			"t\n" => helper::send_test_data_over_http(data.clone(), 8070),
 			"d\n" => helper::signal_and_append_test_data(data.clone(), &data_handle), //works
-			"n\n" => helper::add_user(&mut passw_db, &mut user_db),
-			"a\n" => helper::add_dataset(&mut user_db, &data),
-			"o\n" => helper::add_fields_to_user(&mut user_db),
+			"n\n" => helper::add_user(&mut passw_db, &mut web_user_db),
+			"a\n" => helper::add_dataset(&mut web_user_db, &data),
+			"o\n" => helper::add_fields_to_user(&mut web_user_db),
 			"q\n" => break,
 			_ => println!("unhandled"),
 		};

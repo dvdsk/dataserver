@@ -23,8 +23,8 @@ use crate::httpserver::error_router::ErrorCode;
 
 pub mod specifications;
 pub mod compression;
-pub mod read;
-pub use read::{prepare_read_processing, read_into_packages, ReaderInfo};
+pub mod read_to_array;
+pub mod read_to_packets;
 
 use std::f64;
 trait FloatIterExt {

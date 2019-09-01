@@ -21,6 +21,8 @@ use super::timeseries_interface;
 use super::data_router;
 use super::Session;
 
+use timeseries_interface::read_to_packets::{ReaderInfo, prepare_read_processing, read_into_packages};
+
 pub struct TimesRange {
 	pub start: DateTime<Utc>,
 	pub stop: DateTime<Utc>,
@@ -223,7 +225,7 @@ impl WsSession {
 			return;
 		}
 
-		let mut reader_infos: Vec<timeseries_interface::ReaderInfo> = Vec::with_capacity(self.selected_data.len());
+		let mut reader_infos: Vec<ReaderInfo> = Vec::with_capacity(self.selected_data.len());
 		let mut client_metadata = Vec::with_capacity(self.selected_data.len());
 		let data_handle = self.data.clone();
 		let mut data = data_handle.write().unwrap();
@@ -234,7 +236,7 @@ impl WsSession {
 			if let Some(read_state) = dataset.prepare_read(self.timerange.start, self.timerange.stop, field_ids) {
 				//prepare for reading and calc number of bytes we will be sending
 				let n_lines = std::cmp::min(read_state.numb_lines, max_plot_points);
-				if let Some(reader_info) = timeseries_interface::prepare_read_processing(
+				if let Some(reader_info) = prepare_read_processing(
 					read_state, &dataset.timeseries, max_plot_points, *dataset_id) {
 					reader_infos.push(reader_info);
 
@@ -265,7 +267,7 @@ impl WsSession {
 		let (tx, rx) = sync_channel(2);
 		let thread = thread::spawn(move|| {
 			dbg!(&reader_infos);
-			timeseries_interface::read_into_packages(data_handle, tx, reader_infos); });
+			read_into_packages(data_handle, tx, reader_infos); });
 		self.file_io_thread = Some((thread, rx));
 	}
 

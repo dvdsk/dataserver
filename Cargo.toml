@@ -59,5 +59,6 @@ num-traits = "0.2"
 num-derive = "0.2"
 
 telegram-bot = "0.6"
-plotters = "0.2.2"
+#plotters = "0.2.3"
+plotters = { git = "https://github.com/38/plotters"}
 image = "0.22"

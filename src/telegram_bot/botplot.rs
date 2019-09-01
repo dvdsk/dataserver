@@ -46,11 +46,11 @@ pub fn plot(text: String, state: &DataRouterState)-> Result<Vec<u8>, Error>{
     let dimensions = (900, 900);
     let (mut cc, buffer) = init_plot(&timerange, dimensions)?;   
     for selected_data in selected_datasets {
-        let (shared_x, y_datas, labels) = read_data(selected_data, state.inner_state().data, timerange)?;
-        for (y, label) in y_datas.iter().zip(labels.iter()) {
+        let (shared_x, mut y_datas, mut labels) = read_data(selected_data, state.inner_state().data, timerange)?;
+        for (y, label) in y_datas.drain(..).zip(labels.drain(..)) {
             cc.draw_series(LineSeries::new(
                 shared_x.iter().map(|x| *x)
-                .zip(y.iter().map(|y| *y)),
+                .zip(y.drain(..)),
                 &RED)
             ).map_err(|_| Error::PlotLibError)?
             .label(label.1);

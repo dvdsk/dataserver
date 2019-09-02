@@ -148,7 +148,7 @@ impl WebUserDatabase {
 		}
 	}
 	
-	pub fn set_userdata(&mut self, user_info: WebUserInfo) 
+	pub fn set_userdata(&self, user_info: WebUserInfo) 
 	-> Result <(),UserDbError> {
 		let username = user_info.username.as_str().as_bytes();
 		let user_data =	bincode::serialize(&user_info)?;
@@ -177,8 +177,19 @@ pub struct BotUserDatabase {
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct BotUserInfo {
 	pub timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
-	pub username: String,
+	pub username: Option<String>,
 	pub aliases: HashMap<String, String>,
+}
+
+impl BotUserInfo {
+	pub fn from_timeseries_access(timeseries_with_access :HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>)
+	-> Self {
+		Self {
+			timeseries_with_access,
+			username: None,
+			aliases: HashMap::new(),
+		}
+	}
 }
 
 use telegram_bot::types::refs::UserId;
@@ -199,9 +210,9 @@ impl BotUserDatabase {
 		}
 	}
 	
-	pub fn set_userdata(&mut self, user_info: BotUserInfo, user_id: UserId) 
+	pub fn set_userdata<U: Into<UserId>>(&self, user_id: U, user_info: BotUserInfo) 
 	-> Result <(),UserDbError> {
-		let user_id = &user_id.to_string();
+		let user_id = &user_id.into().to_string();
 		let user_data =	bincode::serialize(&user_info)?;
 		self.storage.set(user_id.as_bytes(),user_data)?;
 		self.storage.flush()?;

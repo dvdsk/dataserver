@@ -11,12 +11,14 @@ use std::thread;
 use dataserver::{certificate_manager, httpserver};
 use dataserver::{helper};
 use dataserver::httpserver::{InnerState, timeseries_interface, DataRouterHandle, ErrorRouterHandle, DataRouterState};
-use dataserver::httpserver::{data_router_ws_index, error_router_ws_index, index, logout, plot_data, list_data, login_get_and_check, login_page};
+use dataserver::httpserver::{data_router_ws_index, error_router_ws_index, index, logout, plot_data, login_get_and_check, login_page, set_telegram_id_post};
 use dataserver::httpserver::{new_data_post, new_error_post};
 
 use dataserver::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
 use dataserver::httpserver::login_redirect::CheckLogin;
 use dataserver::bot::{handle_bot_message, set_webhook};
+
+use dataserver::httpserver::dynamic_pages::{list_data, settings_page};
 
 use std::sync::{Arc, RwLock, Mutex};
 use std::io::stdin;
@@ -116,6 +118,10 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
 						.service(web::resource("").to(index))
 						.service(web::resource("plot").to(plot_data::<ExampleState>))
 						.service(web::resource("list_data").to(list_data::<ExampleState>))
+						.service(web::resource("settings.html")
+							.route(web::get().to(settings_page::<ExampleState>))
+							.route(web::post().to(set_telegram_id_post::<ExampleState>))
+						)
 						//for all other urls we try to resolve to static files in the "web" dir
 						.service(fs::Files::new("", "./web/"))
 				)

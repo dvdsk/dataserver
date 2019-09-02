@@ -7,7 +7,7 @@ mod test;
 
 use chrono::Utc;
 use crate::httpserver::{timeseries_interface};
-use crate::databases::{WebUserDatabase, PasswordDatabase, WebUserInfo};
+use crate::databases::{WebUserDatabase, BotUserDatabase, PasswordDatabase, WebUserInfo, BotUserInfo};
 
 use std::path::{Path};
 use std::sync::{Arc, RwLock};
@@ -25,7 +25,7 @@ pub fn pause() {
 	stdin().read_exact(&mut [0]).unwrap();
 }
 
-pub fn add_user(passw_db: &mut PasswordDatabase, user_db: &mut WebUserDatabase){
+pub fn add_user(passw_db: &mut PasswordDatabase, web_user_db: &mut WebUserDatabase){
 	println!("enter username:");
 	let username: String = read!("{}\n");
 	println!("enter password:");
@@ -38,7 +38,7 @@ pub fn add_user(passw_db: &mut PasswordDatabase, user_db: &mut WebUserDatabase){
 	};
 
 	passw_db.set_password(username.as_str().as_bytes(), password.as_str().as_bytes()).unwrap();
-	user_db.set_userdata(user_data).unwrap();
+	web_user_db.set_userdata(user_data).unwrap();
 }
 
 pub fn add_fields_to_user(user_db: &mut WebUserDatabase){
@@ -57,6 +57,7 @@ pub fn add_fields_to_user(user_db: &mut WebUserDatabase){
 		Ok(fields) => {
 			let userdata = user_db.get_userdata(username).unwrap();
 			user_db.add_owner_from_field_id(dataset_id, &fields, userdata).unwrap();
+			//TODO add to plot dataset if user has plot dataset
 		}
 		Err(_) => {
 			println!("error parsing fields");

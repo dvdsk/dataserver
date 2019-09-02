@@ -27,6 +27,7 @@ pub enum Error{
     PlotLibError,
     EncodingError(std::io::Error),
 	BotDatabaseError(UserDbError),
+    NotEnoughArguments,
 }
 
 impl From<std::num::ParseIntError> for Error {
@@ -41,13 +42,7 @@ impl From<UserDbError> for Error {
 	}
 }
 
-pub fn plot(text: String, state: &DataRouterState, user_id: UserId)-> Result<Vec<u8>, Error>{
-
-    let args = vec!(String::from("1"), 
-        String::from("2"), 
-        String::from("3"), 
-        String::from("3"), 
-        String::from("3")); //TODO actual args here
+pub fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId)-> Result<Vec<u8>, Error>{
 
     let (timerange, set_id, field_ids) = parse_plot_arguments(args)?;
     let selected_datasets = select_data(state, set_id, field_ids, user_id)?;
@@ -67,7 +62,7 @@ pub fn plot(text: String, state: &DataRouterState, user_id: UserId)-> Result<Vec
         .x_label_area_size(40)
         .y_label_area_size(40)
         //.caption("MSFT Stock Price", ("Arial", 50.0).into_font())
-        .build_ranged(from_date..to_date, 110f32..135f32)
+        .build_ranged(from_date..to_date, 0f32..40f32)
         .map_err(|_| Error::PlotLibError)?;
     chart
         .configure_mesh()
@@ -104,9 +99,11 @@ pub fn plot(text: String, state: &DataRouterState, user_id: UserId)-> Result<Vec
 }
 
 fn parse_plot_arguments(args: Vec<String>)
-     -> Result<((DateTime<Utc>, DateTime<Utc>), DatasetId, Vec<FieldId>), core::num::ParseIntError>{
-    let timerange_start = Utc.timestamp(args[1].parse::<i64>()?/1000, (args[1].parse::<i64>()?%1000) as u32);
-    let timerange_stop = Utc.timestamp(args[2].parse::<i64>()?/1000, (args[2].parse::<i64>()?%1000) as u32);
+     -> Result<((DateTime<Utc>, DateTime<Utc>), DatasetId, Vec<FieldId>), Error>{
+    if args.len() < 5 {return Err(Error::NotEnoughArguments);}
+
+    let timerange_start = Utc.timestamp(args[1].parse::<i64>()?/1000, 0);
+    let timerange_stop = Utc.timestamp(args[2].parse::<i64>()?/1000, 0);
     let timerange = (timerange_start, timerange_stop);
 
     let set_id = args[3].parse::<timeseries_interface::DatasetId>()?;

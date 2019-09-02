@@ -28,13 +28,14 @@ use chrono::{DateTime, Utc};
 
 pub mod timeseries_interface;
 pub mod login_redirect;
+pub mod dynamic_pages;
 
 pub mod data_router;
 pub mod error_router;
 pub mod data_router_ws_client; //TODO remove pub
 mod error_router_ws_client;
 
-use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
+use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase, BotUserInfo};
 use crate::httpserver::timeseries_interface::{Authorisation};
 
 pub struct Session {//TODO deprecate 
@@ -102,12 +103,6 @@ pub fn make_tls_config<P: AsRef<Path>>(cert_path: P, key_path: P,
 	tls_config
 }
 
-#[derive(Deserialize)]
-pub struct Logindata {
-	u: String,
-	p: String,
-}
-
 pub type ServerHandle = Addr<actix_net::server::Server>;
 pub type DataRouterHandle = Addr<data_router::DataRouter>;
 pub type ErrorRouterHandle = Addr<error_router::ErrorRouter>;
@@ -123,30 +118,6 @@ pub type ErrorRouterHandle = Addr<error_router::ErrorRouter>;
 
 pub fn index(id: Identity) -> String {
 	format!("Hello {}", id.identity().unwrap_or_else(||"Anonymous".to_owned()))
-}
-
-pub fn list_data<T: InnerState>(id: Identity, state: Data<T>) -> HttpResponse {
-	let mut accessible_fields = String::from("<html><body><table>");
-	
-	let session_id = id.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
-	let sessions = state.inner_state().sessions.read().unwrap();
-	let session = sessions.get(&session_id).unwrap();
-
-	let data = state.inner_state().data.read().unwrap();
-	for (dataset_id, authorized_fields) in session.lock().unwrap().timeseries_with_access.iter() {
-		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
-		let mut dataset_fields = format!("<th>{}</th>", &metadata.name);
-		
-		for field in authorized_fields{
-			match field{
-				Authorisation::Owner(id) => dataset_fields.push_str(&format!("<td><p><i>{}</i></p></td>", metadata.fields[*id as usize].name)),
-				Authorisation::Reader(id) => dataset_fields.push_str(&format!("<td>{}</td>",metadata.fields[*id as usize].name)),
-			};
-		}
-		accessible_fields.push_str(&format!("<tr>{}</tr>",&dataset_fields));
-	}
-	accessible_fields.push_str("</table></body></html>");
-	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(accessible_fields)
 }
 
 pub fn plot_data<T: InnerState>(id: Identity, state: Data<T>) -> HttpResponse {
@@ -203,6 +174,12 @@ pub fn login_page() -> HttpResponse {
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
 
+#[derive(Deserialize)]
+pub struct Logindata {
+	u: String,
+	p: String,
+}
+
 /// State and POST Params
 pub fn login_get_and_check<T: InnerState>(
 		id: Identity,
@@ -230,7 +207,7 @@ pub fn login_get_and_check<T: InnerState>(
 	//userinfo.last_login = Utc::now();
 	//passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
 	
-    let session = Session {
+	let session = Session {
 		timeseries_with_access: userinfo.timeseries_with_access.clone(),
 		username: userinfo.username.clone(),
 		last_login: chrono::Utc::now(), //TODO write back to database
@@ -240,16 +217,38 @@ pub fn login_get_and_check<T: InnerState>(
 	let mut sessions = state.sessions.write().unwrap();
 	sessions.insert(session_id as u16, Arc::new(Mutex::new(session)));
 	
-    //sign and send session id cookie to user 
-    id.remember(session_id.to_string());
+	//sign and send session id cookie to user 
+	id.remember(session_id.to_string());
 	info!("remembering session");
-    
+	
 	let end = std::time::Instant::now();
 	println!("{:?}", end-now);
 
-    Ok(HttpResponse::Found()
-	   .header(http::header::LOCATION, req.path()["/login".len()..].to_owned())
-	   .finish())
+	Ok(HttpResponse::Found()
+	.header(http::header::LOCATION, req.path()["/login".len()..].to_owned())
+	.finish())
+}
+
+#[derive(Deserialize)]
+pub struct TelegramId {
+	id: String,
+}
+
+pub fn set_telegram_id_post<T: InnerState>(
+		id: Identity,
+		state: Data<T>,
+		params: Form<TelegramId>) -> wResult<HttpResponse> {
+	
+	let session_id = id.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
+	let sessions = state.inner_state().sessions.read().unwrap();
+	let session = sessions.get(&session_id).unwrap();
+
+	let user_id: i64 = params.id.parse().unwrap();
+	let ts_access = session.lock().unwrap().timeseries_with_access.clone();
+	let user_info = BotUserInfo::from_timeseries_access(ts_access);
+	state.inner_state().bot_user_db.set_userdata(user_id, user_info).unwrap();
+
+	Ok(HttpResponse::Ok().finish())
 }
 
 pub fn new_data_post<T: InnerState+'static>(state: Data<T>, body: Bytes)

@@ -27,7 +27,7 @@ impl Actor for WsSession {
 	//fn started<T: InnerState>(&mut self, ctx: &mut Self::Context) {
 	fn started(&mut self, ctx: &mut Self::Context) {
 
-		let ts_with_access = &self.session.lock().unwrap().timeseries_with_access;
+		let ts_with_access = &self.session.lock().unwrap().db_entry.timeseries_with_access;
 		let subscribed_errors = ts_with_access
 			.iter().flat_map(|(set_id, auth)| {
 			auth.iter().map(|auth| auth.as_ref()).map(move |field_id| {

@@ -133,7 +133,7 @@ impl WsSession {
 
 		if let Ok(set_id) = args[3].parse::<timeseries_interface::DatasetId>() {
 			//check if user has access to the requested dataset
-			if let Some(fields_with_access) = self.session.lock().unwrap().timeseries_with_access.get(&set_id){
+			if let Some(fields_with_access) = self.session.lock().unwrap().db_entry.timeseries_with_access.get(&set_id){
 				//parse requested fields
 				if let Ok(field_ids) = args[4..]
 					.iter()

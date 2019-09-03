@@ -35,13 +35,14 @@ pub fn add_user(passw_db: &mut PasswordDatabase, web_user_db: &mut WebUserDataba
 		timeseries_with_access: HashMap::new(),
 		last_login: Utc::now(),
 		username: username.clone(),
+		telegram_user_id: None,
 	};
 
 	passw_db.set_password(username.as_str().as_bytes(), password.as_str().as_bytes()).unwrap();
 	web_user_db.set_userdata(user_data).unwrap();
 }
 
-pub fn add_fields_to_user(user_db: &mut WebUserDatabase){
+pub fn add_fields_to_user(web_user_db: &mut WebUserDatabase, bot_user_db: &mut BotUserDatabase){
 	use timeseries_interface::{DatasetId, FieldId};
 
 	println!("enter username:");
@@ -55,9 +56,13 @@ pub fn add_fields_to_user(user_db: &mut WebUserDatabase){
 	let fields: Result<Vec<_>, _> = fields.split_whitespace().map(|x| x.parse::<FieldId>() ).collect();
 	match fields {
 		Ok(fields) => {
-			let userdata = user_db.get_userdata(username).unwrap();
-			user_db.add_owner_from_field_id(dataset_id, &fields, userdata).unwrap();
-			//TODO add to plot dataset if user has plot dataset
+			let webuser_data = web_user_db.get_userdata(username).unwrap();
+			if let Some(telegram_user_id) = webuser_data.telegram_user_id{
+				let botuser_data = bot_user_db.get_userdata(telegram_user_id).unwrap();
+				bot_user_db.add_owner_from_field_id(dataset_id, &fields, botuser_data, telegram_user_id).unwrap();
+			}
+			web_user_db.add_owner_from_field_id(dataset_id, &fields, webuser_data).unwrap();
+			println!("success, fields are availible after new login")
 		}
 		Err(_) => {
 			println!("error parsing fields");

@@ -25,6 +25,7 @@ use std::sync::{Arc, RwLock, atomic::{AtomicUsize,Ordering}, Mutex};
 use std::collections::HashMap;
 use std::path::Path;
 use chrono::{DateTime, Utc};
+use telegram_bot::types::refs::UserId as TelegramUserId;
 
 pub mod timeseries_interface;
 pub mod login_redirect;
@@ -35,13 +36,15 @@ pub mod error_router;
 pub mod data_router_ws_client; //TODO remove pub
 mod error_router_ws_client;
 
-use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase, BotUserInfo};
+use crate::databases::{PasswordDatabase, WebUserDatabase, WebUserInfo, BotUserDatabase, BotUserInfo};
 use crate::httpserver::timeseries_interface::{Authorisation};
 
-pub struct Session {//TODO deprecate 
-	timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
-	username: String,
-	last_login: DateTime<Utc>,
+pub struct Session { 
+	db_entry: WebUserInfo,
+	//timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
+	//username: String,
+	//last_login: DateTime<Utc>,
+	//telegram_user_id: Option<TelegramUserId>
   //add more temporary user specific data as needed
 }
 
@@ -130,7 +133,7 @@ pub fn plot_data<T: InnerState>(id: Identity, state: Data<T>) -> HttpResponse {
 
 	let mut page = String::from(before_form);
 	let data = state.inner_state().data.read().unwrap();
-	for (dataset_id, authorized_fields) in session.lock().unwrap().timeseries_with_access.iter() {
+	for (dataset_id, authorized_fields) in session.lock().unwrap().db_entry.timeseries_with_access.iter() {
 		let metadata = &data.sets.get(&dataset_id).expect("user has access to a database that does no longer exist").metadata;
 		for field_id in authorized_fields{
 			let id = *field_id.as_ref() as usize;
@@ -208,10 +211,9 @@ pub fn login_get_and_check<T: InnerState>(
 	//passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
 	
 	let session = Session {
-		timeseries_with_access: userinfo.timeseries_with_access.clone(),
-		username: userinfo.username.clone(),
-		last_login: chrono::Utc::now(), //TODO write back to database
+		db_entry: userinfo,
 	};
+
 	//find free session_numb, set new session number and store new session
 	let session_id = state.free_session_ids.fetch_add(1, Ordering::Acquire);
 	let mut sessions = state.sessions.write().unwrap();
@@ -240,13 +242,17 @@ pub fn set_telegram_id_post<T: InnerState>(
 		params: Form<TelegramId>) -> wResult<HttpResponse> {
 	
 	let session_id = id.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
-	let sessions = state.inner_state().sessions.read().unwrap();
-	let session = sessions.get(&session_id).unwrap();
+	let mut sessions = state.inner_state().sessions.write().unwrap();
+	let mut session = sessions.get_mut(&session_id).unwrap().lock().unwrap();
 
 	let user_id: i64 = params.id.parse().unwrap();
-	let ts_access = session.lock().unwrap().timeseries_with_access.clone();
-	let user_info = BotUserInfo::from_timeseries_access(ts_access);
-	state.inner_state().bot_user_db.set_userdata(user_id, user_info).unwrap();
+	session.db_entry.telegram_user_id = Some(user_id.into());
+	let bot_userdata = BotUserInfo::from_timeseries_access(&session.db_entry.timeseries_with_access);
+	
+	state.inner_state().bot_user_db.set_userdata(user_id, bot_userdata).unwrap();
+	
+	let web_userdata = state.inner_state().web_user_db.get_userdata(&session.db_entry.username).unwrap();	
+	state.inner_state().web_user_db.set_userdata(web_userdata).unwrap();
 
 	Ok(HttpResponse::Ok().finish())
 }

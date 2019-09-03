@@ -188,7 +188,7 @@ fn main() {
 			"d\n" => helper::signal_and_append_test_data(data.clone(), &data_handle), //works
 			"n\n" => helper::add_user(&mut passw_db, &mut web_user_db),
 			"a\n" => helper::add_dataset(&mut web_user_db, &data),
-			"o\n" => helper::add_fields_to_user(&mut web_user_db),
+			"o\n" => helper::add_fields_to_user(&mut web_user_db, &mut bot_user_db),
 			"q\n" => break,
 			_ => println!("unhandled"),
 		};

@@ -54,7 +54,7 @@ pub fn list_data<T: InnerState>(id: Identity, state: Data<T>) -> HttpResponse {
 	let session = sessions.get(&session_id).unwrap();
 
 	let data = state.inner_state().data.read().unwrap();
-	for (dataset_id, authorized_fields) in session.lock().unwrap().timeseries_with_access.iter() {
+	for (dataset_id, authorized_fields) in session.lock().unwrap().db_entry.timeseries_with_access.iter() {
 		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
 		let mut dataset_fields = format!("<th>{}</th>", &metadata.name);
 		

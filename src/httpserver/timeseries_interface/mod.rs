@@ -16,7 +16,9 @@ use minimal_timeseries::{Timeseries, BoundResult, DecodeParams};
 use walkdir::{DirEntry, WalkDir};
 use std::collections::HashMap;
 
-use crate::databases::{WebUserInfo, WebUserDatabase};
+use telegram_bot::types::refs::UserId as TelegramUserId;
+
+use crate::databases::{WebUserInfo, WebUserDatabase, BotUserInfo, BotUserDatabase};
 use super::data_router_ws_client::SetSliceDecodeInfo;
 use crate::error::DResult;
 use crate::httpserver::error_router::ErrorCode;
@@ -384,12 +386,26 @@ impl WebUserDatabase {
 		self.set_userdata(userinfo)?;
 		Ok(())
 	}
-	// pub fn remove_owner(&mut self, id: DatasetId, &mut userinfo: WebUserInfo){
-	// 	userinfo.timeseries_with_access.remove(&id);
+}
 
-	// 	let username = userinfo.username.clone();
-	// 	self.set_userdata(username.as_str().as_bytes(), userinfo );
-	// }
+impl BotUserDatabase {
+	pub fn add_owner(&mut self, id: DatasetId, fields: &[Field<f32>], mut userinfo: BotUserInfo, user_id: TelegramUserId)
+	-> DResult<()> {
+		let auth_fields: Vec<Authorisation> = fields.iter().map(|field| Authorisation::Owner(field.id)).collect();
+		userinfo.timeseries_with_access.insert(id, auth_fields);
+		
+		self.set_userdata(user_id, userinfo )?;
+		Ok(())
+	}
+	pub fn add_owner_from_field_id(&mut self, id: DatasetId, fields: &[FieldId], mut userinfo: BotUserInfo, user_id: TelegramUserId)
+	-> DResult<()> {
+		let auth_fields: Vec<Authorisation> = fields.iter().map(|fieldid| Authorisation::Owner(*fieldid)).collect();
+		userinfo.timeseries_with_access.insert(id, auth_fields);
+
+		let username = userinfo.username.clone();
+		self.set_userdata(user_id, userinfo)?;
+		Ok(())
+	}
 }
 
 impl Data {

@@ -11,6 +11,7 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use telegram_bot::types::refs::UserId as TelegramUserId;
 
 static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
@@ -111,6 +112,7 @@ pub struct WebUserInfo {
 	pub timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
 	pub last_login: DateTime<Utc>, 
 	pub username: String,
+	pub telegram_user_id: Option<TelegramUserId>,
 }
 
 #[derive(Debug)]
@@ -157,17 +159,6 @@ impl WebUserDatabase {
 		self.storage.flush()?;
 		Ok(())
 	}
-	
-	/*pub fn update_last_login(&mut self, username: &[u8]) {
-		match self.storage.remove(username) {
-			Some(mut user) => {
-				user.user_data.last_login = Utc::now();
-				self.storage.insert(Vec::from(username), user);
-				self.write();
-			},
-			None => panic!("user not found in database!"),
-		}
-	}*/
 }
 
 #[derive(Debug, Clone)]
@@ -183,17 +174,16 @@ pub struct BotUserInfo {
 }
 
 impl BotUserInfo {
-	pub fn from_timeseries_access(timeseries_with_access :HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>)
+	pub fn from_timeseries_access(timeseries_with_access: &HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>)
 	-> Self {
 		Self {
-			timeseries_with_access,
+			timeseries_with_access: timeseries_with_access.clone(),
 			username: None,
 			aliases: HashMap::new(),
 		}
 	}
 }
 
-use telegram_bot::types::refs::UserId;
 impl BotUserDatabase {
 	pub fn from_db(db: &Db) -> Result<Self,sled::Error> {
 		Ok(Self { 
@@ -201,7 +191,7 @@ impl BotUserDatabase {
 		})
 	}
 
-	pub fn get_userdata(&self, user_id: UserId) -> Result<BotUserInfo, UserDbError> {
+	pub fn get_userdata(&self, user_id: TelegramUserId) -> Result<BotUserInfo, UserDbError> {
 		let user_id = &user_id.to_string();
 		if let Some(user_data) = self.storage.get(user_id.as_bytes())? {
 			let user_info = bincode::deserialize(&user_data)?;
@@ -211,7 +201,7 @@ impl BotUserDatabase {
 		}
 	}
 	
-	pub fn set_userdata<U: Into<UserId>>(&self, user_id: U, user_info: BotUserInfo) 
+	pub fn set_userdata<U: Into<TelegramUserId>>(&self, user_id: U, user_info: BotUserInfo) 
 	-> Result <(),UserDbError> {
 		let user_id = &user_id.into().to_string();
 		let user_data =	bincode::serialize(&user_info)?;
@@ -222,7 +212,7 @@ impl BotUserDatabase {
 }
 
 impl UserDbError {
-	pub fn to_text(self, user_id: UserId) -> String {
+	pub fn to_text(self, user_id: TelegramUserId) -> String {
 		match self {
 			UserDbError::UserNotInDb => 
 				format!("this telegram account may not use this bot, to be able to use this bot add your telegram id: {} to your account", user_id),

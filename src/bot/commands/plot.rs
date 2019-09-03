@@ -35,7 +35,8 @@ pub enum Error{
     NotEnoughArguments,
 }
 
-const USAGE: &str = "/plot <plotable> <number><s|m|h|d|w|monthes|years>";
+pub const USAGE: &str = "/plot <plotable_id> <number><s|m|h|d|w|monthes|years>";
+pub const DESCRIPTION: &str = "send a line graph of a sensor value, a plotable, from a given time ago till now";
 impl Error {
     pub fn to_text(self, user_id: UserId) -> String {
         match self {

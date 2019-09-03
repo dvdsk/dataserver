@@ -1,11 +1,3 @@
-
-//candidade for sending: https://crates.io/crates/awesome-bot
-//actix (old) based: https://github.com/jeizsm/actix-telegram/blob/master/examples/server.rs
-// https://crates.io/crates/telegram-bot-raw
-
-
-//plot generation using: https://github.com/38/plotters/tree/master/examples
-
 use actix_web::web::{HttpResponse, Data, Bytes};
 use actix_web::http::{StatusCode};
 
@@ -21,7 +13,9 @@ use telegram_bot::types::refs::{ChatId, UserId};
 
 use crate::httpserver::{InnerState, DataRouterState};
 use crate::databases::{BotUserDatabase, BotUserInfo, UserDbError};
-mod botplot;
+
+mod commands;
+use commands::{plot, help, plotables};
 
 pub const TOKEN: &str = "109451485:AAE6Yghjq1qJsxu75uureFkvaMB_Zrt7YsY";
 
@@ -29,11 +23,18 @@ pub const TOKEN: &str = "109451485:AAE6Yghjq1qJsxu75uureFkvaMB_Zrt7YsY";
 pub enum Error{
 	HttpClientError(reqwest::Error),
 	CouldNotSetWebhook,
-	InvalidServerResponse,
+	InvalidServerResponse(reqwest::Response),
 	UnhandledUpdateKind,
 	UnhandledMessageKind,
 	BotDatabaseError(UserDbError),
 	UnknownAlias(String),
+	PlotError(plot::Error),
+}
+
+impl From<plot::Error> for Error {
+	fn from(error: plot::Error) -> Self {
+		Error::PlotError(error)
+	}
 }
 
 impl From<reqwest::Error> for Error {
@@ -84,11 +85,15 @@ fn handle_command<T: InnerState>(mut text: String, chat_id: ChatId, user_id: Use
 				break;
 			}
 			"/plot" => {
-				send_plot(chat_id, user_id, state, TOKEN, args)?; 
+				plot::send(chat_id, user_id, state, TOKEN, args, &userinfo)?; 
 				break;
 			}
 			"/help" => {
-				send_list_of_commands(chat_id, &userinfo, TOKEN)?; 
+				help::send(chat_id, &userinfo, TOKEN)?; 
+				break;
+			}
+			"/plotables" => {
+				plotables::send(chat_id, &userinfo, state, TOKEN)?;
 				break;
 			}
 			&_ => {}
@@ -105,19 +110,8 @@ fn handle_command<T: InnerState>(mut text: String, chat_id: ChatId, user_id: Use
 
 fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 	let error_message = match error {
-		Error::BotDatabaseError(db_error) => 
-			match db_error {
-				UserDbError::UserNotInDb => 
-					format!("this telegram account may not use this bot, to be able to use this bot add your telegram id: {} to your account", user_id),
-				UserDbError::DatabaseError(error) => {
-					error!("Error happend in embedded database: {:?}", error);
-					format!("apologies, an internal error happend this has been reported and will be fixed as soon as possible")
-				}
-				UserDbError::SerializeError(error) => {
-					error!("Error happend during serialisation for the embedded database: {:?}", error);
-					format!("apologies, an internal error happend this has been reported and will be fixed as soon as possible")
-				}
-			}
+		Error::BotDatabaseError(error) => error.to_text(user_id),
+		Error::PlotError(error) => error.to_text(user_id),
 		Error::UnknownAlias(alias_text) => 
 			format!("your input: \"{}\", is not a possible command or a configured alias. Use /help to get a list of possible commands and configured aliasses", alias_text),		
 		_ => {
@@ -151,29 +145,6 @@ pub fn handle_bot_message<T: InnerState+'static>(state: Data<T>, raw_update: Byt
 		.body("{}")
 }
 
-fn send_plot(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, args: std::str::SplitWhitespace<'_>)
-	 -> Result<(), Error>{
-
-	let args: Vec<String> =	args.map(|s| s.to_owned() ).collect();
-	let plot = botplot::plot(args, state.inner_state(), user_id).unwrap();
-
-	let photo_part = reqwest::multipart::Part::bytes(plot)
-		.mime_str("image/png").unwrap()
-		.file_name("testplot.png");
-
-	let url = format!("https://api.telegram.org/bot{}/sendPhoto", token);
-
-	let form = reqwest::multipart::Form::new()
-		.text("chat_id", chat_id.to_string())
-		.part("photo", photo_part);
-
-	let client = reqwest::Client::new();
-	let resp = client.post(&url)
-		.multipart(form).send()?;
-
-	Ok(())
-}
-
 fn send_text_reply<T: Into<String>>(chat_id: ChatId, token: &str, text: T) -> Result<(), Error>{//add as arg generic ToChatRef (should get from Update)
 	//TODO create a SendMessage, serialise it (use member function serialize) 
 	//then use the HttpRequest fields, (url, method, and body) to send to telegram
@@ -188,34 +159,11 @@ fn send_text_reply<T: Into<String>>(chat_id: ChatId, token: &str, text: T) -> Re
 	//https://stackoverflow.com/questions/57540455/error-blockingclientinfuturecontext-when-trying-to-make-a-request-from-within
 	
 	if resp.status() != reqwest::StatusCode::OK {
-		dbg!(resp);
-		Err(Error::InvalidServerResponse)
+		Err(Error::InvalidServerResponse(resp))
 	} else {
 		info!("send message");
 		Ok(())
 	}
-}
-
-fn send_list_of_commands(chat_id: ChatId, user_info: &BotUserInfo, token: &str)
-	-> Result<(), Error> {
-	let aliasses = &user_info.aliases;
-
-	const HELP_TEXT: &str = "List of commands:
-/test: replies the text \"hi\"
-/plot <plotable> <number><s|m|h|d|w|monthes|years>: creates a line graph of a sensor value from a given time ago till now
-/help: shows this list
-/plotables: shows all possible input for the plot function
-/show <plotable>: sends back the current value of the requested sensor value
-	
-configured aliasses:\n";
-	//TODO add alarms (arm disarm etc)
-
-	let mut text = String::from(HELP_TEXT);
-	for (alias, alias_expanded) in aliasses.iter() {
-		text.push_str(&format!("{}: {}\n",alias,alias_expanded));
-	}
-	send_text_reply(chat_id, TOKEN, text)?;
-	Ok(())
 }
 
 pub fn set_webhook(domain: &str, token: &str) -> Result<(), Error> {

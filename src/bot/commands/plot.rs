@@ -11,23 +11,54 @@ use log::{warn, error};
 use crate::httpserver::{DataRouterState, InnerState, timeseries_interface};
 use crate::databases::UserDbError;
 
+use crate::databases::BotUserInfo;
+use crate::bot::Error as botError;
+use telegram_bot::types::refs::{ChatId, UserId};
+
 use timeseries_interface::{FieldId, DatasetId, Data};
 use timeseries_interface::read_to_array::{ReaderInfo, prepare_read_processing, read_into_arrays};
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+
 #[derive(Debug)]
 pub enum Error{
     ArgumentError(std::num::ParseIntError),
     NoAccessToField(FieldId),
     NoAccessToDataSet(DatasetId),
-    CouldNotSetupRead,
+    CouldNotSetupRead(DatasetId, Vec<FieldId>),
     NoDataWithinRange,
     PlotLibError,
     EncodingError(std::io::Error),
 	BotDatabaseError(UserDbError),
     NotEnoughArguments,
+}
+
+const USAGE: &str = "/plot <plotable> <number><s|m|h|d|w|monthes|years>";
+impl Error {
+    pub fn to_text(self, user_id: UserId) -> String {
+        match self {
+            Error::ArgumentError(_) => String::from("One of the arguments could not be parsed"),
+            Error::NoAccessToField(field_id) => format!("You do not have access to field: {}", field_id),
+            Error::NoAccessToDataSet(dataset_id) => format!("You do not have access to dataset: {}", dataset_id),
+            Error::CouldNotSetupRead(dataset_id, fields) => {
+                error!("could not setup read for dataset {} and fields {:?}", dataset_id, fields);
+                String::from("Apologies an internal error occured, it has been reported")
+            },
+            Error::NoDataWithinRange => String::from("We have no data between the times you requested"),
+            Error::PlotLibError => {
+                error!("internal error in plotting lib");
+                String::from("Apologies an internal error occured, it has been reported")
+            },
+            Error::EncodingError(error) => {
+                error!("could not encode png: {}", error);
+                String::from("Apologies an internal error occured, it has been reported")
+            },
+            Error::BotDatabaseError(db_error) => db_error.to_text(user_id),
+            Error::NotEnoughArguments => format!("Not enough arguments\nuse: {}", USAGE),            
+        }
+    }
 }
 
 impl From<std::num::ParseIntError> for Error {
@@ -42,10 +73,37 @@ impl From<UserDbError> for Error {
 	}
 }
 
-pub fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId)-> Result<Vec<u8>, Error>{
+pub fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
+    args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo) -> Result<(), botError>{
+
+	let args: Vec<String> =	args.map(|s| s.to_owned() ).collect();
+	let plot = plot(args, state.inner_state(), user_id, userinfo)?;
+
+	let photo_part = reqwest::multipart::Part::bytes(plot)
+		.mime_str("image/png").unwrap()
+		.file_name("testplot.png");
+
+	let url = format!("https://api.telegram.org/bot{}/sendPhoto", token);
+
+	let form = reqwest::multipart::Form::new()
+		.text("chat_id", chat_id.to_string())
+		.part("photo", photo_part);
+
+	let client = reqwest::Client::new();
+	let resp = client.post(&url)
+		.multipart(form).send()?;
+	
+	if resp.status() != reqwest::StatusCode::OK {
+		Err(botError::InvalidServerResponse(resp))
+	} else {
+		Ok(())
+	}
+}
+
+fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &BotUserInfo)-> Result<Vec<u8>, Error>{
 
     let (timerange, set_id, field_ids) = parse_plot_arguments(args)?;
-    let selected_datasets = select_data(state, set_id, field_ids, user_id)?;
+    let selected_datasets = select_data(state, set_id, field_ids, user_id, userinfo)?;
 
     let dimensions = (900, 900);
 
@@ -100,15 +158,16 @@ pub fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId)-> Resul
 
 fn parse_plot_arguments(args: Vec<String>)
      -> Result<((DateTime<Utc>, DateTime<Utc>), DatasetId, Vec<FieldId>), Error>{
-    if args.len() < 5 {return Err(Error::NotEnoughArguments);}
+    if args.len() < 4 {return Err(Error::NotEnoughArguments);}
 
     let timerange_start = Utc.timestamp(args[1].parse::<i64>()?/1000, 0);
-    let timerange_stop = Utc.timestamp(args[2].parse::<i64>()?/1000, 0);
+    //let timerange_stop = Utc.timestamp(args[2].parse::<i64>()?/1000, 0);
+    let timerange_stop = Utc::now();
     let timerange = (timerange_start, timerange_stop);
 
-    let set_id = args[3].parse::<timeseries_interface::DatasetId>()?;
+    let set_id = args[2].parse::<timeseries_interface::DatasetId>()?;
 
-    let field_ids = args[4..]
+    let field_ids = args[3..]
         .iter()
         .map(|arg| arg.parse::<timeseries_interface::FieldId>())
         .collect::<Result<Vec<timeseries_interface::FieldId>,std::num::ParseIntError>>()?;
@@ -116,12 +175,11 @@ fn parse_plot_arguments(args: Vec<String>)
     Ok((timerange, set_id, field_ids))
 }
 
-use super::UserId;
-fn select_data(data: &DataRouterState, set_id: timeseries_interface::DatasetId, field_ids: Vec<FieldId>, user_id: UserId)
+fn select_data(data: &DataRouterState, set_id: timeseries_interface::DatasetId, field_ids: Vec<FieldId>, user_id: UserId, userinfo: &BotUserInfo)
      -> Result<HashMap<DatasetId, Vec<FieldId>>,Error>{
 
     //get timeseries_with_access for this user
-    let timeseries_with_access = data.bot_user_db.get_userdata(user_id)?.timeseries_with_access;
+    let timeseries_with_access = &userinfo.timeseries_with_access;
 
     let mut selected_data = HashMap::new();
     //check if user has access to the requested dataset
@@ -177,7 +235,7 @@ fn read_data(selected_data: (DatasetId, Vec<FieldId>),
         
         } else { 
             error!("could not setup read");
-            return Err(Error::CouldNotSetupRead);
+            return Err(Error::CouldNotSetupRead(dataset_id, field_ids));
         }
     } else { 
         warn!("no data within given window");

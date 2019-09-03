@@ -3,6 +3,7 @@ use serde::{Deserialize,Serialize};
 
 use sled::{Db,Tree};
 use bincode;
+use log::error;
 
 use ring::{digest, pbkdf2};
 use std::collections::HashMap;
@@ -217,5 +218,22 @@ impl BotUserDatabase {
 		self.storage.set(user_id.as_bytes(),user_data)?;
 		self.storage.flush()?;
 		Ok(())
+	}
+}
+
+impl UserDbError {
+	pub fn to_text(self, user_id: UserId) -> String {
+		match self {
+			UserDbError::UserNotInDb => 
+				format!("this telegram account may not use this bot, to be able to use this bot add your telegram id: {} to your account", user_id),
+			UserDbError::DatabaseError(error) => {
+				error!("Error happend in embedded database: {:?}", error);
+				format!("apologies, an internal error happend this has been reported and will be fixed as soon as possible")
+			}
+			UserDbError::SerializeError(error) => {
+				error!("Error happend during serialisation for the embedded database: {:?}", error);
+				format!("apologies, an internal error happend this has been reported and will be fixed as soon as possible")
+			}
+		}
 	}
 }

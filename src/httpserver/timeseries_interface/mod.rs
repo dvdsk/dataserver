@@ -212,6 +212,15 @@ impl AsRef<FieldId> for Authorisation{
 	}
 }
 
+impl std::convert::From<&Authorisation> for FieldId {
+	fn from(auth: &Authorisation) -> FieldId {
+		match auth {
+			Authorisation::Owner(id) => *id,
+			Authorisation::Reader(id) => *id,
+		}
+	}
+}
+
 pub struct Data {//TODO make multithreaded
 	dir: PathBuf,
 	free_dataset_id: u16, //replace with atomics

@@ -15,9 +15,11 @@ use crate::httpserver::{InnerState, DataRouterState};
 use crate::databases::{BotUserDatabase, BotUserInfo, UserDbError};
 
 mod commands;
-use commands::{plot, help, plotables, show};
+use commands::{help, plotables, show};
+#[cfg(feature = "plotting")]
+use commands::plot;
 
-pub const TOKEN: &str = "109451485:AAE6Yghjq1qJsxu75uureFkvaMB_Zrt7YsY";
+pub const TOKEN: &str = "966207890:AAFyRxiTMSc5R_yQH1zyin1WkEK8Y_5_qEU";
 
 #[derive(Debug)]
 pub enum Error{
@@ -28,8 +30,10 @@ pub enum Error{
 	UnhandledMessageKind,
 	BotDatabaseError(UserDbError),
 	UnknownAlias(String),
-	PlotError(plot::Error),
 	ShowError(show::Error),
+
+	#[cfg(feature = "plotting")]
+	PlotError(plot::Error),
 }
 
 impl From<show::Error> for Error {
@@ -38,6 +42,7 @@ impl From<show::Error> for Error {
 	}
 }
 
+#[cfg(feature = "plotting")]
 impl From<plot::Error> for Error {
 	fn from(error: plot::Error) -> Self {
 		Error::PlotError(error)
@@ -91,6 +96,7 @@ fn handle_command<T: InnerState>(mut text: String, chat_id: ChatId, user_id: Use
 				send_text_reply(chat_id, TOKEN, "hi")?; 
 				break;
 			}
+			#[cfg(feature = "plotting")]
 			"/plot" => {
 				plot::send(chat_id, user_id, state, TOKEN, args, &userinfo)?; 
 				break;
@@ -104,6 +110,10 @@ fn handle_command<T: InnerState>(mut text: String, chat_id: ChatId, user_id: Use
 				break;
 			}
 			"/show" => {
+				show::send(chat_id, user_id, state, TOKEN, args, &userinfo)?;
+				break;
+			}
+			"/alias" => {
 				show::send(chat_id, user_id, state, TOKEN, args, &userinfo)?;
 				break;
 			}
@@ -121,8 +131,10 @@ fn handle_command<T: InnerState>(mut text: String, chat_id: ChatId, user_id: Use
 
 fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 	let error_message = match error {
-		Error::BotDatabaseError(error) => error.to_text(user_id),
+		#[cfg(feature = "plotting")]
 		Error::PlotError(error) => error.to_text(user_id),
+
+		Error::BotDatabaseError(error) => error.to_text(user_id),		
 		Error::ShowError(error) => error.to_text(user_id),
 		Error::UnknownAlias(alias_text) => 
 			format!("your input: \"{}\", is not a possible command or a configured alias. Use /help to get a list of possible commands and configured aliasses", alias_text),		
@@ -157,7 +169,8 @@ pub fn handle_bot_message<T: InnerState+'static>(state: Data<T>, raw_update: Byt
 		.body("{}")
 }
 
-fn send_text_reply<T: Into<String>>(chat_id: ChatId, token: &str, text: T) -> Result<(), Error>{//add as arg generic ToChatRef (should get from Update)
+fn send_text_reply<T: Into<String>>(chat_id: ChatId, token: &str, text: T)
+	 -> Result<(), Error>{//add as arg generic ToChatRef (should get from Update)
 	//TODO create a SendMessage, serialise it (use member function serialize) 
 	//then use the HttpRequest fields, (url, method, and body) to send to telegram
 	let url = format!("https://api.telegram.org/bot{}/sendMessage", token);	
@@ -178,9 +191,9 @@ fn send_text_reply<T: Into<String>>(chat_id: ChatId, token: &str, text: T) -> Re
 	}
 }
 
-pub fn set_webhook(domain: &str, token: &str) -> Result<(), Error> {
+pub fn set_webhook(domain: &str, token: &str, port: u16) -> Result<(), Error> {
 	let url = format!("https://api.telegram.org/bot{}/setWebhook", token);
-	let webhook_url = format!("{}:8443/{}",domain, token);
+	let webhook_url = format!("{}:{}/{}",domain, port, token);
 
 	let params = [("url", &webhook_url)];
 	let client = reqwest::Client::new();

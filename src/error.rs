@@ -1,7 +1,6 @@
 use sled;
 use bincode;
 use crate::databases;
-use crate::bot;
 
 pub type DResult<T, E = DataserverError> = Result<T, E>;
 

@@ -127,7 +127,7 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
 				)
 			})
 		// WARNING TLS IS NEEDED FOR THE LOGIN SYSTEM TO FUNCTION
-		.bind_rustls("0.0.0.0:8443", tls_config).unwrap()
+		.bind_rustls(&format!("0.0.0.0:{}", config::PORT), tls_config).unwrap()
 		//.bind_rustls("0.0.0.0:8080", tls_config).unwrap()
 		//.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
 		.shutdown_timeout(5)    // shut down 5 seconds after getting the signal to shut down
@@ -175,10 +175,10 @@ fn main() {
 	let data = Arc::new(RwLock::new(timeseries_interface::init("data").unwrap()));
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 
-	let (data_handle, error_handle, web_handle) =
+	let (data_handle, _error_handle, web_handle) =
 	start("keys/cert.key", "keys/cert.cert", "keys/intermediate.cert", data.clone(), passw_db.clone(), web_user_db.clone(), bot_user_db.clone(), db, sessions.clone());
 	println!("press: t to send test data, n: to add a new user, q to quit, a to add new dataset, o add owner to db");
-	set_webhook(config::DOMAIN, config::TOKEN).unwrap();
+	set_webhook(config::DOMAIN, config::TOKEN, config::PORT).unwrap();
 	
 	loop {
 		let mut input = String::new();

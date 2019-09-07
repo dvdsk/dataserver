@@ -86,15 +86,19 @@ pub fn make_random_cookie_key() -> [u8; 32] {
 	cookie_private_key
 }
 
-pub fn make_tls_config<P: AsRef<Path>>(cert_path: P, key_path: P, 
+pub fn make_tls_config<P: AsRef<Path>+std::fmt::Display>(cert_path: P, key_path: P, 
     intermediate_cert_path: P) 
 -> rustls::ServerConfig{
 
+	dbg!();
 	let mut tls_config = ServerConfig::new(NoClientAuth::new());
-	let cert_file = &mut BufReader::new(File::open(cert_path).unwrap());
-	let intermediate_file = &mut BufReader::new(File::open(intermediate_cert_path).unwrap());
-	let key_file = &mut BufReader::new(File::open(key_path).unwrap());
-	
+	let cert_file = &mut BufReader::new(File::open(&cert_path)
+		.expect(&format!("could not open certificate file: {}", cert_path)));
+	let intermediate_file = &mut BufReader::new(File::open(&intermediate_cert_path)
+		.expect(&format!("could not open intermediate certificate file: {}", intermediate_cert_path)));
+	let key_file = &mut BufReader::new(File::open(&key_path)
+		.expect(&format!("could not open key file: {}", key_path)));
+
 	let mut cert_chain = certs(cert_file).unwrap();
 	cert_chain.push(certs(intermediate_file).unwrap().pop().unwrap());
 
@@ -347,7 +351,6 @@ pub fn error_router_ws_index<T: InnerState+'static>(
 //TODO customise
 pub fn new_error_post<T: InnerState+'static>(state: Data<T>, body: Bytes)
 	 -> HttpResponse {
-	
 	let now = Utc::now();
 	let data = state.inner_state().data.clone();//clones pointer
 	let error_router_addr = state.inner_state().error_router_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED

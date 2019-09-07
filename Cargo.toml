@@ -1,8 +1,12 @@
 [package]
 name = "dataserver"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["David Kleingeld <dskleingeld@gmail.com>"]
 edition = "2018"
+publish = false
+
+[features]
+plotting = ["plotters", "image"]
 
 [dependencies]
 actix-web = { version = "1.0.3", features = ["rust-tls"] }
@@ -51,8 +55,8 @@ serde_json = "1.0.33"
 reqwest = "=0.9.17" #pinned to old version until ascync await is her
 byteorder = "1.2.6"
 
-minimal_timeseries = { path = "../minimal_timeseries" }
-#minimal_timeseries = { git = "https://github.com/dskleingeld/minimal_timeseries", branch = "multithraeded_file_read" }
+#minimal_timeseries = { path = "../minimal_timeseries" }
+minimal_timeseries = { git = "https://github.com/dskleingeld/minimal_timeseries", branch = "multithraeded_file_read" }
 
 smallvec = "0.6.6"
 crossbeam-utils = "0.6"
@@ -61,5 +65,6 @@ num-traits = "0.2"
 num-derive = "0.2"
 
 telegram-bot = "0.6"
-plotters = "0.2"
-image = "0.22"
+
+plotters = { version = "0.2", optional = true }
+image = { version = "0.2", optional = true }

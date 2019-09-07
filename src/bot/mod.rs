@@ -15,7 +15,7 @@ use crate::httpserver::{InnerState, DataRouterState};
 use crate::databases::{BotUserDatabase, BotUserInfo, UserDbError};
 
 mod commands;
-use commands::{plot, help, plotables};
+use commands::{plot, help, plotables, show};
 
 pub const TOKEN: &str = "109451485:AAE6Yghjq1qJsxu75uureFkvaMB_Zrt7YsY";
 
@@ -29,6 +29,13 @@ pub enum Error{
 	BotDatabaseError(UserDbError),
 	UnknownAlias(String),
 	PlotError(plot::Error),
+	ShowError(show::Error),
+}
+
+impl From<show::Error> for Error {
+	fn from(error: show::Error) -> Self {
+		Error::ShowError(error)
+	}
 }
 
 impl From<plot::Error> for Error {
@@ -96,6 +103,10 @@ fn handle_command<T: InnerState>(mut text: String, chat_id: ChatId, user_id: Use
 				plotables::send(chat_id, &userinfo, state, TOKEN)?;
 				break;
 			}
+			"/show" => {
+				show::send(chat_id, user_id, state, TOKEN, args, &userinfo)?;
+				break;
+			}
 			&_ => {}
 		}
 		if let Some(alias_text) = resolve_alias(command, &userinfo, user_id)?{
@@ -112,6 +123,7 @@ fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 	let error_message = match error {
 		Error::BotDatabaseError(error) => error.to_text(user_id),
 		Error::PlotError(error) => error.to_text(user_id),
+		Error::ShowError(error) => error.to_text(user_id),
 		Error::UnknownAlias(alias_text) => 
 			format!("your input: \"{}\", is not a possible command or a configured alias. Use /help to get a list of possible commands and configured aliasses", alias_text),		
 		_ => {
@@ -134,10 +146,10 @@ pub fn handle_bot_message<T: InnerState+'static>(state: Data<T>, raw_update: Byt
 	//FIXME TODO
 
 	let update: Update = serde_json::from_slice(&raw_update.to_vec()).unwrap();
-	let (text, chat_id, user_id) = to_string_and_ids(update).unwrap();
-
-	if let Err(error) = handle_command::<T>(text, chat_id, user_id, state.inner_state()){
-		handle_error(error, chat_id, user_id);
+	if let Ok((text, chat_id, user_id)) = to_string_and_ids(update){
+		if let Err(error) = handle_command::<T>(text, chat_id, user_id, state.inner_state()){
+			handle_error(error, chat_id, user_id);
+		}
 	}
 
 	HttpResponse::Ok()

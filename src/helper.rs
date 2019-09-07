@@ -188,17 +188,13 @@ pub fn setup_logging(verbosity: u8) -> Result<(), fern::InitError> {
 			// verbose to include in end-user output. If we don't need them,
 			// let's not include them.
 			base_config
-					.level(log::LevelFilter::Warn)
-					.level_for("dataserver", log::LevelFilter::Trace)
-					.level_for("minimal_timeseries", log::LevelFilter::Trace),
+					.level(log::LevelFilter::Error),
 		1 =>
 			// Let's say we depend on something which whose "info" level messages are too
 			// verbose to include in end-user output. If we don't need them,
 			// let's not include them.
 			base_config
-					.level(log::LevelFilter::Warn)
-					.level_for("dataserver", log::LevelFilter::Info)
-					.level_for("minimal_timeseries", log::LevelFilter::Info),
+					.level(log::LevelFilter::Warn),
 		2 =>
 			// Let's say we depend on something which whose "info" level messages are too
 			// verbose to include in end-user output. If we don't need them,

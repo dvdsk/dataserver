@@ -103,9 +103,8 @@ pub struct MetaData {
 impl MetaData {
 	pub fn fieldsum(&self) -> u16 {
 		let field = self.fields.last().unwrap();
-		info!("fname: {}",field.name);
 		let bits = field.offset as u16 + field.length as u16;
-		devide_up(bits, 8) //make this do int devide
+		devide_up(bits, 8)
 	}
 }
 
@@ -188,10 +187,7 @@ impl DataSet {
 		recoded_line.write_u16::<LittleEndian>(setid).unwrap();
 		recoded_line.write_f64::<LittleEndian>(timestamp as f64).unwrap();
 		for field in allowed_fields.into_iter().map(|id| &self.metadata.fields[*id as usize]) {
-			println!("field: {:?}",field);
-			//println!("line: {:?}",line);
 			let decoded: f32 = field.decode::<f32>(&line);
-			println!("decoded: {}", decoded);
 			recoded_line.write_f32::<LittleEndian>(decoded).unwrap();
 		}
 		recoded_line.to_vec()
@@ -449,7 +445,7 @@ impl Data {
 				warn!("invalid key: {}, on store new data", key);
 				return Err(());
 			}
-			const PRINTVALUES: bool = true; //for debugging
+			const PRINTVALUES: bool = false; //for debugging
 			if PRINTVALUES {
 				let mut list = String::from("");
 				for field in &set.metadata.fields {
@@ -465,7 +461,6 @@ impl Data {
 				return Err(());
 			}
 			use crate::httpserver::timeseries_interface::compression::decode;
-			dbg!(decode(&data_string[10..], 0, 10));
 
 			return Ok((dataset_id, data_string.split_off(10).to_vec() ))
 		} else {

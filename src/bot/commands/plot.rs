@@ -104,7 +104,7 @@ pub fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &s
 fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &BotUserInfo)-> Result<Vec<u8>, Error>{
 
     let (timerange, set_id, field_ids) = parse_plot_arguments(args)?;
-    let selected_datasets = select_data(state, set_id, field_ids, user_id, userinfo)?;
+    let selected_datasets = select_data(state, set_id, field_ids, userinfo)?;
 
     let dimensions = (900, 900);
 
@@ -176,7 +176,7 @@ fn parse_plot_arguments(args: Vec<String>)
     Ok((timerange, set_id, field_ids))
 }
 
-fn select_data(data: &DataRouterState, set_id: timeseries_interface::DatasetId, field_ids: Vec<FieldId>, user_id: UserId, userinfo: &BotUserInfo)
+pub fn select_data(data: &DataRouterState, set_id: timeseries_interface::DatasetId, field_ids: Vec<FieldId>, userinfo: &BotUserInfo)
      -> Result<HashMap<DatasetId, Vec<FieldId>>,Error>{
 
     //get timeseries_with_access for this user

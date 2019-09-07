@@ -97,7 +97,7 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
 					.path("/")
 					.secure(true), 
 				))
-				.wrap(debug_middleware::SayHi)
+				//.wrap(debug_middleware::SayHi) //prints all requested URLs
 				.service(
 					web::scope("/login")
 						.service(web::resource(r"/{path}")
@@ -157,7 +157,7 @@ fn main() {
 		}
 	}
 
-	helper::setup_logging(2).expect("could not set up debugging");
+	helper::setup_logging(1).expect("could not set up debugging");
 
 	let config = sled::ConfigBuilder::new() //651ms
 			.path("database".to_owned())

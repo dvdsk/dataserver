@@ -25,23 +25,26 @@ use std::sync::{Arc, RwLock, atomic::{AtomicUsize,Ordering}, Mutex};
 use std::collections::HashMap;
 use std::path::Path;
 use chrono::{DateTime, Utc};
+use telegram_bot::types::refs::UserId as TelegramUserId;
 
 pub mod timeseries_interface;
-pub mod secure_database;
 pub mod login_redirect;
+pub mod dynamic_pages;
 
 pub mod data_router;
 pub mod error_router;
 pub mod data_router_ws_client; //TODO remove pub
 mod error_router_ws_client;
 
-use secure_database::{PasswordDatabase, UserDatabase};
+use crate::databases::{PasswordDatabase, WebUserDatabase, WebUserInfo, BotUserDatabase, BotUserInfo};
 use crate::httpserver::timeseries_interface::{Authorisation};
 
-pub struct Session {//TODO deprecate 
-	timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
-	username: String,
-	last_login: DateTime<Utc>,
+pub struct Session { 
+	db_entry: WebUserInfo,
+	//timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
+	//username: String,
+	//last_login: DateTime<Utc>,
+	//telegram_user_id: Option<TelegramUserId>
   //add more temporary user specific data as needed
 }
 
@@ -53,7 +56,8 @@ pub trait InnerState {
 
 pub struct DataRouterState {
 	pub passw_db: PasswordDatabase,
-	pub user_db: UserDatabase,
+	pub web_user_db: WebUserDatabase,
+	pub bot_user_db: BotUserDatabase,
 
 	pub data_router_addr: Addr<data_router::DataRouter>,
 	pub error_router_addr: Addr<error_router::ErrorRouter>,
@@ -82,23 +86,28 @@ pub fn make_random_cookie_key() -> [u8; 32] {
 	cookie_private_key
 }
 
-pub fn make_tls_config<P: AsRef<Path>>(signed_cert_path: P, private_key_path: P) -> rustls::ServerConfig{
+pub fn make_tls_config<P: AsRef<Path>+std::fmt::Display>(cert_path: P, key_path: P, 
+    intermediate_cert_path: P) 
+-> rustls::ServerConfig{
+
+	dbg!();
 	let mut tls_config = ServerConfig::new(NoClientAuth::new());
-	let cert_file = &mut BufReader::new(File::open(signed_cert_path).unwrap());
-	let key_file = &mut BufReader::new(File::open(private_key_path).unwrap());
-	let cert_chain = certs(cert_file).unwrap();
+	let cert_file = &mut BufReader::new(File::open(&cert_path)
+		.expect(&format!("could not open certificate file: {}", cert_path)));
+	let intermediate_file = &mut BufReader::new(File::open(&intermediate_cert_path)
+		.expect(&format!("could not open intermediate certificate file: {}", intermediate_cert_path)));
+	let key_file = &mut BufReader::new(File::open(&key_path)
+		.expect(&format!("could not open key file: {}", key_path)));
+
+	let mut cert_chain = certs(cert_file).unwrap();
+	cert_chain.push(certs(intermediate_file).unwrap().pop().unwrap());
+
 	let mut key = pkcs8_private_keys(key_file).unwrap();
 
 	tls_config
 		.set_single_cert(cert_chain, key.pop().unwrap())
 		.unwrap();
 	tls_config
-}
-
-#[derive(Deserialize)]
-pub struct Logindata {
-	u: String,
-	p: String,
 }
 
 pub type ServerHandle = Addr<actix_net::server::Server>;
@@ -118,30 +127,6 @@ pub fn index(id: Identity) -> String {
 	format!("Hello {}", id.identity().unwrap_or_else(||"Anonymous".to_owned()))
 }
 
-pub fn list_data<T: InnerState>(id: Identity, state: Data<T>) -> HttpResponse {
-	let mut accessible_fields = String::from("<html><body><table>");
-	
-	let session_id = id.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
-	let sessions = state.inner_state().sessions.read().unwrap();
-	let session = sessions.get(&session_id).unwrap();
-
-	let data = state.inner_state().data.read().unwrap();
-	for (dataset_id, authorized_fields) in session.lock().unwrap().timeseries_with_access.iter() {
-		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
-		let mut dataset_fields = format!("<th>{}</th>", &metadata.name);
-		
-		for field in authorized_fields{
-			match field{
-				Authorisation::Owner(id) => dataset_fields.push_str(&format!("<td><p><i>{}</i></p></td>", metadata.fields[*id as usize].name)),
-				Authorisation::Reader(id) => dataset_fields.push_str(&format!("<td>{}</td>",metadata.fields[*id as usize].name)),
-			};
-		}
-		accessible_fields.push_str(&format!("<tr>{}</tr>",&dataset_fields));
-	}
-	accessible_fields.push_str("</table></body></html>");
-	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(accessible_fields)
-}
-
 pub fn plot_data<T: InnerState>(id: Identity, state: Data<T>) -> HttpResponse {
 	let session_id = id.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
 	let sessions = state.inner_state().sessions.read().unwrap();
@@ -152,7 +137,7 @@ pub fn plot_data<T: InnerState>(id: Identity, state: Data<T>) -> HttpResponse {
 
 	let mut page = String::from(before_form);
 	let data = state.inner_state().data.read().unwrap();
-	for (dataset_id, authorized_fields) in session.lock().unwrap().timeseries_with_access.iter() {
+	for (dataset_id, authorized_fields) in session.lock().unwrap().db_entry.timeseries_with_access.iter() {
 		let metadata = &data.sets.get(&dataset_id).expect("user has access to a database that does no longer exist").metadata;
 		for field_id in authorized_fields{
 			let id = *field_id.as_ref() as usize;
@@ -196,6 +181,12 @@ pub fn login_page() -> HttpResponse {
 	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
 }
 
+#[derive(Deserialize)]
+pub struct Logindata {
+	u: String,
+	p: String,
+}
+
 /// State and POST Params
 pub fn login_get_and_check<T: InnerState>(
 		id: Identity,
@@ -219,30 +210,55 @@ pub fn login_get_and_check<T: InnerState>(
 	} else { info!("user logged in");}
 	
 	//copy userinfo into new session
-	let userinfo = state.user_db.get_userdata(&params.u).unwrap();
+	let userinfo = state.web_user_db.get_userdata(&params.u).unwrap();
 	//userinfo.last_login = Utc::now();
 	//passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
 	
-    let session = Session {
-		timeseries_with_access: userinfo.timeseries_with_access.clone(),
-		username: userinfo.username.clone(),
-		last_login: chrono::Utc::now(), //TODO write back to database
+	let session = Session {
+		db_entry: userinfo,
 	};
+
 	//find free session_numb, set new session number and store new session
 	let session_id = state.free_session_ids.fetch_add(1, Ordering::Acquire);
 	let mut sessions = state.sessions.write().unwrap();
 	sessions.insert(session_id as u16, Arc::new(Mutex::new(session)));
 	
-    //sign and send session id cookie to user 
-    id.remember(session_id.to_string());
+	//sign and send session id cookie to user 
+	id.remember(session_id.to_string());
 	info!("remembering session");
-    
+	
 	let end = std::time::Instant::now();
 	println!("{:?}", end-now);
 
-    Ok(HttpResponse::Found()
-	   .header(http::header::LOCATION, req.path()["/login".len()..].to_owned())
-	   .finish())
+	Ok(HttpResponse::Found()
+	.header(http::header::LOCATION, req.path()["/login".len()..].to_owned())
+	.finish())
+}
+
+#[derive(Deserialize)]
+pub struct TelegramId {
+	id: String,
+}
+
+pub fn set_telegram_id_post<T: InnerState>(
+		id: Identity,
+		state: Data<T>,
+		params: Form<TelegramId>) -> wResult<HttpResponse> {
+	
+	let session_id = id.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
+	let mut sessions = state.inner_state().sessions.write().unwrap();
+	let mut session = sessions.get_mut(&session_id).unwrap().lock().unwrap();
+
+	let user_id: i64 = params.id.parse().unwrap();
+	session.db_entry.telegram_user_id = Some(user_id.into());
+	let bot_userdata = BotUserInfo::from_timeseries_access(&session.db_entry.timeseries_with_access);
+	
+	state.inner_state().bot_user_db.set_userdata(user_id, bot_userdata).unwrap();
+	
+	let web_userdata = state.inner_state().web_user_db.get_userdata(&session.db_entry.username).unwrap();	
+	state.inner_state().web_user_db.set_userdata(web_userdata).unwrap();
+
+	Ok(HttpResponse::Ok().finish())
 }
 
 pub fn new_data_post<T: InnerState+'static>(state: Data<T>, body: Bytes)
@@ -335,7 +351,6 @@ pub fn error_router_ws_index<T: InnerState+'static>(
 //TODO customise
 pub fn new_error_post<T: InnerState+'static>(state: Data<T>, body: Bytes)
 	 -> HttpResponse {
-	
 	let now = Utc::now();
 	let data = state.inner_state().data.clone();//clones pointer
 	let error_router_addr = state.inner_state().error_router_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED

@@ -16,15 +16,17 @@ use minimal_timeseries::{Timeseries, BoundResult, DecodeParams};
 use walkdir::{DirEntry, WalkDir};
 use std::collections::HashMap;
 
-use super::secure_database::{UserInfo, UserDatabase};
+use telegram_bot::types::refs::UserId as TelegramUserId;
+
+use crate::databases::{WebUserInfo, WebUserDatabase, BotUserInfo, BotUserDatabase};
 use super::data_router_ws_client::SetSliceDecodeInfo;
 use crate::error::DResult;
 use crate::httpserver::error_router::ErrorCode;
 
 pub mod specifications;
 pub mod compression;
-pub mod read;
-pub use read::{prepare_read_processing, read_into_packages, ReaderInfo};
+pub mod read_to_array;
+pub mod read_to_packets;
 
 use std::f64;
 trait FloatIterExt {
@@ -101,9 +103,8 @@ pub struct MetaData {
 impl MetaData {
 	pub fn fieldsum(&self) -> u16 {
 		let field = self.fields.last().unwrap();
-		info!("fname: {}",field.name);
 		let bits = field.offset as u16 + field.length as u16;
-		devide_up(bits, 8) //make this do int devide
+		devide_up(bits, 8)
 	}
 }
 
@@ -186,10 +187,7 @@ impl DataSet {
 		recoded_line.write_u16::<LittleEndian>(setid).unwrap();
 		recoded_line.write_f64::<LittleEndian>(timestamp as f64).unwrap();
 		for field in allowed_fields.into_iter().map(|id| &self.metadata.fields[*id as usize]) {
-			println!("field: {:?}",field);
-			//println!("line: {:?}",line);
 			let decoded: f32 = field.decode::<f32>(&line);
-			println!("decoded: {}", decoded);
 			recoded_line.write_f32::<LittleEndian>(decoded).unwrap();
 		}
 		recoded_line.to_vec()
@@ -208,6 +206,15 @@ impl AsRef<FieldId> for Authorisation{
 		match self{
 			Authorisation::Owner(id) => id,
 			Authorisation::Reader(id) => id,
+		}
+	}
+}
+
+impl std::convert::From<&Authorisation> for FieldId {
+	fn from(auth: &Authorisation) -> FieldId {
+		match auth {
+			Authorisation::Owner(id) => *id,
+			Authorisation::Reader(id) => *id,
 		}
 	}
 }
@@ -357,8 +364,8 @@ impl Data {
 	}
 }
 
-impl UserDatabase {
-	pub fn add_owner(&mut self, id: DatasetId, fields: &[Field<f32>], mut userinfo: UserInfo)
+impl WebUserDatabase {
+	pub fn add_owner(&mut self, id: DatasetId, fields: &[Field<f32>], mut userinfo: WebUserInfo)
 	-> DResult<()> {
 		let auth_fields: Vec<Authorisation> = fields.iter().map(|field| Authorisation::Owner(field.id)).collect();
 		userinfo.timeseries_with_access.insert(id, auth_fields);
@@ -366,7 +373,7 @@ impl UserDatabase {
 		self.set_userdata(userinfo )?;
 		Ok(())
 	}
-	pub fn add_owner_from_field_id(&mut self, id: DatasetId, fields: &[FieldId], mut userinfo: UserInfo)
+	pub fn add_owner_from_field_id(&mut self, id: DatasetId, fields: &[FieldId], mut userinfo: WebUserInfo)
 	-> DResult<()> {
 		let auth_fields: Vec<Authorisation> = fields.iter().map(|fieldid| Authorisation::Owner(*fieldid)).collect();
 		userinfo.timeseries_with_access.insert(id, auth_fields);
@@ -375,12 +382,26 @@ impl UserDatabase {
 		self.set_userdata(userinfo)?;
 		Ok(())
 	}
-	// pub fn remove_owner(&mut self, id: DatasetId, &mut userinfo: UserInfo){
-	// 	userinfo.timeseries_with_access.remove(&id);
+}
 
-	// 	let username = userinfo.username.clone();
-	// 	self.set_userdata(username.as_str().as_bytes(), userinfo );
-	// }
+impl BotUserDatabase {
+	pub fn add_owner(&mut self, id: DatasetId, fields: &[Field<f32>], mut userinfo: BotUserInfo, user_id: TelegramUserId)
+	-> DResult<()> {
+		let auth_fields: Vec<Authorisation> = fields.iter().map(|field| Authorisation::Owner(field.id)).collect();
+		userinfo.timeseries_with_access.insert(id, auth_fields);
+		
+		self.set_userdata(user_id, userinfo )?;
+		Ok(())
+	}
+	pub fn add_owner_from_field_id(&mut self, id: DatasetId, fields: &[FieldId], mut userinfo: BotUserInfo, user_id: TelegramUserId)
+	-> DResult<()> {
+		let auth_fields: Vec<Authorisation> = fields.iter().map(|fieldid| Authorisation::Owner(*fieldid)).collect();
+		userinfo.timeseries_with_access.insert(id, auth_fields);
+
+		let username = userinfo.username.clone();
+		self.set_userdata(user_id, userinfo)?;
+		Ok(())
+	}
 }
 
 impl Data {
@@ -424,7 +445,7 @@ impl Data {
 				warn!("invalid key: {}, on store new data", key);
 				return Err(());
 			}
-			const PRINTVALUES: bool = true; //for debugging
+			const PRINTVALUES: bool = false; //for debugging
 			if PRINTVALUES {
 				let mut list = String::from("");
 				for field in &set.metadata.fields {
@@ -440,7 +461,6 @@ impl Data {
 				return Err(());
 			}
 			use crate::httpserver::timeseries_interface::compression::decode;
-			dbg!(decode(&data_string[10..], 0, 10));
 
 			return Ok((dataset_id, data_string.split_off(10).to_vec() ))
 		} else {

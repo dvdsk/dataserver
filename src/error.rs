@@ -1,15 +1,16 @@
 use sled;
 use bincode;
-use crate::httpserver::secure_database;
+use crate::databases;
 
 pub type DResult<T, E = DataserverError> = Result<T, E>;
 
 #[derive(Debug)]
 pub enum DataserverError {
     DatabaseError(sled::Error),
-    DatabaseLoadError(secure_database::LoadDbError),
-    UserDatabaseError(secure_database::UserDbError),
+    DatabaseLoadError(databases::LoadDbError),
+    UserDatabaseError(databases::UserDbError),
     SerializationError(bincode::Error),
+    TelegramBotError(telegram_bot::Error)
 }
 
 impl From<sled::Error> for DataserverError {
@@ -17,13 +18,13 @@ impl From<sled::Error> for DataserverError {
         DataserverError::DatabaseError(error)
     }
 }
-impl From<secure_database::LoadDbError> for DataserverError {
-    fn from(error: secure_database::LoadDbError) -> Self {
+impl From<databases::LoadDbError> for DataserverError {
+    fn from(error: databases::LoadDbError) -> Self {
         DataserverError::DatabaseLoadError(error)
     }
 }
-impl From<secure_database::UserDbError> for DataserverError {
-    fn from(error: secure_database::UserDbError) -> Self {
+impl From<databases::UserDbError> for DataserverError {
+    fn from(error: databases::UserDbError) -> Self {
         DataserverError::UserDatabaseError(error)
     }
 }

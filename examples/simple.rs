@@ -28,25 +28,6 @@ mod debug_middleware;
 mod config;
 const FORCE_CERT_REGEN: bool =	false;
 
-struct ExampleState {
-	counter: Arc<Mutex<usize>>,
-	dataserver_state: DataRouterState,
-}
-
-/// simple handle
-fn test_state(req: HttpRequest, state: actix_web::web::Data<ExampleState>) -> actix_web::HttpResponse {
-    println!("{:?}", req);
-    *(state.counter.lock().unwrap()) += 1;
-
-    actix_web::HttpResponse::Ok().body(format!("Num of requests: {}", state.counter.lock().unwrap()))
-}
-
-impl InnerState for ExampleState{
-	fn inner_state(&self) -> &DataRouterState {
-		&self.dataserver_state
-	}
-}
-
 pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
      data: Arc<RwLock<timeseries_interface::Data>>, //
      passw_db: PasswordDatabase,
@@ -73,19 +54,16 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
 
 		let web_server = HttpServer::new(move || {
 			// data the webservers functions have access to
-			let data = actix_web::web::Data::new(ExampleState {
-				counter: Arc::new(Mutex::new(0)),
-				dataserver_state: DataRouterState {
-					passw_db: passw_db.clone(),
-					web_user_db: web_user_db.clone(),
-					bot_user_db: bot_user_db.clone(),
-					data_router_addr: data_router_addr_clone.clone(),
-					error_router_addr: error_router_addr_clone.clone(),
-					data: data.clone(),
-					sessions: sessions.clone(),
-					free_session_ids: free_session_ids.clone(),
-					free_ws_session_ids: free_ws_session_ids.clone(),
-				},
+			let data = actix_web::web::Data::new(DataRouterState {
+				passw_db: passw_db.clone(),
+				web_user_db: web_user_db.clone(),
+				bot_user_db: bot_user_db.clone(),
+				data_router_addr: data_router_addr_clone.clone(),
+				error_router_addr: error_router_addr_clone.clone(),
+				data: data.clone(),
+				sessions: sessions.clone(),
+				free_session_ids: free_session_ids.clone(),
+				free_ws_session_ids: free_ws_session_ids.clone(),
 			});
 			
 			App::new()
@@ -101,26 +79,25 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
 				.service(
 					web::scope("/login")
 						.service(web::resource(r"/{path}")
-							.route(web::post().to(login_get_and_check::<ExampleState>))
+							.route(web::post().to(login_get_and_check::<DataRouterState>))
 							.route(web::get().to(login_page))
 				))
-				.service(web::resource("/post_data").to(new_data_post::<ExampleState>))
-				.service(web::resource("/post_error").to(new_error_post::<ExampleState>))
-				.service(web::resource(&format!("/{}", config::TOKEN)).to(handle_bot_message::<ExampleState>))
+				.service(web::resource("/post_data").to(new_data_post::<DataRouterState>))
+				.service(web::resource("/post_error").to(new_error_post::<DataRouterState>))
+				.service(web::resource(&format!("/{}", config::TOKEN)).to(handle_bot_message::<DataRouterState>))
 
 				.service(
 					web::scope("/")
-						.wrap(CheckLogin {phantom: std::marker::PhantomData::<ExampleState>})
-						.service(web::resource("commands/test_state").to(test_state))
-						.service(web::resource("ws/data/").to(data_router_ws_index::<ExampleState>))
-						.service(web::resource("ws/error").to(error_router_ws_index::<ExampleState>))
-						.service(web::resource("logout").to(logout::<ExampleState>))
+						.wrap(CheckLogin {phantom: std::marker::PhantomData::<DataRouterState>})
+						.service(web::resource("ws/data/").to(data_router_ws_index::<DataRouterState>))
+						.service(web::resource("ws/error").to(error_router_ws_index::<DataRouterState>))
+						.service(web::resource("logout").to(logout::<DataRouterState>))
 						.service(web::resource("").to(index))
-						.service(web::resource("plot").to(plot_data::<ExampleState>))
-						.service(web::resource("list_data").to(list_data::<ExampleState>))
+						.service(web::resource("plot").to(plot_data::<DataRouterState>))
+						.service(web::resource("list_data").to(list_data::<DataRouterState>))
 						.service(web::resource("settings.html")
-							.route(web::get().to(settings_page::<ExampleState>))
-							.route(web::post().to(set_telegram_id_post::<ExampleState>))
+							.route(web::get().to(settings_page::<DataRouterState>))
+							.route(web::post().to(set_telegram_id_post::<DataRouterState>))
 						)
 						//for all other urls we try to resolve to static files in the "web" dir
 						.service(fs::Files::new("", "./web/"))

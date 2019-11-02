@@ -7,7 +7,7 @@ mod test;
 
 use chrono::Utc;
 use crate::httpserver::{timeseries_interface};
-use crate::httpserver::secure_database::{UserDatabase, PasswordDatabase, UserInfo};
+use crate::databases::{WebUserDatabase, BotUserDatabase, PasswordDatabase, WebUserInfo, BotUserInfo};
 
 use std::path::{Path};
 use std::sync::{Arc, RwLock};
@@ -25,23 +25,24 @@ pub fn pause() {
 	stdin().read_exact(&mut [0]).unwrap();
 }
 
-pub fn add_user(passw_db: &mut PasswordDatabase, user_db: &mut UserDatabase){
+pub fn add_user(passw_db: &mut PasswordDatabase, web_user_db: &mut WebUserDatabase){
 	println!("enter username:");
 	let username: String = read!("{}\n");
 	println!("enter password:");
 	let password: String = read!("{}\n");
 
-	let user_data = UserInfo{
+	let user_data = WebUserInfo{
 		timeseries_with_access: HashMap::new(),
 		last_login: Utc::now(),
 		username: username.clone(),
+		telegram_user_id: None,
 	};
 
 	passw_db.set_password(username.as_str().as_bytes(), password.as_str().as_bytes()).unwrap();
-	user_db.set_userdata(user_data).unwrap();
+	web_user_db.set_userdata(user_data).unwrap();
 }
 
-pub fn add_fields_to_user(user_db: &mut UserDatabase){
+pub fn add_fields_to_user(web_user_db: &mut WebUserDatabase, bot_user_db: &mut BotUserDatabase){
 	use timeseries_interface::{DatasetId, FieldId};
 
 	println!("enter username:");
@@ -55,8 +56,13 @@ pub fn add_fields_to_user(user_db: &mut UserDatabase){
 	let fields: Result<Vec<_>, _> = fields.split_whitespace().map(|x| x.parse::<FieldId>() ).collect();
 	match fields {
 		Ok(fields) => {
-			let userdata = user_db.get_userdata(username).unwrap();
-			user_db.add_owner_from_field_id(dataset_id, &fields, userdata).unwrap();
+			let webuser_data = web_user_db.get_userdata(username).unwrap();
+			if let Some(telegram_user_id) = webuser_data.telegram_user_id{
+				let botuser_data = bot_user_db.get_userdata(telegram_user_id).unwrap();
+				bot_user_db.add_owner_from_field_id(dataset_id, &fields, botuser_data, telegram_user_id).unwrap();
+			}
+			web_user_db.add_owner_from_field_id(dataset_id, &fields, webuser_data).unwrap();
+			println!("success, fields are availible after new login")
 		}
 		Err(_) => {
 			println!("error parsing fields");
@@ -64,7 +70,7 @@ pub fn add_fields_to_user(user_db: &mut UserDatabase){
 	}
 }
 
-pub fn add_dataset(user_db: &mut UserDatabase, data: &Arc<RwLock<timeseries_interface::Data>>){
+pub fn add_dataset(user_db: &mut WebUserDatabase, data: &Arc<RwLock<timeseries_interface::Data>>){
 
 	if !Path::new("specs/template.yaml").exists() {
 		timeseries_interface::specifications::write_template().unwrap();
@@ -90,7 +96,7 @@ pub fn add_dataset(user_db: &mut UserDatabase, data: &Arc<RwLock<timeseries_inte
 	}
 }
 
-pub fn remove_dataset(user_db: &mut UserDatabase, data: & Arc<RwLock<timeseries_interface::Data>>, id: timeseries_interface::DatasetId){
+pub fn remove_dataset(user_db: &mut WebUserDatabase, data: & Arc<RwLock<timeseries_interface::Data>>, id: timeseries_interface::DatasetId){
 	let mut data = data.write().unwrap();
 	if data.remove_set(id).is_ok(){
 		let usernames: Vec<Vec<u8>> = user_db.storage.keys(&[0]).filter_map(Result::ok).collect();
@@ -182,17 +188,13 @@ pub fn setup_logging(verbosity: u8) -> Result<(), fern::InitError> {
 			// verbose to include in end-user output. If we don't need them,
 			// let's not include them.
 			base_config
-					.level(log::LevelFilter::Warn)
-					.level_for("dataserver", log::LevelFilter::Trace)
-					.level_for("minimal_timeseries", log::LevelFilter::Trace),
+					.level(log::LevelFilter::Error),
 		1 =>
 			// Let's say we depend on something which whose "info" level messages are too
 			// verbose to include in end-user output. If we don't need them,
 			// let's not include them.
 			base_config
-					.level(log::LevelFilter::Warn)
-					.level_for("dataserver", log::LevelFilter::Info)
-					.level_for("minimal_timeseries", log::LevelFilter::Info),
+					.level(log::LevelFilter::Warn),
 		2 =>
 			// Let's say we depend on something which whose "info" level messages are too
 			// verbose to include in end-user output. If we don't need them,

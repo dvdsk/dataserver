@@ -15,7 +15,7 @@ use crate::httpserver::{InnerState, DataRouterState};
 use crate::databases::{BotUserDatabase, BotUserInfo, UserDbError};
 
 mod commands;
-use commands::{help, plotables, show};
+use commands::{help, plotables, show, alias};
 #[cfg(feature = "plotting")]
 use commands::plot;
 
@@ -31,6 +31,7 @@ pub enum Error{
 	BotDatabaseError(UserDbError),
 	UnknownAlias(String),
 	ShowError(show::Error),
+	AliasError(alias::Error),
 
 	#[cfg(feature = "plotting")]
 	PlotError(plot::Error),
@@ -39,6 +40,12 @@ pub enum Error{
 impl From<show::Error> for Error {
 	fn from(error: show::Error) -> Self {
 		Error::ShowError(error)
+	}
+}
+
+impl From<alias::Error> for Error {
+	fn from(error: alias::Error) -> Self {
+		Error::AliasError(error)
 	}
 }
 
@@ -114,7 +121,7 @@ fn handle_command<T: InnerState>(mut text: String, chat_id: ChatId, user_id: Use
 				break;
 			}
 			"/alias" => {
-				show::send(chat_id, user_id, state, TOKEN, args, &userinfo)?;
+				alias::send(chat_id, user_id, state, TOKEN, args, userinfo)?;
 				break;
 			}
 			&_ => {}

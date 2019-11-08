@@ -24,9 +24,11 @@ use std::sync::{Arc, RwLock, Mutex};
 use std::io::stdin;
 use std::collections::HashMap;
 
+use structopt::StructOpt;
+
 mod debug_middleware;
 mod config;
-const FORCE_CERT_REGEN: bool =	false;
+const FORCE_CERT_REGEN: bool =	true;
 
 pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
      data: Arc<RwLock<timeseries_interface::Data>>, //
@@ -119,10 +121,21 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
 	(data_router_addr, error_router_addr, web_handle)
 }
 
+
+/// A basic example
+#[derive(StructOpt)]
+#[structopt(name = "dataserver")]
+struct Opt {
+    #[structopt(short, long)]
+    create_new_certificate: bool,
+}
+
+
 fn main() {
-	//https://www.deviousd.duckdns.org:8080/index.html
+	let opt = Opt::from_args();
+	
 	//only do if certs need update
-	if FORCE_CERT_REGEN {
+	if opt.create_new_certificate {
 		//generate_and_sign_keys
 		if let Err(error) = certificate_manager::generate_and_sign_keys(
 			config::DOMAIN,

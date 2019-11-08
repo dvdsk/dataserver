@@ -209,15 +209,9 @@ pub fn generate_and_sign_keys<T: AsRef<Path>>(
 	let server = host_server().expect("needs to be ran as root");
 
 	//enable to halt signing process and check if signing request server is reachable
-	loop {
-		println!("press q to continue challenge validation");
-	 	let mut input = String::new();
-	 	std::io::stdin().read_line(&mut input).unwrap();
-	 	match input.as_str() {
-	 		"q\n" => break,
-	 		_ => println!("unhandled"),
-	 	};
-	}
+	println!("check if the server is reachable and or press enter to continue");
+	let mut input = String::new();
+	std::io::stdin().read_line(&mut input).unwrap();
 
 	for domain in domains.iter() {
 		let authorization = account.authorization(domain).unwrap();

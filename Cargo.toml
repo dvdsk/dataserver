@@ -9,6 +9,8 @@ publish = false
 plotting = ["plotters", "image"]
 
 [dependencies]
+structopt = "0.3"
+
 actix-web = { version = "1.0.3", features = ["rust-tls"] }
 actix-web-actors = "1.0.2"
 actix-net = "0.2.4"

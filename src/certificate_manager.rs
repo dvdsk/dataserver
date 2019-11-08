@@ -125,7 +125,7 @@ fn get_port() -> Result<u32, ()> {
 }
 
 fn index() -> impl Responder {
-    HttpResponse::Ok().body("Hello world!")
+    HttpResponse::Ok().body("Hello world!, the certificate challange server is up")
 }
 
 //handles only requests for certificate challanges
@@ -178,6 +178,7 @@ pub fn generate_and_sign_keys<T: AsRef<Path>>(
 	private_key: T,
 	user_private_key: T,
 ) -> Result<(), aError> {
+	println!("generating and signing new certificate and private key");
 	let signed_cert = signed_cert.as_ref();
 	let private_key = private_key.as_ref();
 	let user_private_key = user_private_key.as_ref();
@@ -208,14 +209,15 @@ pub fn generate_and_sign_keys<T: AsRef<Path>>(
 	let server = host_server().expect("needs to be ran as root");
 
 	//enable to halt signing process and check if signing request server is reachable
-	/* loop {
+	loop {
+		println!("press q to continue challenge validation");
 	 	let mut input = String::new();
 	 	std::io::stdin().read_line(&mut input).unwrap();
 	 	match input.as_str() {
 	 		"q\n" => break,
 	 		_ => println!("unhandled"),
 	 	};
-	}*/
+	}
 
 	for domain in domains.iter() {
 		let authorization = account.authorization(domain).unwrap();
@@ -228,6 +230,7 @@ pub fn generate_and_sign_keys<T: AsRef<Path>>(
 
 		http_challenge.save_key_authorization(".tmp/www").unwrap();
 		http_challenge.validate().unwrap();
+
 		//thread::sleep(Duration::from_secs(40));
 	}
 

@@ -16,6 +16,8 @@ actix-identity = "0.1.0"
 actix-files = "0.1.3"
 actix-rt = "0.2.4"
 actix-service = "0.4.1"
+#temporary override of indirect dependency as 69.2 is not semver compatible
+onig_sys= "=69.1.0" 
 
 yarte = { version ="0.3.2", features=["with-actix-web"]  }
 

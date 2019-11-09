@@ -2,11 +2,8 @@
 use fern::colors::{Color, ColoredLevelConfig};
 use text_io::{try_read, try_scan, read};
 
-#[cfg(test)]
-mod test;
-
 use chrono::Utc;
-use crate::httpserver::{timeseries_interface};
+use crate::data_store;
 use crate::databases::{WebUserDatabase, BotUserDatabase, PasswordDatabase, WebUserInfo, BotUserInfo};
 
 use std::path::{Path};
@@ -15,8 +12,7 @@ use std::io::{stdin, stdout, Read, Write};
 use std::collections::HashMap;
 
 use byteorder::{NativeEndian, WriteBytesExt};
-use crate::httpserver::timeseries_interface::compression::encode;
-use crate::httpserver::DataRouterHandle;
+use crate::data_store::DataRouterHandle;
 
 pub fn pause() {
 	let mut stdout = stdout();
@@ -43,7 +39,7 @@ pub fn add_user(passw_db: &mut PasswordDatabase, web_user_db: &mut WebUserDataba
 }
 
 pub fn add_fields_to_user(web_user_db: &mut WebUserDatabase, bot_user_db: &mut BotUserDatabase){
-	use timeseries_interface::{DatasetId, FieldId};
+	use data_store::{DatasetId, FieldId};
 
 	println!("enter username:");
 	let username: String = read!("{}\n");
@@ -70,13 +66,13 @@ pub fn add_fields_to_user(web_user_db: &mut WebUserDatabase, bot_user_db: &mut B
 	}
 }
 
-pub fn add_dataset(user_db: &mut WebUserDatabase, data: &Arc<RwLock<timeseries_interface::Data>>){
+pub fn add_dataset(user_db: &mut WebUserDatabase, data: &Arc<RwLock<data_store::Data>>){
 
 	if !Path::new("specs/template.yaml").exists() {
-		timeseries_interface::specifications::write_template().unwrap();
+		data_store::specifications::write_template().unwrap();
 	}
 	if !Path::new("specs/template_for_test.yaml").exists() {
-		timeseries_interface::specifications::write_template_for_test().unwrap();
+		data_store::specifications::write_template_for_test().unwrap();
 	}
 
 	println!("enter the name of the info file in the specs subfolder:");
@@ -96,7 +92,7 @@ pub fn add_dataset(user_db: &mut WebUserDatabase, data: &Arc<RwLock<timeseries_i
 	}
 }
 
-pub fn remove_dataset(user_db: &mut WebUserDatabase, data: & Arc<RwLock<timeseries_interface::Data>>, id: timeseries_interface::DatasetId){
+pub fn remove_dataset(user_db: &mut WebUserDatabase, data: & Arc<RwLock<data_store::Data>>, id: data_store::DatasetId){
 	let mut data = data.write().unwrap();
 	if data.remove_set(id).is_ok(){
 		let usernames: Vec<Vec<u8>> = user_db.storage.keys(&[0]).filter_map(Result::ok).collect();
@@ -112,7 +108,8 @@ pub fn remove_dataset(user_db: &mut WebUserDatabase, data: & Arc<RwLock<timeseri
 }
 
 /// Note the test value will be shifted on decoding.
-pub fn send_test_data_over_http(data: Arc<RwLock<timeseries_interface::Data>>, port: u16){
+use crate::data_store::compression::{decode,encode};
+pub fn send_test_data_over_http(data: Arc<RwLock<data_store::Data>>, port: u16){
 	let node_id = 0;
 	let client = reqwest::Client::builder()
 	.danger_accept_invalid_certs(true)
@@ -135,7 +132,6 @@ pub fn send_test_data_over_http(data: Arc<RwLock<timeseries_interface::Data>>, p
 		encode(test_value, &mut data_string[10..], field.offset, field.length);
 		dbg!(field.offset);
 		dbg!(field.length);
-		use crate::httpserver::timeseries_interface::compression::decode;
 		println!("decoded: {}", decode(&data_string[10..], field.offset, field.length));
 	}
 	println!("datastring: {:?}",data_string);
@@ -147,7 +143,7 @@ pub fn send_test_data_over_http(data: Arc<RwLock<timeseries_interface::Data>>, p
 		.unwrap();
 }
 
-pub fn signal_and_append_test_data(dataset_handle: Arc<RwLock<timeseries_interface::Data>>,
+/*pub fn signal_and_append_test_data(dataset_handle: Arc<RwLock<data_store::Data>>,
                                    data_router_handle: &DataRouterHandle){
 	const LOCAL_SENSING_ID: u16 = 0;
 	//load the requird dataset
@@ -168,11 +164,11 @@ pub fn signal_and_append_test_data(dataset_handle: Arc<RwLock<timeseries_interfa
 	//fields[2].encode::<f32>(pressure, &mut line);
 
 	//store data and send to active web_clients
-	crate::httpserver::signal_newdata(&data_router_handle, LOCAL_SENSING_ID, line.clone(), now.timestamp() );
+	//crate::data_store::signal_newdata(&data_router_handle, LOCAL_SENSING_ID, line.clone(), now.timestamp() );
 	let mut data = dataset_handle.write().unwrap();
 	let set = data.sets.get_mut(&LOCAL_SENSING_ID).unwrap();
 	set.timeseries.append(now, &line).unwrap();
-}
+}*/
 
 
 pub fn setup_logging(verbosity: u8) -> Result<(), fern::InitError> {

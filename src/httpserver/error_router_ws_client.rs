@@ -8,7 +8,7 @@ use futures::Future;
 use std::sync::{Arc, Mutex};
 
 use crate::httpserver::Session;
-use super::error_router;
+use crate::data_store::error_router;
 
 // store data in here, it can then be accessed using self
 pub struct WsSession {

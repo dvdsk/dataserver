@@ -1,5 +1,3 @@
-use webpki_roots::TLS_SERVER_ROOTS;
-
 use acme_client::error::Error as aError;
 use acme_client::Directory;
 //use self::acme_client::LETSENCRYPT_INTERMEDIATE_CERT_URL;
@@ -12,76 +10,11 @@ use std::thread;
 use std::env;
 use std::fs::create_dir_all;
 use std::fs::remove_dir_all;
-use std::fs::File;
 use std::io;
-use std::io::Read;
 use std::path::Path;
 
 fn certificate_valid(_signed_cert: &Path, _private_key: &Path) -> bool {
-	//if signed_cert.exists() && if private_key.exists(){
-
-	////static ALL_SIGALGS: &'static [&'static webpki::SignatureAlgorithm] = &[
-	////&webpki::ECDSA_P256_SHA256,
-	////&webpki::ECDSA_P256_SHA384,
-	////&webpki::ECDSA_P384_SHA256,
-	////&webpki::ECDSA_P384_SHA384,
-	////&webpki::RSA_PKCS1_2048_8192_SHA1,
-	////&webpki::RSA_PKCS1_2048_8192_SHA256,
-	////&webpki::RSA_PKCS1_2048_8192_SHA384,
-	////&webpki::RSA_PKCS1_2048_8192_SHA512,
-	////&webpki::RSA_PKCS1_3072_8192_SHA384
-	////];
-
-	////cert.verify_is_valid_tls_server_cert(
-	////ALL_SIGALGS, &anchors,
-	////&inter_vec, time)
-	////.is_err()
-	//true
-	//} else {
-	//false
-	//}
-
-	true
-}
-
-/* Checks we can verify netflix's cert chain.  This is notable
- * because they're rooted at a Verisign v1 root. */
-pub fn netflix(signed_cert: &Path, intermediate_cert: &Path) {
-	static ALL_SIGALGS: &'static [&'static webpki::SignatureAlgorithm] = &[
-		&webpki::ECDSA_P256_SHA256,
-		&webpki::ECDSA_P256_SHA384,
-		&webpki::ECDSA_P384_SHA256,
-		&webpki::ECDSA_P384_SHA384,
-		&webpki::RSA_PKCS1_2048_8192_SHA1,
-		&webpki::RSA_PKCS1_2048_8192_SHA256,
-		&webpki::RSA_PKCS1_2048_8192_SHA384,
-		&webpki::RSA_PKCS1_2048_8192_SHA512,
-		&webpki::RSA_PKCS1_3072_8192_SHA384,
-	];
-
-	//let ee = include_bytes!("netflix/ee.der");
-	//let inter = include_bytes!("netflix/inter.der");
-
-	let mut f = File::open(signed_cert).unwrap();
-	let mut buffer = Vec::new();
-	f.read_to_end(&mut buffer).unwrap();
-
-	//let ee_input = untrusted::Input::from(ee);
-	let ee_input = untrusted::Input::from(buffer.as_slice());
-
-	let mut f = File::open(intermediate_cert).unwrap();
-	let mut buffer = Vec::new();
-	f.read_to_end(&mut buffer).unwrap();
-	let inter_vec = vec![untrusted::Input::from(buffer.as_slice())];
-
-	//let inter_vec = vec![ untrusted::Input::from(inter) ];
-
-	let time = webpki::Time::from_seconds_since_unix_epoch(1492441716);
-
-	let cert = webpki::EndEntityCert::from(ee_input).unwrap();
-	let outcome =
-		cert.verify_is_valid_tls_server_cert(ALL_SIGALGS, &TLS_SERVER_ROOTS, &inter_vec, time);
-	println!("outcome: {:?}", outcome);
+	unimplemented!();
 }
 
 fn am_root() -> bool {

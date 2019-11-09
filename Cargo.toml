@@ -10,6 +10,8 @@ plotting = ["plotters", "image"]
 
 [dependencies]
 structopt = "0.3"
+dialoguer = "0.5.0"
+console = "0.9.1"
 
 actix-web = { version = "1.0.3", features = ["rust-tls"] }
 actix-web-actors = "1.0.2"

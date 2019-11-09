@@ -1,9 +1,33 @@
+use std::sync::{Arc, RwLock, Mutex};
+use std::sync::atomic::{AtomicUsize};
+
 use log::{debug, trace};
 use actix::prelude::*;
 
 use std::collections::{HashMap, HashSet};
 
-use crate::httpserver::timeseries_interface::{DatasetId};
+use super::DatasetId;
+use super::error_router;
+use super::Data;
+
+use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
+use crate::httpserver::Session;
+
+#[derive(Clone)]
+pub struct DataRouterState {
+	pub passw_db: PasswordDatabase,
+	pub web_user_db: WebUserDatabase,
+	pub bot_user_db: BotUserDatabase,
+
+	pub data_router_addr: Addr<DataRouter>,
+	pub error_router_addr: Addr<error_router::ErrorRouter>,
+
+	pub data: Arc<RwLock<Data>>,
+
+	pub sessions: Arc<RwLock<HashMap<u16, Arc<Mutex<Session>> >>> ,
+	pub free_session_ids: Arc<AtomicUsize>,
+	pub free_ws_session_ids: Arc<AtomicUsize>,
+}
 
 //TODO extract alarms to theire own module and finish
 // -add database tree for storing data_alarms

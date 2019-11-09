@@ -2,9 +2,7 @@ use crate::databases::BotUserInfo;
 use crate::bot::{Error, send_text_reply};
 use telegram_bot::types::refs::ChatId;
 
-use crate::httpserver::{DataRouterState, InnerState};
-use crate::httpserver::timeseries_interface;
-use timeseries_interface::FieldId;
+use crate::data_store::{data_router::DataRouterState, FieldId};
 
 pub const USAGE: &str = "/plotables";
 pub const DESCRIPTION: &str = "shows all possible data input for the plot function";
@@ -13,7 +11,7 @@ pub fn send(chat_id: ChatId, userinfo: &BotUserInfo, state: &DataRouterState, to
 	let mut text = String::default();
 	const HEADER: &str = "\n<plotable id> <plotable name>\n";
 
-	let data = state.inner_state().data.read().unwrap();	
+	let data = state.data.read().unwrap();	
     for (dataset_id, authorized_fields) in userinfo.timeseries_with_access.iter() {
         let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
 		text.push_str(&metadata.name);

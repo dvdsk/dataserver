@@ -7,7 +7,7 @@ use serde::{Serialize, Deserialize};
 use chrono::{DateTime, offset::Utc};
 use std::collections::{HashMap, HashSet};
 
-use crate::httpserver::timeseries_interface::{Data, DatasetId, FieldId};
+use crate::data_store::{Data, DatasetId, FieldId};
 use crate::error::DataserverError;
 
 mod sensor_errors;

@@ -1,392 +1,99 @@
-use serde::{ Deserialize};
-use log::{warn, info, trace};
-use chrono;
-
-use actix::Addr;
-use actix_identity::{Identity};
-use actix_web_actors::ws;
-use actix_web::Result as wResult;
-use actix_web::{
-	http, http::StatusCode,
-	HttpRequest, HttpResponse,
-};
-use actix_web::web::{Data, Form, Bytes, Payload};
-
-use rustls::internal::pemfile::{certs, pkcs8_private_keys};
-use rustls::{NoClientAuth, ServerConfig};
-use rand::FromEntropy;
-use rand::Rng;
-
-use std::fs::File;
-use std::io::BufReader;
-
-use std::sync::{Arc, RwLock, atomic::{AtomicUsize,Ordering}, Mutex};
-
-use std::collections::HashMap;
-use std::path::Path;
-use chrono::{DateTime, Utc};
-use telegram_bot::types::refs::UserId as TelegramUserId;
-
-pub mod timeseries_interface;
-pub mod login_redirect;
-pub mod dynamic_pages;
-
-pub mod data_router;
-pub mod error_router;
-pub mod data_router_ws_client; //TODO remove pub
+mod login_redirect;
+mod dynamic_pages;
+pub mod data_router_ws_client;
 mod error_router_ws_client;
+mod handlers;
+mod utility;
 
-use crate::databases::{PasswordDatabase, WebUserDatabase, WebUserInfo, BotUserDatabase, BotUserInfo};
-use crate::httpserver::timeseries_interface::{Authorisation};
+use std::thread;
+use std::sync::{mpsc};
+
+use actix_web::{HttpServer,App, web};
+use actix_identity::{CookieIdentityPolicy, IdentityService};
+use actix_files as fs;
+use actix::prelude::*;
+
+use crate::config;
+use crate::databases::{WebUserInfo};
+use crate::data_store::{ErrorRouterHandle, DataRouterHandle, data_router::DataRouterState};
+
+use crate::bot;
+use login_redirect::{CheckLogin};
+
+
+pub type ServerHandle = actix::Addr<actix_net::server::Server>;
 
 pub struct Session { 
 	db_entry: WebUserInfo,
-	//timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
-	//username: String,
-	//last_login: DateTime<Utc>,
-	//telegram_user_id: Option<TelegramUserId>
-  //add more temporary user specific data as needed
+    //add more temporary user specific data as needed
 }
 
-/// standardised interface that the libs handelers use to get the application state they need
-pub trait InnerState {
-	fn inner_state(&self) -> &DataRouterState;
-	//fn into_inner(self) -> DataRouterState;
-}
+pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
+             data_router_state: DataRouterState)
+     -> actix_web::dev::Server {
 
-pub struct DataRouterState {
-	pub passw_db: PasswordDatabase,
-	pub web_user_db: WebUserDatabase,
-	pub bot_user_db: BotUserDatabase,
+   let tls_config = utility::make_tls_config(signed_cert, public_key, intermediate_cert);
+   let cookie_key = utility::make_random_cookie_key();
 
-	pub data_router_addr: Addr<data_router::DataRouter>,
-	pub error_router_addr: Addr<error_router::ErrorRouter>,
+   let (tx, rx) = mpsc::channel();
 
-	pub data: Arc<RwLock<timeseries_interface::Data>>,
+   thread::spawn(move || {
+       let sys = actix::System::new("http-server");
 
-	pub sessions: Arc<RwLock<HashMap<u16, Arc<Mutex<Session>> >>> ,
-	pub free_session_ids: Arc<AtomicUsize>,
-	pub free_ws_session_ids: Arc<AtomicUsize>,
-}
+       let web_server = HttpServer::new(move || {
+           // data the webservers functions have access to
+           let data = actix_web::web::Data::new(data_router_state.clone());
+           
+           App::new()
+               .register_data(data)
+               .wrap(IdentityService::new(
+                   CookieIdentityPolicy::new(&cookie_key[..])
+                   .domain(config::DOMAIN)
+                   .name("auth-cookie")
+                   .path("/")
+                   .secure(true), 
+               ))
+               //.wrap(debug_middleware::SayHi) //prints all requested URLs
+               .service(
+                   web::scope("/login")
+                       .service(web::resource(r"/{path}")
+                           .route(web::post().to(handlers::login_get_and_check))
+                           .route(web::get().to(handlers::login_page))
+               ))
+               .service(web::resource("/post_data").to(handlers::new_data_post))
+               .service(web::resource("/post_error").to(handlers::new_error_post))
+               .service(web::resource(&format!("/{}", config::TOKEN)).to(bot::handle_webhook))
 
-//allows to use
-impl InnerState for DataRouterState {
-	fn inner_state(&self) -> &Self {
-		&self
-	}
-	//fn into_inner(self) -> Self {
-	//	self
-	//}
-}
+               .service(
+                   web::scope("/")
+                       .wrap(CheckLogin {})
+                       .service(web::resource("").to(handlers::index))
+                       .service(web::resource("index").to(handlers::index))
+                       .service(web::resource("ws/data/").to(handlers::data_router_ws_index))
+                       .service(web::resource("ws/error").to(handlers::error_router_ws_index))
+                       .service(web::resource("logout").to(handlers::logout))
+                       .service(web::resource("plot").to(handlers::plot_data))
+                       .service(web::resource("list_data").to(dynamic_pages::list_data))
+                       .service(web::resource("settings.html")
+                           .route(web::get().to(dynamic_pages::settings_page))
+                           .route(web::post().to(handlers::set_telegram_id_post))
+                       )
+                       //for all other urls we try to resolve to static files in the "web" dir
+                       .service(fs::Files::new("", "./web/"))
+               )
+           })
+       // WARNING TLS IS NEEDED FOR THE LOGIN SYSTEM TO FUNCTION
+       .bind_rustls(&format!("0.0.0.0:{}", config::PORT), tls_config).unwrap()
+       //.bind_rustls("0.0.0.0:8080", tls_config).unwrap()
+       //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
+       .shutdown_timeout(5)    // shut down 5 seconds after getting the signal to shut down
+       .start(); // end of App::new()
 
-pub fn make_random_cookie_key() -> [u8; 32] {
-	let mut cookie_private_key = [0u8; 32];
-	let mut rng = rand::StdRng::from_entropy();
-	rng.fill(&mut cookie_private_key[..]);
-	cookie_private_key
-}
 
-pub fn make_tls_config<P: AsRef<Path>+std::fmt::Display>(cert_path: P, key_path: P, 
-    intermediate_cert_path: P) 
--> rustls::ServerConfig{
+       let _ = tx.send(web_server);
+       let _ = sys.run();
+   }); //httpserver closure
 
-	dbg!();
-	let mut tls_config = ServerConfig::new(NoClientAuth::new());
-	let cert_file = &mut BufReader::new(File::open(&cert_path)
-		.expect(&format!("could not open certificate file: {}", cert_path)));
-	let intermediate_file = &mut BufReader::new(File::open(&intermediate_cert_path)
-		.expect(&format!("could not open intermediate certificate file: {}", intermediate_cert_path)));
-	let key_file = &mut BufReader::new(File::open(&key_path)
-		.expect(&format!("could not open key file: {}", key_path)));
-
-	let mut cert_chain = certs(cert_file).unwrap();
-	cert_chain.push(certs(intermediate_file).unwrap().pop().unwrap());
-
-	let mut key = pkcs8_private_keys(key_file).unwrap();
-
-	tls_config
-		.set_single_cert(cert_chain, key.pop().unwrap())
-		.unwrap();
-	tls_config
-}
-
-pub type ServerHandle = Addr<actix_net::server::Server>;
-pub type DataRouterHandle = Addr<data_router::DataRouter>;
-pub type ErrorRouterHandle = Addr<error_router::ErrorRouter>;
-
-// pub fn serve_file<T: InnerState>(req: &HttpRequest) -> wResult<NamedFile> {
-// 	let file_name: String = req.match_info().query("tail")?;
-
-// 	let mut path: PathBuf = PathBuf::from("web/");
-// 	path.push(file_name);
-// 	trace!("returning file: {:?}", &path);
-// 	Ok(NamedFile::open(path)?)
-// }
-
-pub fn index() -> HttpResponse {
-	let index_page = std::include_str!("static_webpages/index.html");
-	HttpResponse::Ok()
-		.header(http::header::CONTENT_TYPE, "text/html; charset=utf-8")
-		.body(index_page)
-}
-
-pub fn plot_data<T: InnerState>(id: Identity, state: Data<T>) -> HttpResponse {
-	let session_id = id.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
-	let sessions = state.inner_state().sessions.read().unwrap();
-	let session = sessions.get(&session_id).unwrap();
-
-	let before_form =include_str!("static_webpages/plot_A.html");
-	let after_form = include_str!("static_webpages/plot_B.html");
-
-	let mut page = String::from(before_form);
-	let data = state.inner_state().data.read().unwrap();
-	for (dataset_id, authorized_fields) in session.lock().unwrap().db_entry.timeseries_with_access.iter() {
-		let metadata = &data.sets.get(&dataset_id).expect("user has access to a database that does no longer exist").metadata;
-		for field_id in authorized_fields{
-			let id = *field_id.as_ref() as usize;
-			page.push_str(&format!("<input type=\"checkbox\" value={},{} > {}<br>\n", dataset_id, id, metadata.fields[id].name));
-		}
-	}
-	page.push_str(after_form);
-	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
-}
-
-/*
-fn plot_data_debug<T: InnerState>(id: Identity, state: Data<T>, req: &HttpRequest) -> HttpResponse {
-	let session_id = id.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
-	let sessions = state.inner_state().sessions.read().unwrap();
-	let session = sessions.get(&session_id).unwrap();
-
-	let before_form =include_str!("static_webpages/plot_A_debug.html");
-	let after_form = include_str!("static_webpages/plot_B.html");
-
-	let mut page = String::from(before_form);
-	let data = state.inner_state().data.read().unwrap();
-	for (dataset_id, authorized_fields) in session.timeseries_with_access.read().unwrap().iter() {
-		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
-		for field_id in authorized_fields{
-			let id = *field_id.as_ref() as usize;
-			page.push_str(&format!("<input type=\"checkbox\" value={},{} > {}<br>\n", dataset_id, id, metadata.fields[id].name));
-		}
-	}
-	page.push_str(after_form);
-	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
-}
-*/
-
-pub fn logout<T: InnerState>(id: Identity) -> HttpResponse {
-	id.forget();
-	HttpResponse::Found().finish()
-}
-
-pub fn login_page() -> HttpResponse {
-	let page = include_str!("static_webpages/login.html");
-	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
-}
-
-#[derive(Deserialize)]
-pub struct Logindata {
-	u: String,
-	p: String,
-}
-
-/// State and POST Params
-pub fn login_get_and_check<T: InnerState>(
-		id: Identity,
-		state: Data<T>,
-		req: HttpRequest,
-		params: Form<Logindata>) -> wResult<HttpResponse> {
-	
-	trace!("checking login");
-
-	//time function duration
-	let now = std::time::Instant::now();
-
-    //if login valid (check passwdb) load userinfo
-    let state = &mut state.inner_state();
-
-    if state.passw_db.verify_password(params.u.as_str().as_bytes(), params.p.as_str().as_bytes()).is_err(){
-		warn!("incorrect password");
-		return Ok(HttpResponse::build(http::StatusCode::UNAUTHORIZED)
-        .content_type("text/plain")
-        .body("incorrect password or username"));
-	} else { info!("user logged in");}
-	
-	//copy userinfo into new session
-	let userinfo = state.web_user_db.get_userdata(&params.u).unwrap();
-	//userinfo.last_login = Utc::now();
-	//passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
-	
-	let session = Session {
-		db_entry: userinfo,
-	};
-
-	//find free session_numb, set new session number and store new session
-	let session_id = state.free_session_ids.fetch_add(1, Ordering::Acquire);
-	let mut sessions = state.sessions.write().unwrap();
-	sessions.insert(session_id as u16, Arc::new(Mutex::new(session)));
-	
-	//sign and send session id cookie to user 
-	id.remember(session_id.to_string());
-	info!("remembering session");
-	
-	let end = std::time::Instant::now();
-	println!("{:?}", end-now);
-
-	Ok(HttpResponse::Found()
-	.header(http::header::LOCATION, req.path()["/login".len()..].to_owned())
-	.finish())
-}
-
-#[derive(Deserialize)]
-pub struct TelegramId {
-	id: String,
-}
-
-pub fn set_telegram_id_post<T: InnerState>(
-		id: Identity,
-		state: Data<T>,
-		params: Form<TelegramId>) -> wResult<HttpResponse> {
-	
-	let session_id = id.identity().unwrap().parse::<timeseries_interface::DatasetId>().unwrap();
-	let mut sessions = state.inner_state().sessions.write().unwrap();
-	let mut session = sessions.get_mut(&session_id).unwrap().lock().unwrap();
-
-	let user_id: i64 = params.id.parse().unwrap();
-	session.db_entry.telegram_user_id = Some(user_id.into());
-	let bot_userdata = BotUserInfo::from_timeseries_access(&session.db_entry.timeseries_with_access);
-	
-	state.inner_state().bot_user_db.set_userdata(user_id, bot_userdata).unwrap();
-	
-	let web_userdata = state.inner_state().web_user_db.get_userdata(&session.db_entry.username).unwrap();	
-	state.inner_state().web_user_db.set_userdata(web_userdata).unwrap();
-
-	Ok(HttpResponse::Ok().finish())
-}
-
-pub fn new_data_post<T: InnerState+'static>(state: Data<T>, body: Bytes)
-	 -> HttpResponse {
-	
-	let now = Utc::now();
-	let data = state.inner_state().data.clone();//clones pointer
-	let data_router_addr = state.inner_state().data_router_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
-
-	let mut data = data.write().unwrap();
-	match data.store_new_data(body, now) {
-		Ok((set_id, data_string)) => {
-			trace!("stored new data");
-			data_router_addr.do_send(data_router::NewData {
-				from_id: set_id,
-				line: data_string,
-				timestamp: now.timestamp()
-			});
-			HttpResponse::Ok().status(StatusCode::OK).finish() },
-		Err(_) => HttpResponse::Ok().status(StatusCode::FORBIDDEN).finish(),
-	}
-}
-
-/// do websocket handshake and start `MyWebSocket` actor
-pub fn data_router_ws_index<T: InnerState+'static>(
-	id: Identity,
-	state: Data<T>, 
-	req: HttpRequest,
-	stream: Payload,
-) -> wResult<HttpResponse> {
-
-	info!("websocket connected");
-	let session_id = id.identity().unwrap().parse::<u16>().unwrap();
-	let sessions = state.inner_state().sessions.read().unwrap();
-	let session = sessions.get(&session_id).unwrap();
-	
-	let session_clone = session.clone();//TODO security do we want clone here?
-	let ws_session_id = state.inner_state().free_session_ids.fetch_add(1, Ordering::Acquire);
-	
-	let ws_session: data_router_ws_client::WsSession = data_router_ws_client::WsSession {
-		http_session_id: session_id,
-		ws_session_id: ws_session_id  as u16,
-		selected_data: HashMap::new(),
-		timerange: data_router_ws_client::TimesRange::default(),
-		compression_enabled: true,
-		session: session_clone,
-		file_io_thread: None,
-
-		data_router_addr: state.inner_state().data_router_addr.clone(),
-		data: state.inner_state().data.clone(),
-	};
-
-	ws::start(
-		ws_session,
-		&req,
-		stream,
-	)
-}
-
-/// do websocket handshake and start `MyWebSocket` actor
-pub fn error_router_ws_index<T: InnerState+'static>(
-	id: Identity,
-	state: Data<T>, 
-	req: HttpRequest,
-	stream: Payload,
-) -> wResult<HttpResponse> {
-
-	trace!("websocket connected");
-	let session_id = id.identity().unwrap().parse::<u16>().unwrap();
-	let sessions = state.inner_state().sessions.read().unwrap();
-	let session = sessions.get(&session_id).unwrap();
-	
-	let session_clone = session.clone();//TODO security do we want clone here?
-	let ws_session_id = state.inner_state().free_session_ids.fetch_add(1, Ordering::Acquire);
-	
-	let ws_session: error_router_ws_client::WsSession = error_router_ws_client::WsSession {
-		http_session_id: session_id,
-		ws_session_id: ws_session_id  as u16,
-		session: session_clone,
-		router_addr: state.inner_state().error_router_addr.clone(),
-	};
-
-	ws::start(
-		ws_session,
-		&req,
-		stream,
-	)
-}
-
-//TODO customise
-pub fn new_error_post<T: InnerState+'static>(state: Data<T>, body: Bytes)
-	 -> HttpResponse {
-	let now = Utc::now();
-	let data = state.inner_state().data.clone();//clones pointer
-	let error_router_addr = state.inner_state().error_router_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
-
-	let mut data = data.write().unwrap();
-	match data.authenticate_error_packet(&body) {
-		Ok(dataset_id) => {
-			let error_code = body[10];
-			let field_ids = body.into_iter().skip(11).collect();
-			error_router_addr.do_send(error_router::NewError {
-				dataset_id,
-				field_ids,
-				error_code,
-				timestamp: now,
-			});
-			HttpResponse::Ok().status(StatusCode::OK).finish() 
-		},
-		Err(_) => HttpResponse::Ok().status(StatusCode::FORBIDDEN).finish(),
-	}
-}
-
-/*
-pub fn stop(handle: ServerHandle) {
-	let _ = handle
-		.send(server::StopServer { graceful: true })
-		.timeout(Duration::from_secs(5)); // <- Send `StopServer` message to server.
-}*/
-
-pub fn signal_newdata(handle: &DataRouterHandle, from_id: timeseries_interface::DatasetId, line: Vec<u8>, timestamp: i64) {
-	handle.do_send(data_router::NewData {
-		from_id,
-		line,
-		timestamp,
-	});
-	//.timeout(Duration::from_secs(5));
+   let web_handle = rx.recv().unwrap();
+   web_handle
 }

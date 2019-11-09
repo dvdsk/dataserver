@@ -3,7 +3,6 @@ use actix_web::http::{StatusCode};
 
 use reqwest;
 use log::{warn, info ,error};
-use serde::Deserialize;
 use serde_json;
 
 use telegram_bot::types::update::Update;
@@ -11,8 +10,8 @@ use telegram_bot::types::update::UpdateKind;
 use telegram_bot::types::message::MessageKind;
 use telegram_bot::types::refs::{ChatId, UserId};
 
-use crate::httpserver::{InnerState, DataRouterState};
-use crate::databases::{BotUserDatabase, BotUserInfo, UserDbError};
+use crate::data_store::data_router::DataRouterState;
+use crate::databases::{BotUserInfo, UserDbError};
 
 mod commands;
 use commands::{help, plotables, show, alias};
@@ -84,7 +83,7 @@ fn to_string_and_ids(update: Update) -> Result<(String, ChatId, UserId),Error>{
 	}
 }
 
-fn resolve_alias(possible_alias: &str, userinfo: &BotUserInfo, user_id: UserId) -> Result<Option<String>, Error> {
+fn resolve_alias(possible_alias: &str, userinfo: &BotUserInfo) -> Result<Option<String>, Error> {
 	if let Some(alias) = userinfo.aliases.get(possible_alias){
 		Ok(Some(alias.to_string()))
 	} else {
@@ -92,7 +91,7 @@ fn resolve_alias(possible_alias: &str, userinfo: &BotUserInfo, user_id: UserId) 
 	}
 }
 
-fn handle_command<T: InnerState>(mut text: String, chat_id: ChatId, user_id: UserId, state: &DataRouterState) -> Result<(), Error>{
+fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, state: &DataRouterState) -> Result<(), Error>{
 	let userinfo = state.bot_user_db.get_userdata(user_id)?;
 
 	loop {
@@ -117,7 +116,7 @@ fn handle_command<T: InnerState>(mut text: String, chat_id: ChatId, user_id: Use
 				break;
 			}
 			"/show" => {
-				show::send(chat_id, user_id, state, TOKEN, args, &userinfo)?;
+				show::send(chat_id, state, TOKEN, args, &userinfo)?;
 				break;
 			}
 			"/alias" => {
@@ -126,7 +125,7 @@ fn handle_command<T: InnerState>(mut text: String, chat_id: ChatId, user_id: Use
 			}
 			&_ => {}
 		}
-		if let Some(alias_text) = resolve_alias(command, &userinfo, user_id)?{
+		if let Some(alias_text) = resolve_alias(command, &userinfo)?{
 			text = alias_text; //FIXME //TODO allows loops in aliasses, thats fun right? (fix after fun)
 		} else {
 			warn!("no known command or alias: {:?}", command);
@@ -140,7 +139,7 @@ fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 	let error_message = match error {
 		#[cfg(feature = "plotting")]
 		Error::PlotError(error) => error.to_text(user_id),
-
+		Error::AliasError(error) => error.to_text(user_id),
 		Error::BotDatabaseError(error) => error.to_text(user_id),		
 		Error::ShowError(error) => error.to_text(user_id),
 		Error::UnknownAlias(alias_text) => 
@@ -155,7 +154,7 @@ fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 	}
 }
 
-pub fn handle_bot_message<T: InnerState+'static>(state: Data<T>, raw_update: Bytes)
+pub fn handle_webhook(state: Data<DataRouterState>, raw_update: Bytes)
 	 -> HttpResponse {
 	
 	//TODO make actix web deserialise bot messages to: 
@@ -166,7 +165,7 @@ pub fn handle_bot_message<T: InnerState+'static>(state: Data<T>, raw_update: Byt
 
 	let update: Update = serde_json::from_slice(&raw_update.to_vec()).unwrap();
 	if let Ok((text, chat_id, user_id)) = to_string_and_ids(update){
-		if let Err(error) = handle_command::<T>(text, chat_id, user_id, state.inner_state()){
+		if let Err(error) = handle_command(text, chat_id, user_id, &state.into_inner()){
 			handle_error(error, chat_id, user_id);
 		}
 	}

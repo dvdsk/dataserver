@@ -1,6 +1,8 @@
 use super::*;
+
+use fern::colors::{Color, ColoredLevelConfig};
 use byteorder::{NativeEndian, WriteBytesExt};
-use crate::httpserver::timeseries_interface::compression::encode;
+use crate::data_store::compression::encode;
 use std::f32;
 use chrono::{Duration, DateTime, TimeZone, NaiveDateTime, Utc};
 use bytes::Bytes;
@@ -78,7 +80,7 @@ fn check_server_security() {
 	//setup_debug_logging(2).unwrap();
 	//check if putting data works
 	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load("test").unwrap()));
-	let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("test/data")).unwrap()));
+	let data = Arc::new(RwLock::new(data_store::init(PathBuf::from("test/data")).unwrap()));
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 
 	println!("test!");
@@ -135,11 +137,11 @@ fn check_server_security() {
 }
 
 
-fn add_template_set(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<timeseries_interface::Data>>)
-	-> Result<timeseries_interface::DatasetId, ()>{
+fn add_template_set(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<data_store::Data>>)
+	-> Result<data_store::DatasetId, ()>{
 	let mut data = data.write().unwrap();
 	let file_name = String::from("template.yaml");
-	timeseries_interface::specifications::write_template().unwrap();
+	data_store::specifications::write_template().unwrap();
 	if let Ok(dataset_id) = data.add_set(file_name){
 		let username = String::from("test");
 
@@ -155,8 +157,8 @@ fn add_template_set(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLoc
 	}
 }
 
-fn add_test_set(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<timeseries_interface::Data>>)
-	-> Result<timeseries_interface::DatasetId, ()>{
+fn add_test_set(passw_db: & Arc<RwLock<PasswordDatabase>>, data: & Arc<RwLock<data_store::Data>>)
+	-> Result<data_store::DatasetId, ()>{
 	let mut data = data.write().unwrap();
 	let file_name = String::from("test.yaml");
 
@@ -182,7 +184,7 @@ fn insert_timecheck_set() {
 	setup_debug_logging(0).unwrap();
 	//check if putting data works
 	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load("test").unwrap()));
-	let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("test/data")).unwrap()));
+	let data = Arc::new(RwLock::new(data_store::init(PathBuf::from("test/data")).unwrap()));
 
 	let username = String::from("test");
 	let password = String::from("test");
@@ -246,7 +248,7 @@ fn insert_test_set() {
 	setup_debug_logging(0).unwrap();
 	//check if putting data works
 	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load("test").unwrap()));
-	let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("test/data")).unwrap()));
+	let data = Arc::new(RwLock::new(data_store::init(PathBuf::from("test/data")).unwrap()));
 
 	let username = String::from("test");
 	let password = String::from("test");
@@ -317,7 +319,7 @@ fn view_test_set() {
 	setup_debug_logging(0).unwrap();
 
 	let passw_db = Arc::new(RwLock::new(PasswordDatabase::load("test").unwrap()));
-	let data = Arc::new(RwLock::new(timeseries_interface::init(PathBuf::from("test/data")).unwrap()));
+	let data = Arc::new(RwLock::new(data_store::init(PathBuf::from("test/data")).unwrap()));
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 
 	let (_, web_handle) =

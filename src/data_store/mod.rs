@@ -10,7 +10,9 @@ use std::fs::File;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
+
 use chrono::prelude::*;
+use actix;
 
 use minimal_timeseries::{Timeseries, BoundResult, DecodeParams};
 use walkdir::{DirEntry, WalkDir};
@@ -19,14 +21,19 @@ use std::collections::HashMap;
 use telegram_bot::types::refs::UserId as TelegramUserId;
 
 use crate::databases::{WebUserInfo, WebUserDatabase, BotUserInfo, BotUserDatabase};
-use super::data_router_ws_client::SetSliceDecodeInfo;
+use crate::httpserver::data_router_ws_client::SetSliceDecodeInfo;
 use crate::error::DResult;
-use crate::httpserver::error_router::ErrorCode;
+use crate::data_store::error_router::ErrorCode;
 
 pub mod specifications;
 pub mod compression;
 pub mod read_to_array;
 pub mod read_to_packets;
+pub mod data_router;
+pub mod error_router;
+
+pub type DataRouterHandle = actix::Addr<data_router::DataRouter>;
+pub type ErrorRouterHandle = actix::Addr<error_router::ErrorRouter>;
 
 use std::f64;
 trait FloatIterExt {
@@ -460,7 +467,6 @@ impl Data {
 				warn!("error on data append: {:?}",error);
 				return Err(());
 			}
-			use crate::httpserver::timeseries_interface::compression::decode;
 
 			return Ok((dataset_id, data_string.split_off(10).to_vec() ))
 		} else {

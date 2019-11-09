@@ -3,12 +3,12 @@ pub const DESCRIPTION: &str = "sends the current value(s) of the requested plota
 
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
-use log::{error};
 
-use crate::httpserver::timeseries_interface::{DatasetId, FieldId};
 use telegram_bot::types::refs::{ChatId, UserId};
+
+use crate::data_store::{DatasetId, FieldId};
 use crate::databases::{BotUserInfo, UserDbError};
-use crate::httpserver::DataRouterState;
+use crate::data_store::data_router::DataRouterState;
 
 use super::super::send_text_reply;
 use super::super::Error as botError;
@@ -16,7 +16,6 @@ use super::super::Error as botError;
 #[derive(Debug)]
 pub enum Error{
     ArgumentParseError(String, std::num::ParseIntError),
-    ArgumentError(String),
     ArgumentSplitError(String),
     NoAccessToField(FieldId),
     NoAccessToDataSet(DatasetId),
@@ -28,8 +27,7 @@ pub enum Error{
 impl Error {
     pub fn to_text(self, user_id: UserId) -> String {
         match self {
-            Error::ArgumentError(arg) => format!("The argument {} could not be parsed", arg),
-            Error::ArgumentParseError(arg, err) => format!("The argument {} could not be parsed", arg),
+            Error::ArgumentParseError(arg, _err) => format!("The argument {} could not be parsed", arg),
             Error::ArgumentSplitError(arg) => format!("The argument {} could not be interperted, does it contain a \":\"?", arg),
             Error::NoAccessToField(field_id) => format!("You do not have access to field: {}", field_id),
             Error::NoAccessToDataSet(dataset_id) => format!("You do not have access to dataset: {}", dataset_id),
@@ -86,7 +84,7 @@ fn parse_args(args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo)
     Ok(dataset_fields)
 }
 
-pub fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
+pub fn send(chat_id: ChatId, state: &DataRouterState, token: &str, 
     args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo)
      -> Result<(), botError>{
 

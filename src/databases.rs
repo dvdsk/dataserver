@@ -1,4 +1,4 @@
-use crate::httpserver::timeseries_interface;
+use crate::data_store;
 use serde::{Deserialize,Serialize};
 
 use sled::{Db,Tree};
@@ -109,7 +109,7 @@ pub struct WebUserDatabase {
 type RecieveErrors = bool;
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct WebUserInfo {
-	pub timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
+	pub timeseries_with_access: HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>,
 	pub last_login: DateTime<Utc>, 
 	pub username: String,
 	pub telegram_user_id: Option<TelegramUserId>,
@@ -168,13 +168,13 @@ pub struct BotUserDatabase {
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct BotUserInfo {
-	pub timeseries_with_access: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>,
+	pub timeseries_with_access: HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>,
 	pub username: Option<String>,
 	pub aliases: HashMap<String, String>,
 }
 
 impl BotUserInfo {
-	pub fn from_timeseries_access(timeseries_with_access: &HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::Authorisation>>)
+	pub fn from_timeseries_access(timeseries_with_access: &HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>)
 	-> Self {
 		Self {
 			timeseries_with_access: timeseries_with_access.clone(),

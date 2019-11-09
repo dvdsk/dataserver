@@ -7,19 +7,16 @@ use futures::Poll;
 
 use log::{info};
 
-use super::InnerState;
-
 use actix_identity::RequestIdentity;
+
+use crate::data_store::data_router::DataRouterState;
 //example to mimic: https://github.com/actix/examples/blob/master/middleware/src/redirect.rs
 
 #[derive(Default)]
-pub struct CheckLogin<T>{
-    pub phantom: std::marker::PhantomData<T>,
-}
+pub struct CheckLogin{}
 
-impl<S, T, B> Transform<S> for CheckLogin<T>
+impl<S, B> Transform<S> for CheckLogin
 where
-    T: InnerState + 'static,
     S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
 {
@@ -27,24 +24,23 @@ where
     type Response = ServiceResponse<B>;
     type Error = Error;
     type InitError = ();
-    type Transform = CheckLoginMiddleware<S, T>;
+    type Transform = CheckLoginMiddleware<S>;
     type Future = FutureResult<Self::Transform, Self::InitError>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ok(CheckLoginMiddleware { service, phantom: std::marker::PhantomData })
+        ok(CheckLoginMiddleware { service })
     }
 }
 
-pub struct CheckLoginMiddleware<S,T> {
+pub struct CheckLoginMiddleware<S> {
     service: S,
-    phantom: std::marker::PhantomData<T>,
 }
 
 //TODO can we get data into the middleware? look at existing identityservice
-fn is_logged_in<T: InnerState>(state: &web::Data<T>, id: String) -> Result<(),()> {
+fn is_logged_in(state: &web::Data<DataRouterState>, id: String) -> Result<(),()> {
     if let Ok(id) = id.parse::<u16>(){
         //check if valid session (identity key contained in sessions)
-        if state.inner_state().sessions.read().unwrap().contains_key(&id){
+        if state.sessions.read().unwrap().contains_key(&id){
             Ok(())
         } else {
             Err(())
@@ -53,9 +49,8 @@ fn is_logged_in<T: InnerState>(state: &web::Data<T>, id: String) -> Result<(),()
 
 }
 
-impl<S, T, B> Service for CheckLoginMiddleware<S,T>
+impl<S, B> Service for CheckLoginMiddleware<S>
 where
-    T: InnerState + 'static,
     S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
 {
@@ -72,7 +67,7 @@ where
         // We only need to hook into the `start` for this middleware.
 
         if let Some(id) = req.get_identity() {
-            let data: web::Data<T> = req.app_data().unwrap();
+            let data: web::Data<DataRouterState> = req.app_data().unwrap();
             if is_logged_in(&data, id).is_ok() {
                 Either::A(self.service.call(req))
             } else {

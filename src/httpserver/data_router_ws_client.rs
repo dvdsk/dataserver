@@ -17,11 +17,11 @@ use chrono::DateTime;
 use chrono::TimeZone; // We need the trait in scope to use Utc::timestamp().
 use bytes::Bytes;
 
-use super::timeseries_interface;
-use super::data_router;
+use crate::data_store;
+use crate::data_store::data_router;
 use super::Session;
 
-use timeseries_interface::read_to_packets::{ReaderInfo, prepare_read_processing, read_into_packages};
+use data_store::read_to_packets::{ReaderInfo, prepare_read_processing, read_into_packages};
 
 pub struct TimesRange {
 	pub start: DateTime<Utc>,
@@ -42,16 +42,16 @@ pub struct WsSession {
 	/// unique session id
 	pub http_session_id: u16,
 	pub ws_session_id: u16,
-	//pub subscribed_fields: HashMap<timeseries_interface::DatasetId, Vec<SubbedField>>,
+	//pub subscribed_fields: HashMap<data_store::DatasetId, Vec<SubbedField>>,
 	pub compression_enabled: bool,
 	pub timerange: TimesRange,
 
-	pub selected_data: HashMap<timeseries_interface::DatasetId, Vec<timeseries_interface::FieldId>>,
+	pub selected_data: HashMap<data_store::DatasetId, Vec<data_store::FieldId>>,
 	pub session: Arc<Mutex<Session>>,
 	pub file_io_thread: Option<(thread::JoinHandle<()>, mpsc::Receiver<Vec<u8>>)>,
 	
 	pub data_router_addr: Addr<data_router::DataRouter>,
-	pub data: Arc<RwLock<timeseries_interface::Data>>,
+	pub data: Arc<RwLock<data_store::Data>>,
 
 }
 
@@ -65,10 +65,10 @@ struct Trace {
 
 #[derive(Serialize, Deserialize, Default)]
 struct DataSetClientMeta {
-	field_ids: Vec<timeseries_interface::FieldId>,
+	field_ids: Vec<data_store::FieldId>,
     traces_meta: Vec<Trace>,
     n_lines: u64,
-    dataset_id: timeseries_interface::DatasetId,
+    dataset_id: data_store::DatasetId,
 }
 //TODO check if static needed
 impl Actor for WsSession {
@@ -131,14 +131,14 @@ impl WsSession {
 		dbg!(self.timerange.start);
 		dbg!(self.timerange.stop);
 
-		if let Ok(set_id) = args[3].parse::<timeseries_interface::DatasetId>() {
+		if let Ok(set_id) = args[3].parse::<data_store::DatasetId>() {
 			//check if user has access to the requested dataset
 			if let Some(fields_with_access) = self.session.lock().unwrap().db_entry.timeseries_with_access.get(&set_id){
 				//parse requested fields
 				if let Ok(field_ids) = args[4..]
 					.iter()
-					.map(|arg| arg.parse::<timeseries_interface::FieldId>())
-					.collect::<Result<Vec<timeseries_interface::FieldId>,std::num::ParseIntError>>(){
+					.map(|arg| arg.parse::<data_store::FieldId>())
+					.collect::<Result<Vec<data_store::FieldId>,std::num::ParseIntError>>(){
 					
 					let mut subbed_fields = Vec::with_capacity(field_ids.len());
 					for field_id in field_ids { 
@@ -177,7 +177,7 @@ impl WsSession {
 	fn send_decode_info(&self, args: Vec<&str>, ctx: &mut ws::WebsocketContext<Self>) {
 		trace!("sending decode info to client");
 		if args.len() < 2 {warn!("can not send decode info without setid"); return; }
-		if let Ok(set_id) = args[1].parse::<timeseries_interface::DatasetId>() {
+		if let Ok(set_id) = args[1].parse::<data_store::DatasetId>() {
 			if let Some(fields) = self.selected_data.get(&set_id){
 				let data = self.data.read().unwrap();
 				let dataset = data.sets.get(&set_id).unwrap();

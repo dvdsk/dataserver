@@ -123,8 +123,11 @@ pub type ErrorRouterHandle = Addr<error_router::ErrorRouter>;
 // 	Ok(NamedFile::open(path)?)
 // }
 
-pub fn index(id: Identity) -> String {
-	format!("Hello {}", id.identity().unwrap_or_else(||"Anonymous".to_owned()))
+pub fn index() -> HttpResponse {
+	let index_page = std::include_str!("static_webpages/index.html");
+	HttpResponse::Ok()
+		.header(http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+		.body(index_page)
 }
 
 pub fn plot_data<T: InnerState>(id: Identity, state: Data<T>) -> HttpResponse {

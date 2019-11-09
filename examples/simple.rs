@@ -91,10 +91,11 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
 				.service(
 					web::scope("/")
 						.wrap(CheckLogin {phantom: std::marker::PhantomData::<DataRouterState>})
+						.service(web::resource("").to(index))
+						.service(web::resource("index").to(index))
 						.service(web::resource("ws/data/").to(data_router_ws_index::<DataRouterState>))
 						.service(web::resource("ws/error").to(error_router_ws_index::<DataRouterState>))
 						.service(web::resource("logout").to(logout::<DataRouterState>))
-						.service(web::resource("").to(index))
 						.service(web::resource("plot").to(plot_data::<DataRouterState>))
 						.service(web::resource("list_data").to(list_data::<DataRouterState>))
 						.service(web::resource("settings.html")

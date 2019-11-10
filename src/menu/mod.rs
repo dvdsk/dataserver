@@ -1,16 +1,26 @@
 use std::sync::{Arc, RwLock};
+use std::thread;
+use std::time::Duration;
 
-use dialoguer::{Select};
-use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
-use crate::data_store::Data;
+use dialoguer::{Select, Input, PasswordInput};
+use telegram_bot::types::refs::UserId as TelegramUserId;
 
-fn list_users(){
+use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase, WebUserInfo, BotUserInfo};
+use crate::data_store::{Data, Authorisation, DatasetId, FieldId};
+use crate::error::DataserverError as Error;
+
+mod user;
+
+fn main_menu() -> usize {
     Select::new()
         .paged(true)
-        .item("cancel")
-        .items(&["test1", "test2","test1", "test2","test1", "test2"])
+        .item("shutdown")
+        .item("modify/remove users")
+        .item("modify/remove datasets")
+        .item("add user")
+        .item("add dataset")
         .default(0)
-        .interact();
+        .interact().unwrap()
 }
 
 pub fn command_line_interface(data: Arc<RwLock<Data>>, 
@@ -18,7 +28,16 @@ pub fn command_line_interface(data: Arc<RwLock<Data>>,
                           mut web_user_db: WebUserDatabase,
                           mut bot_user_db: BotUserDatabase){
 
-    list_users();
+    loop {
+        match main_menu(){
+            0 => break,
+            1 => user::menu(&mut web_user_db, &mut bot_user_db, 
+                            &mut passw_db, &data),
+
+            _ => panic!(),
+
+        }
+    }
 }
 
 // fn command_line_interface(data: Arc<RwLock<data_store::Data>>, 

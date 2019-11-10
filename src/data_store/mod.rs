@@ -53,7 +53,7 @@ impl<T> FloatIterExt for T where T: Iterator<Item=f64> {
 pub type FieldId = u8;
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Field<T> {
-	id: FieldId,//check if we can remove this
+	pub id: FieldId,//check if we can remove this
 	pub name: String,
 	
 	pub offset: u8, //bits

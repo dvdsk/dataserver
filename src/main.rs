@@ -85,10 +85,11 @@ fn main() {
         "keys/intermediate.cert", 
         data_router_state.clone(),
 	);
-    
     bot::set_webhook(config::DOMAIN, config::TOKEN, config::PORT).unwrap();
 	
+
 	menu::command_line_interface(data, passw_db, web_user_db, bot_user_db);
-	println!("shutting down");
+	
+	println!("shutting down, goodby!");
 	web_handle.stop(true);
 }

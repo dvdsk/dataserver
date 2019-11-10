@@ -179,8 +179,3 @@ pub fn generate_and_sign_keys<T: AsRef<Path>>(
 		.unwrap();
 	Ok(())
 }
-
-//#[test]
-//pub fn netflix_test() {
-	//netflix(Path::new("tests/ee.der"), Path::new("tests/inter.der"));
-//}

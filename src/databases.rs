@@ -13,6 +13,8 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use telegram_bot::types::refs::UserId as TelegramUserId;
 
+use crate::error::DataserverError;
+
 static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
 const PBKDF2_ITERATIONS: NonZeroU32 = unsafe {NonZeroU32::new_unchecked(100_000)};
@@ -49,7 +51,6 @@ impl From<bincode::Error> for LoadDbError {
     }
 }
 
-
 impl PasswordDatabase {
 	pub fn from_db(db: &Db) -> Result<Self,sled::Error> {
 		Ok(Self { 
@@ -65,6 +66,11 @@ impl PasswordDatabase {
 		
 		self.storage.set(username, &credential)?;
 		self.storage.flush()?;
+		Ok(())
+	}
+
+	pub fn remove_user(&self, username: &[u8]) -> Result<(), DataserverError> {
+		self.storage.del(username)?;
 		Ok(())
 	}
 
@@ -159,6 +165,11 @@ impl WebUserDatabase {
 		self.storage.flush()?;
 		Ok(())
 	}
+
+	pub fn remove_user<T: AsRef<[u8]>>(&self, username: T) -> Result<(), UserDbError> {
+		self.storage.del(username)?;
+		Ok(())
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -207,6 +218,13 @@ impl BotUserDatabase {
 		let user_data =	bincode::serialize(&user_info)?;
 		self.storage.set(user_id.as_bytes(),user_data)?;
 		self.storage.flush()?;
+		Ok(())
+	}
+
+	pub fn remove_user<U: Into<TelegramUserId>>(&mut self, user_id: U)
+	-> Result<(), UserDbError> {
+		let user_id = &user_id.into().to_string();
+		self.storage.del(user_id.as_bytes())?;
 		Ok(())
 	}
 }

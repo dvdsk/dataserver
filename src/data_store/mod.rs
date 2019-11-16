@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
-use log::{warn, info, debug, trace};
+use log::{warn, info, debug, trace, error};
 
-use byteorder::{ByteOrder, LittleEndian, NativeEndian, NetworkEndian, WriteBytesExt};
+use byteorder::{ByteOrder, LittleEndian, NetworkEndian, WriteBytesExt};
 use bytes::Bytes;
 use smallvec::SmallVec;
 
@@ -131,6 +131,7 @@ pub struct ReadState {
 }
 
 impl DataSet {
+
 	pub fn get_decode_info(&self, allowed_fields: &Vec<FieldId>) -> SetSliceDecodeInfo {
 		let mut offset_in_dataset = SmallVec::<[u8; 8]>::new();
 		let mut lengths = SmallVec::<[u8; 8]>::new();
@@ -295,7 +296,7 @@ pub fn load_data(data: &mut HashMap<DatasetId,DataSet>, datafile_path: &Path, da
 
 impl Data {
 	pub fn add_set<T: AsRef<Path>>(&mut self, spec_path: T) -> io::Result<DatasetId>{	
-		dbg!(spec_path.as_ref());
+
 		let f = fs::OpenOptions::new().read(true).write(false).create(false).open(spec_path)?;
 		if let Ok(metadata) = serde_yaml::from_reader::<File, specifications::MetaDataSpec>(f) {
 			let metadata: MetaData = metadata.into();
@@ -352,9 +353,9 @@ impl Data {
 			return Err(());
 		}
 
-		let dataset_id = NativeEndian::read_u16(&data_string[..2]);
-		let key = NativeEndian::read_u64(&data_string[2..10]);
-		
+		let dataset_id = LittleEndian::read_u16(&data_string[..2]);
+		let key = LittleEndian::read_u64(&data_string[2..10]);
+
 		if let Some(set) = self.sets.get_mut(&dataset_id){
 			if key != set.metadata.key { 
 				Err(()) 
@@ -372,10 +373,14 @@ impl Data {
 			warn!("data_string size (={}) to small for key, datasetid and any data (min 11 bytes)", data_string.len());
 			return Err(());
 		}
-		
-		let dataset_id = NativeEndian::read_u16(&data_string[..2]);
-		debug!("datasetid array: {:?}", &data_string[..2]);
-		let key = NativeEndian::read_u64(&data_string[2..10]);
+
+		let dataset_id = LittleEndian::read_u16(&data_string[..2]);
+		let key = LittleEndian::read_u64(&data_string[2..10]);
+
+		//dbg!(data_string.clone().to_vec());
+		//dbg!(dataset_id);
+		//dbg!(key);
+
 		if let Some(set) = self.sets.get_mut(&dataset_id){
 			if data_string.len() != set.metadata.fieldsum() as usize +10  {
 				warn!("datastring has invalid length ({}) for node (id: {}), should have length: {}", data_string.len(), dataset_id, set.metadata.fieldsum()+10);

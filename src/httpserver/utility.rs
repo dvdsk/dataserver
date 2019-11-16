@@ -18,7 +18,6 @@ pub fn make_tls_config<P: AsRef<Path>+std::fmt::Display>(cert_path: P, key_path:
     intermediate_cert_path: P) 
 -> rustls::ServerConfig{
 
-	dbg!();
 	let mut tls_config = ServerConfig::new(NoClientAuth::new());
 	let cert_file = &mut BufReader::new(File::open(&cert_path)
 		.expect(&format!("could not open certificate file: {}", cert_path)));

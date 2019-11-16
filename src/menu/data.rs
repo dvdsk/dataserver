@@ -48,7 +48,7 @@ pub fn add_set(data: &Arc<RwLock<Data>>) {
                     .with_prompt("Enter path to specification")
                     .interact()
                     .unwrap(),
-            _ => break paths.remove(list_numb-2),
+            _ => break paths.remove(list_numb-3),
         }
     };
 
@@ -92,18 +92,20 @@ fn modify_set(set_id: DatasetId, user_db: &mut WebUserDatabase,
         .get(&set_id).unwrap()
         .metadata.clone();
     
-    println!("name: {:?}\ndescription: {:?}\nsecret key: {:?}", 
+    println!("name: {:?}\ndescription: {:?}\nsecret key: {:?}\nset id:{:?}", 
         metadata.name, 
         metadata.description,
-        metadata.key);
+        metadata.key,
+        set_id);
     print!("fields: ");
     metadata.fields.iter().for_each(|field| print!("{}: {}, ", field.id, field.name));
-    println!("");
-
+    println!("\n");
 
     let list_numb = Select::new()
         .paged(true)
         .item("back")
+        .item("change secret key")
+        .item("change set id")
         .item("archive dataset")
         .item("export dataset")
         .default(0)
@@ -111,11 +113,15 @@ fn modify_set(set_id: DatasetId, user_db: &mut WebUserDatabase,
     
     match list_numb {
         0 => return,
-        1 => archive(set_id, user_db, bot_db, data),
-        2 => export(set_id, data),
+        1 => unimplemented!(),
+        2 => unimplemented!(),
+        3 => archive(set_id, user_db, bot_db, data),
+        4 => export(set_id, data),
         _ => unreachable!(),
     }
 }
+
+
 
 fn export(set_id: DatasetId, data: &Arc<RwLock<Data>>){
     //let (x_shared, y_datas) = read_into_arrays(data, reader_info);

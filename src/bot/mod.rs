@@ -159,8 +159,6 @@ pub fn handle_webhook(state: Data<DataRouterState>, raw_update: Bytes)
 	
 	//TODO make actix web deserialise bot messages to: 
 	//"telegram_bot::types::update::Update", then we can handle upon that object
-
-    dbg!("got telegrambot message");
 	//FIXME TODO
 
 	let update: Update = serde_json::from_slice(&raw_update.to_vec()).unwrap();

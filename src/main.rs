@@ -20,6 +20,7 @@ use databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
 
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
+use std::io::{stdin, Read};
 
 use structopt::StructOpt;
 
@@ -28,7 +29,9 @@ use structopt::StructOpt;
 #[structopt(name = "dataserver")]
 struct Opt {
     #[structopt(short, long)]
-    create_new_certificate: bool,
+	create_new_certificate: bool,
+	#[structopt(short, long)]
+	no_menu: bool,
 }
 
 fn main() {
@@ -86,9 +89,13 @@ fn main() {
 	);
     bot::set_webhook(config::DOMAIN, config::TOKEN, config::PORT).unwrap();
 	
+	if !opt.no_menu {
+		menu::command_line_interface(data, passw_db, web_user_db, bot_user_db);
+	} else {
+		println!("press enter to stop");
+		std::io::stdin().read_exact(&mut [0]).unwrap();
+	}
 
-	menu::command_line_interface(data, passw_db, web_user_db, bot_user_db);
-	
 	println!("shutting down, goodby!");
 	web_handle.stop(true);
 }

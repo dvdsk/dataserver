@@ -263,22 +263,30 @@ fn select_fields(set_id: DatasetId, data: &Arc<RwLock<Data>>)
         .items(&field_list.0)
         .interact().unwrap();
     
-    let authorized_fields = list_numbs.iter().map(|index| {
+    let mut authorized_fields: Vec<Authorisation> = list_numbs.iter().map(|index| {
         let field_id = field_list.1[*index];
         Authorisation::Owner(field_id)
     }).collect();
 
+    //remove
     let mut counter = 0;
     list_numbs.iter().for_each(|list_numb| {
-        field_list.0.remove(list_numb+counter);
+        field_list.0.remove(list_numb-counter);
         counter+=1;
     });
 
-    let list_numbs = Checkboxes::new()
-        .with_prompt("select fields to add as reader")
-        .paged(true)
-        .items(&field_list.0)
-        .interact().unwrap();
+    if !field_list.0.is_empty() {
+        let list_numbs = Checkboxes::new()
+            .with_prompt("select fields to add as reader")
+            .paged(true)
+            .items(&field_list.0)
+            .interact().unwrap();
+
+    list_numbs.iter().map(|index| {
+        let field_id = field_list.1[*index];
+        Authorisation::Reader(field_id)
+    }).for_each(|auth| authorized_fields.push(auth));
+    }
 
     authorized_fields
 }

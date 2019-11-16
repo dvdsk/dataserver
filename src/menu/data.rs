@@ -60,8 +60,46 @@ pub fn add_set(data: &Arc<RwLock<Data>>) {
     thread::sleep(Duration::from_secs(2))
 }
 
-pub fn modify_set(user_db: &mut WebUserDatabase, bot_db: &mut BotUserDatabase, 
+pub fn choose_dataset(user_db: &mut WebUserDatabase, bot_db: &mut BotUserDatabase, 
     data: &Arc<RwLock<Data>>) {
+    
+    let dataset_list: (Vec<String>, Vec<DatasetId>) = data.read()
+        .unwrap().sets
+        .iter()
+        .map(|(id, dataset)| 
+            (format!("{}: {}", id,dataset.metadata.name), id) 
+        ).unzip();
+
+    let list_numb = Select::new()
+        .paged(true)
+        .item("back")
+        .items(&dataset_list.0)
+        .default(0)
+        .interact().unwrap();
+    
+    if list_numb == 0 {return;}        
+
+    let index = list_numb-1;
+    let set_id = dataset_list.1[index as usize];
+    modify_set(set_id, user_db, bot_db, data);
+}
+
+fn modify_set(set_id: DatasetId, user_db: &mut WebUserDatabase, 
+    bot_db: &mut BotUserDatabase, data: &Arc<RwLock<Data>>) {
+
+    let metadata = data.read()
+        .unwrap().sets
+        .get(&set_id).unwrap()
+        .metadata.clone();
+    
+    println!("name: {:?}\ndescription: {:?}\nsecret key: {:?}", 
+        metadata.name, 
+        metadata.description,
+        metadata.key);
+    print!("fields: ");
+    metadata.fields.iter().for_each(|field| print!("{}: {}, ", field.id, field.name));
+    println!("");
+
 
     let list_numb = Select::new()
         .paged(true)
@@ -73,30 +111,15 @@ pub fn modify_set(user_db: &mut WebUserDatabase, bot_db: &mut BotUserDatabase,
     
     match list_numb {
         0 => return,
-        1 => archive_menu(user_db, bot_db, data),
-        2 => export_menu(user_db, bot_db, data),
+        1 => archive(set_id, user_db, bot_db, data),
+        2 => export(set_id, data),
         _ => unreachable!(),
     }
 }
 
-fn export_menu(user_db: &mut WebUserDatabase, 
-    bot_db: &mut BotUserDatabase, data: &Arc<RwLock<Data>>){
-        
-    if let Some(set_id) = choose_dataset(data, "export"){
-        archive(set_id, user_db, bot_db, data);
-    }
-}
-
-fn archive_menu(user_db: &mut WebUserDatabase, 
-    bot_db: &mut BotUserDatabase, data: &Arc<RwLock<Data>>){
-    
-    if let Some(set_id) = choose_dataset(data, "archive"){
-        archive(set_id, user_db, bot_db, data);
-    }
-}
-
-fn export(data: &Arc<RwLock<Data>>){
+fn export(set_id: DatasetId, data: &Arc<RwLock<Data>>){
     //let (x_shared, y_datas) = read_into_arrays(data, reader_info);
+    unimplemented!();
 }
 
 fn archive(set_id: DatasetId, user_db: &mut WebUserDatabase, 
@@ -145,25 +168,4 @@ fn archive(set_id: DatasetId, user_db: &mut WebUserDatabase,
             error!("could not move file {:?} to {:?}", org_location, new_location);
         };
     }
-}
-
-fn choose_dataset(data: &Arc<RwLock<Data>>, action: &str) -> Option<DatasetId> {
-    let dataset_list: (Vec<String>, Vec<DatasetId>) = data.read()
-        .unwrap().sets
-        .iter()
-        .map(|(id, dataset)| 
-            (format!("{}: {}: {}",action, id,dataset.metadata.name), id) 
-        ).unzip();
-
-    let list_numb = Select::new()
-        .paged(true)
-        .item("back")
-        .items(&dataset_list.0)
-        .default(0)
-        .interact().unwrap();
-    
-    if list_numb == 0 {return None;}        
-
-    let index = list_numb-1;
-    Some(dataset_list.1[index as usize])
 }

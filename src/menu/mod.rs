@@ -10,13 +10,14 @@ use crate::data_store::{Data, Authorisation, DatasetId, FieldId};
 use crate::error::DataserverError as Error;
 
 mod user;
+mod data;
 
 fn main_menu() -> usize {
     Select::new()
         .paged(true)
         .item("shutdown")
         .item("modify/remove users")
-        .item("modify/remove datasets")
+        .item("export/archive datasets")
         .item("add user")
         .item("add dataset")
         .default(0)
@@ -33,7 +34,9 @@ pub fn command_line_interface(data: Arc<RwLock<Data>>,
             0 => break,
             1 => user::menu(&mut web_user_db, &mut bot_user_db, 
                             &mut passw_db, &data),
-
+            2 => data::modify_set(&mut web_user_db, &mut bot_user_db, &data),
+            3 => user::add_user(&mut web_user_db, &mut passw_db),
+            4 => data::add_set(&data),
             _ => panic!(),
 
         }

@@ -1,12 +1,14 @@
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
+use std::collections::{HashSet, HashMap};
+use chrono::Utc;
 
 use dialoguer::{Select, Input, PasswordInput, Checkboxes};
 use telegram_bot::types::refs::UserId as TelegramUserId;
 
 use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase, WebUserInfo, BotUserInfo};
-use crate::data_store::{Data, Authorisation, DatasetId, FieldId};
+use crate::data_store::{Data, Authorisation, DatasetId, FieldId, MetaData};
 use crate::error::DataserverError as Error;
 
 pub fn menu(user_db: &mut WebUserDatabase, bot_db: &mut BotUserDatabase, 
@@ -70,6 +72,41 @@ fn change_password(username: &str, passw_db: &mut PasswordDatabase) -> Result<()
     println!("updating password please wait");
     passw_db.set_password(username.as_bytes(), new_password.as_bytes())?;
     Ok(())
+}
+
+pub fn add_user(user_db: &mut WebUserDatabase, passw_db: &mut PasswordDatabase){
+    let username = Input::<String>::new()
+    .with_prompt("Enter username (leave empty to abort)")
+    .interact()
+    .unwrap();
+
+    if username.len() == 0 {
+        println!("name must be at least 1 character");
+        thread::sleep(Duration::from_secs(2));
+        return;
+    } 
+    
+    if user_db.storage.contains_key(&username).unwrap() {
+        println!("cant use \"{}\" as name, already in use", username);    
+        thread::sleep(Duration::from_secs(1));
+        return;  
+    }
+
+	let user_data = WebUserInfo{
+		timeseries_with_access: HashMap::new(),
+		last_login: Utc::now(),
+		username: username.clone(),
+		telegram_user_id: None,
+	};
+
+    if let Ok(password) = PasswordInput::new().with_prompt("Enter password")
+        .with_confirmation("Confirm password", "Passwords mismatching")
+        .interact(){
+
+        println!("setting password please wait");
+        passw_db.set_password(username.as_bytes(), password.as_bytes()).unwrap();
+        user_db.set_userdata(user_data).unwrap();       
+    }
 }
 
 fn remove_user(userinfo: WebUserInfo, user_db: &WebUserDatabase, 
@@ -152,10 +189,12 @@ fn set_telegram_id(userinfo: &mut WebUserInfo) {
 }
 
 fn change_dataset_access(userinfo: &mut WebUserInfo, data: &Arc<RwLock<Data>>) {
+    let data_unlocked = data.read().unwrap();
     let dataset_list: (Vec<String>, Vec<DatasetId>) 
     = userinfo.timeseries_with_access.iter()
-        .map(|(id, _authorizations)| 
-           (format!("modify access to: dataset {}", id), id))
+        .map(|(id, _authorizations)| {
+            let name = &data_unlocked.sets.get(id).unwrap().metadata.name;
+            (format!("modify access to: {}", name), id)})
         .unzip();
 
     let list_numb = Select::new()
@@ -171,16 +210,17 @@ fn change_dataset_access(userinfo: &mut WebUserInfo, data: &Arc<RwLock<Data>>) {
         1 => add_dataset(data, userinfo),
         _ => {
             let set_id = dataset_list.1[list_numb - 2]; 
-            modify_dataset_fields(set_id, userinfo);
+            modify_dataset_fields(set_id, userinfo, data);
         }
     }  
 }
 
-
 fn add_dataset(data: &Arc<RwLock<Data>>, userinfo: &mut WebUserInfo){
     let dataset_list: (Vec<String>, Vec<DatasetId>) = data.read()
         .unwrap().sets
-        .iter().map(|(id, dataset)| 
+        .iter()
+        .filter(|(id, _)| !userinfo.timeseries_with_access.contains_key(&id))
+        .map(|(id, dataset)| 
             (format!("{}: {}",id,dataset.metadata.name), id) 
         ).unzip();
     
@@ -210,54 +250,114 @@ fn add_dataset(data: &Arc<RwLock<Data>>, userinfo: &mut WebUserInfo){
 
 fn select_fields(set_id: DatasetId, data: &Arc<RwLock<Data>>)
     -> Vec<Authorisation> {
-    let field_list: (Vec<String>, Vec<FieldId>) = data.read()
+    let mut field_list: (Vec<String>, Vec<FieldId>) = data.read()
         .unwrap().sets
         .get(&set_id).unwrap()
         .metadata.fields.iter()
         .map(|field| (format!("{}", field.name),field.id))
         .unzip();
 
-    let list_numb = Checkboxes::new()
+    let list_numbs = Checkboxes::new()
         .with_prompt("select fields to add as owner")
         .paged(true)
         .items(&field_list.0)
         .interact().unwrap();
     
-    let authorized_fields = list_numb.iter().map(|index| {
+    let authorized_fields = list_numbs.iter().map(|index| {
         let field_id = field_list.1[*index];
         Authorisation::Owner(field_id)
     }).collect();
 
+    let mut counter = 0;
+    list_numbs.iter().for_each(|list_numb| {
+        field_list.0.remove(list_numb+counter);
+        counter+=1;
+    });
+
+    let list_numbs = Checkboxes::new()
+        .with_prompt("select fields to add as reader")
+        .paged(true)
+        .items(&field_list.0)
+        .interact().unwrap();
+
     authorized_fields
 }
 
-fn modify_dataset_fields(set_id: DatasetId, userinfo: &mut WebUserInfo){
-    let fields = userinfo.timeseries_with_access.get_mut(&set_id);
-    if fields.is_none() {return; }
-    let fields = fields.unwrap();
+fn make_field_actions(metadata: &MetaData, accessible_fields: &HashSet<Authorisation>)
+-> (Vec<String>, Vec<Authorisation>,Vec<String>, Vec<FieldId>) {
+    let mut removable = Vec::with_capacity(metadata.fields.len());
+    let mut removable_ids = Vec::with_capacity(metadata.fields.len());
 
-    while fields.len() > 0 {
-        let field_list: Vec<String> = fields.iter()
-            .map(|field| {
-                match field {
-                    Authorisation::Owner(id) =>
-                        format!("remove owned field: {}", id),
-                    Authorisation::Reader(id) =>
-                        format!("remove reading field: {}",id),
-                }
-            }).collect();
+    let mut addable = Vec::with_capacity(metadata.fields.len());
+    let mut addable_ids = Vec::with_capacity(metadata.fields.len());
 
+    for field in &metadata.fields {
+        if accessible_fields.contains(&Authorisation::Owner(field.id)) {
+            removable.push(format!("remove owned field: {}", field.name));
+            removable_ids.push(Authorisation::Owner(field.id));
+        } else if accessible_fields.contains(&Authorisation::Reader(field.id)) {
+            removable.push(format!("remove reader field: {}", field.name));
+            removable_ids.push(Authorisation::Reader(field.id));
+        } else {
+            addable.push(format!("add field: {}", field.name));
+            addable_ids.push(field.id);
+        }
+    }
+
+    (removable, removable_ids, addable, addable_ids)
+}
+
+fn modify_dataset_fields(set_id: DatasetId, userinfo: &mut WebUserInfo, data: &Arc<RwLock<Data>>){
+    let fields_with_access = userinfo.timeseries_with_access.get_mut(&set_id);
+    if fields_with_access.is_none() {return; }
+    let fields_with_access = fields_with_access.unwrap();
+    let mut accessible_fields: HashSet<Authorisation> = fields_with_access
+        .drain(..)
+        .collect();
+
+    let metadata = &data.read()
+        .unwrap().sets
+        .get(&set_id).unwrap()
+        .metadata.clone();
+
+    while accessible_fields.len() > 0 {
+        let (removable, removable_access, addable, addable_ids) = make_field_actions(metadata, &accessible_fields);
         let list_numb = Select::new()
             .paged(true)
             .item("back")
-            .items(&field_list)
+            .items(&removable)
+            .items(&addable)
             .default(0)
             .interact().unwrap();
 
-        if list_numb == 0 {return;}
+        if list_numb == 0 {
+            accessible_fields.drain()
+                .for_each(|auth| fields_with_access.push(auth));
+            return;
+        }
         
-        let index = list_numb -1;
-        fields.remove(index);
+        if list_numb-1 < removable.len() {
+            dbg!(list_numb);
+            let access = &removable_access[list_numb-1 as usize];
+            accessible_fields.take(access);
+        } else {
+            let id = addable_ids[list_numb-1-removable.len() as usize];
+            let list_numb = Select::new()
+            .item("back")
+            .item("add as reader")
+            .item("add as owner")
+            .default(0)
+            .interact().unwrap();
+
+            match list_numb {
+                0 => continue,
+                1 => accessible_fields.insert(Authorisation::Reader(id)),
+                2 => accessible_fields.insert(Authorisation::Owner(id)),
+                _ => unreachable!(),
+            };
+        }
     }
+
+    //no more fields with access left remove dataset from acessible sets
     userinfo.timeseries_with_access.remove(&set_id);
 }

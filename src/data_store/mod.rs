@@ -15,7 +15,6 @@ use chrono::prelude::*;
 use actix;
 
 use minimal_timeseries::{Timeseries, BoundResult, DecodeParams};
-use walkdir::{DirEntry, WalkDir};
 use std::collections::HashMap;
 
 use telegram_bot::types::refs::UserId as TelegramUserId;
@@ -202,7 +201,7 @@ impl DataSet {
 }
 
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, Eq, Hash)]
 pub enum Authorisation{
 	Owner(FieldId),
 	Reader(FieldId),
@@ -227,7 +226,7 @@ impl std::convert::From<&Authorisation> for FieldId {
 }
 
 pub struct Data {//TODO make multithreaded
-	dir: PathBuf,
+	pub dir: PathBuf,
 	free_dataset_id: u16, //replace with atomics
 	pub sets: HashMap<DatasetId, DataSet>, //rwlocked hasmap + rwlocked Dataset
 }
@@ -242,7 +241,7 @@ pub fn init<P: Into<PathBuf>>(dir: P) -> Result<Data, io::Error> {
 	let mut free_dataset_id: DatasetId = 1; //zero is reserved
 	let mut sets: HashMap<DatasetId, DataSet> = HashMap::new();
 
-	fn is_datafile(entry: &DirEntry) -> bool {
+	fn is_datafile(entry: &fs::DirEntry) -> bool {
 		//println!("hellloooaaa: {:?}",entry.unwrap().path());
 		entry
 			.path()
@@ -250,18 +249,18 @@ pub fn init<P: Into<PathBuf>>(dir: P) -> Result<Data, io::Error> {
 			.map(|s| s.ends_with(".dat"))
 			.unwrap_or(false)
 	}
-	for entry in WalkDir::new(&dir).into_iter().filter_map(Result::ok) {
+	for entry in fs::read_dir(&dir).unwrap().filter_map(Result::ok) {
 		if is_datafile(&entry) {
 			let path = entry.path();
 			if let Ok(data_id) = path
-			.file_stem()
-			.unwrap()
-			.to_str()
-			.unwrap()
-			.parse::<DatasetId>()
+				.file_stem()
+				.unwrap()
+				.to_str()
+				.unwrap()
+				.parse::<DatasetId>()
 			{
 				if data_id+1 > free_dataset_id {free_dataset_id = data_id+1; }
-				load_data(&mut sets, path, data_id); 
+				load_data(&mut sets, &path, data_id); 
 			}
 		}
 	}
@@ -295,16 +294,11 @@ pub fn load_data(data: &mut HashMap<DatasetId,DataSet>, datafile_path: &Path, da
 }
 
 impl Data {
-	pub fn add_set(&mut self, file_name: String) -> io::Result<DatasetId>{
-		//create template file if it does not exist
-		let mut metadata_path = PathBuf::from("specs");
-		metadata_path.push(file_name);
-		metadata_path.set_extension("yaml");
-		
-		let f = fs::OpenOptions::new().read(true).write(false).create(false).open(metadata_path)?;
+	pub fn add_set<T: AsRef<Path>>(&mut self, spec_path: T) -> io::Result<DatasetId>{	
+		dbg!(spec_path.as_ref());
+		let f = fs::OpenOptions::new().read(true).write(false).create(false).open(spec_path)?;
 		if let Ok(metadata) = serde_yaml::from_reader::<File, specifications::MetaDataSpec>(f) {
 			let metadata: MetaData = metadata.into();
-			let name = metadata.name.clone();
 			let line_size: u16 = metadata.fieldsum();
 			let dataset_id = self.free_dataset_id;
 			self.free_dataset_id += 1;
@@ -320,13 +314,14 @@ impl Data {
 			serde_yaml::to_writer(f, &set.metadata).unwrap();
 			
 			self.sets.insert(dataset_id, set);
-			info!("added timeseries: {} under id: {}",name, dataset_id);
+			info!("added timeseries under id: {}", dataset_id);
 			Ok(dataset_id)
 		} else {
 			warn!("could not parse specification");
 			Err(io::Error::new(io::ErrorKind::InvalidData, "could not parse specification"))
 		}
 	}
+
 	pub fn add_specific_set(&mut self, spec: specifications::MetaDataSpec) -> io::Result<DatasetId>{
 		let metadata: MetaData = spec.into();
 		let name = metadata.name.clone();
@@ -348,71 +343,9 @@ impl Data {
 		info!("added timeseries: {} under id: {}",name, dataset_id);
 		Ok(dataset_id)
 	}
-	pub fn remove_set(&mut self, id: DatasetId) -> io::Result<()>{
-
-		if self.sets.remove(&id).is_none(){
-			warn!("set with id: {}, can not be removed as does not exist",id);
-			return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "dataset does not exist!"));
-		}
-
-		let mut datafile_path = self.dir.clone();
-		datafile_path.push(id.to_string());
-
-		datafile_path.set_extension("yaml");
-		fs::remove_file(&datafile_path)?;
-
-		datafile_path.set_extension("h");
-		fs::remove_file(&datafile_path)?;
-
-		datafile_path.set_extension("dat");
-		fs::remove_file(&datafile_path)?;
-
-		Ok(())
-	}
-}
-
-impl WebUserDatabase {
-	pub fn add_owner(&mut self, id: DatasetId, fields: &[Field<f32>], mut userinfo: WebUserInfo)
-	-> DResult<()> {
-		let auth_fields: Vec<Authorisation> = fields.iter().map(|field| Authorisation::Owner(field.id)).collect();
-		userinfo.timeseries_with_access.insert(id, auth_fields);
-		
-		self.set_userdata(userinfo )?;
-		Ok(())
-	}
-	pub fn add_owner_from_field_id(&mut self, id: DatasetId, fields: &[FieldId], mut userinfo: WebUserInfo)
-	-> DResult<()> {
-		let auth_fields: Vec<Authorisation> = fields.iter().map(|fieldid| Authorisation::Owner(*fieldid)).collect();
-		userinfo.timeseries_with_access.insert(id, auth_fields);
-
-		let username = userinfo.username.clone();
-		self.set_userdata(userinfo)?;
-		Ok(())
-	}
-}
-
-impl BotUserDatabase {
-	pub fn add_owner(&mut self, id: DatasetId, fields: &[Field<f32>], mut userinfo: BotUserInfo, user_id: TelegramUserId)
-	-> DResult<()> {
-		let auth_fields: Vec<Authorisation> = fields.iter().map(|field| Authorisation::Owner(field.id)).collect();
-		userinfo.timeseries_with_access.insert(id, auth_fields);
-		
-		self.set_userdata(user_id, userinfo )?;
-		Ok(())
-	}
-	pub fn add_owner_from_field_id(&mut self, id: DatasetId, fields: &[FieldId], mut userinfo: BotUserInfo, user_id: TelegramUserId)
-	-> DResult<()> {
-		let auth_fields: Vec<Authorisation> = fields.iter().map(|fieldid| Authorisation::Owner(*fieldid)).collect();
-		userinfo.timeseries_with_access.insert(id, auth_fields);
-
-		let username = userinfo.username.clone();
-		self.set_userdata(user_id, userinfo)?;
-		Ok(())
-	}
 }
 
 impl Data {
-
 	pub fn authenticate_error_packet(&mut self, data_string: &Bytes) -> Result<DatasetId,()> {
 		if data_string.len() < 12 {
 			warn!("error_string size (={}) to small for key, datasetid and any error (min 12 bytes)", data_string.len());
@@ -474,6 +407,5 @@ impl Data {
 			return Err(());
 		}
 	}
-
 }
 

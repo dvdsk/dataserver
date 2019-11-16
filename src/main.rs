@@ -4,7 +4,6 @@
 mod certificate_manager;
 mod config;
 mod debug_middleware;
-mod helper;
 mod error;
 mod bot;
 mod databases;
@@ -45,7 +44,7 @@ fn main() {
 		}
 	}
 
-	helper::setup_logging(1).expect("could not set up debugging");
+	error::setup_logging(1).expect("could not set up debugging");
 
 	let config = sled::ConfigBuilder::new() //651ms
 			.path("database".to_owned())

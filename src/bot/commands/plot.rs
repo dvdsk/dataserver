@@ -130,7 +130,7 @@ fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &
 
     //add lines
     for selected_data in selected_datasets {
-        let (shared_x, mut y_datas, mut labels) = read_data(selected_data, &state.inner_state().data, timerange)?;
+        let (shared_x, mut y_datas, mut labels) = read_data(selected_data, &state.data, timerange)?;
         for (mut y, label) in y_datas.drain(..).zip(labels.drain(..)) {
             chart.draw_series(LineSeries::new(
                 shared_x.iter().map(|x| *x)
@@ -212,7 +212,7 @@ fn read_data(selected_data: (DatasetId, Vec<FieldId>),
     let max_plot_points = 1000;
     let (dataset_id, field_ids) = selected_data;
 
-    let data_handle = data.clone();
+    let data_handle = data;
     let mut data = data_handle.write().unwrap();
 
     let mut metadata = Vec::new();
@@ -223,13 +223,13 @@ fn read_data(selected_data: (DatasetId, Vec<FieldId>),
         if let Some(reader_info) = prepare_read_processing(
             read_state, &dataset.timeseries, max_plot_points, dataset_id) {
 
-            //prepare and send metadata
+            //prepare metadata
             for field_id in field_ids.iter().map(|id| *id) {
                 let field = &dataset.metadata.fields[field_id as usize];
                 metadata.push( (field_id, field.name.to_owned()) );
             }
-
             std::mem::drop(data);
+
             let (x_shared, y_datas) = read_into_arrays(data_handle, reader_info);
             return Ok((x_shared, y_datas, metadata));
         

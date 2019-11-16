@@ -7,7 +7,12 @@ use minimal_timeseries::Selector;
 
 ///figures out what combination of: ignoring datapoints, averaging, read buffering and
 ///loosse packages should be used to fullfill a data request for a dataset
-pub fn prepare_read_processing(read_state: ReadState, timeseries: &minimal_timeseries::Timeseries, max_points: u64, dataset_id: DatasetId) -> Option<ReaderInfo> {
+pub fn prepare_read_processing(read_state: ReadState, 
+	timeseries: &minimal_timeseries::Timeseries, 
+	max_points: u64, 
+	dataset_id: DatasetId)
+	 -> Option<ReaderInfo> {
+	
     //ideal read + ideal package size + ram per sample may not exceed free ram
     const IDEAL_READ_SIZE: usize = 1_000; //in bytes
     //const IDEAL_PACKAGE_SIZE: usize = 1_000;
@@ -66,7 +71,7 @@ pub fn read_into_arrays(data_handle: Arc<RwLock<Data>>, mut reader: ReaderInfo)
 	let mut y_datas = create_vector_of_vectors(reader.read_state.fields.len());
 	
 	if reader.selector.is_none() {
-		dbg!("HANDELING NON SELECTOR READ");
+		info!("reading complete dataset");
 		let mut data = data_handle.write().unwrap(); //TODO per dataset then try_lock
 		let dataset = data.sets.get_mut(&reader.dataset_id).unwrap();
 

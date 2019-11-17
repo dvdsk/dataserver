@@ -10,6 +10,7 @@ use std::fs::File;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
+use std::cmp::Ordering;
 
 use chrono::prelude::*;
 use actix;
@@ -202,10 +203,28 @@ impl DataSet {
 }
 
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, Hash)]
 pub enum Authorisation{
 	Owner(FieldId),
 	Reader(FieldId),
+}
+
+impl Ord for Authorisation{
+	fn cmp(&self, other: &Self) -> Ordering {
+		FieldId::from(self).cmp(&FieldId::from(other))
+	}
+}
+
+impl PartialOrd for Authorisation{
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
+impl PartialEq for Authorisation {
+	fn eq(&self, other: &Self) -> bool {
+		FieldId::from(self) == FieldId::from(other)
+	}
 }
 
 impl AsRef<FieldId> for Authorisation{

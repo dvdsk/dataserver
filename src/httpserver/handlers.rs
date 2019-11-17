@@ -147,19 +147,8 @@ pub fn set_telegram_id_post(
 		state: Data<DataRouterState>,
 		params: Form<TelegramId>) -> wResult<HttpResponse> {
 	
-	let session_id = id.identity().unwrap().parse::<data_store::DatasetId>().unwrap();
-	let mut sessions = state.sessions.write().unwrap();
-	let mut session = sessions.get_mut(&session_id).unwrap().lock().unwrap();
-
-	let user_id: i64 = params.id.parse().unwrap();
-	session.db_entry.telegram_user_id = Some(user_id.into());
-	let bot_userdata = BotUserInfo::from_timeseries_access(&session.db_entry.timeseries_with_access);
+	//needs reimplementation, look at implementation in menu
 	
-	state.bot_user_db.set_userdata(user_id, bot_userdata).unwrap();
-	
-	let web_userdata = state.web_user_db.get_userdata(&session.db_entry.username).unwrap();	
-	state.web_user_db.set_userdata(web_userdata).unwrap();
-
 	Ok(HttpResponse::Ok().finish())
 }
 

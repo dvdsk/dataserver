@@ -179,6 +179,7 @@ pub struct BotUserDatabase {
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct BotUserInfo {
+	//keep the authorisation vector sorted
 	pub timeseries_with_access: HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>,
 	pub username: Option<String>,
 	pub aliases: HashMap<String, String>,

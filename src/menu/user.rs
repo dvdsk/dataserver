@@ -267,8 +267,9 @@ fn select_fields(set_id: DatasetId, data: &Arc<RwLock<Data>>)
         let field_id = field_list.1[*index];
         Authorisation::Owner(field_id)
     }).collect();
+    authorized_fields.sort_unstable();
 
-    //remove
+    //remove chosen items from possible reader fields
     let mut counter = 0;
     list_numbs.iter().for_each(|list_numb| {
         field_list.0.remove(list_numb-counter);

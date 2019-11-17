@@ -45,7 +45,7 @@ impl From<UserDbError> for Error {
 }
 
 fn parse_args(args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo)
-    -> Result<HashMap<DatasetId, Vec<FieldId>>, Error> {
+    -> Result<Vec<(DatasetId, Vec<FieldId>)>, Error> {
        //keep a list of fields for each dataset
     let mut dataset_fields: HashMap<DatasetId, Vec<FieldId>> = HashMap::new();
 
@@ -80,6 +80,13 @@ fn parse_args(args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo)
     if dataset_fields.len() == 0 {
         return Err(Error::NotEnoughArguments);
     }
+
+    let mut dataset_fields: Vec<(DatasetId, Vec<FieldId>)> = dataset_fields
+        .drain()
+        .collect();
+
+    //sort on datasetId to get deterministic order in the bot awnser
+    dataset_fields.sort_unstable_by_key(|x| x.0); 
 
     Ok(dataset_fields)
 }

@@ -123,31 +123,28 @@ fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &
     let mut subpixelbuffer: Vec<u8> = vec!(0u8;(dimensions.0*dimensions.1*3) as usize);
     let root = BitMapBackend::with_buffer(&mut subpixelbuffer, dimensions)
         .into_drawing_area();
-    //let root = BitMapBackend::new("sample2.png", (width, height)).into_drawing_area();
     root.fill(&WHITE).map_err(|_| Error::PlotLibError)?;
 
-    let (to_date, from_date) = timerange;
-    //let (to_date, from_date) = (to_date.timestamp(), from_date.timestamp());
-
+    let (from_date, to_date) = timerange;
+    //let (to_date, from_date) = (to_date.timestamp(), from_date.timestamp()); 
     let (y_min, y_max) = if let Some(manual) = scaling {
         manual
     } else {
         (0f32,40f32) //TODO replace with auto
     };
 
-    dbg!((y_min, y_max));
-    dbg!((to_date, from_date));
+    dbg!(to_date);
+    dbg!(from_date);
+    dbg!(from_date..to_date);
     let mut chart = ChartBuilder::on(&root)
         .x_label_area_size(40)
         .y_label_area_size(40)
-        //.caption("MSFT Stock Price", ("Arial", 50.0).into_font())
-        .build_ranged(from_date..to_date, 40f32..30f32)
+        .build_ranged(from_date..to_date, y_min..y_max)
         .map_err(|_| Error::PlotLibError)?;
-    dbg!();
-    /*chart //Causes crash (div zero), need to solve
+    chart //Causes crash (div zero), or takes forever, need to solve 
         .configure_mesh()
         .line_style_2(&WHITE)
-        .draw().map_err(|_| Error::PlotLibError)?;*/
+        .draw().map_err(|_| Error::PlotLibError)?;
 
     //add lines
     for selected in selected_datasets {
@@ -155,8 +152,9 @@ fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &
         for (mut y, label) in y_datas.drain(..).zip(labels.drain(..)) {
             chart.draw_series(LineSeries::new(
                 shared_x.iter()
+                    //.map(|x|*x)
                     .map(|x| DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(*x, 0), Utc))
-                        .zip(y.drain(..)),
+                    .zip(y.drain(..)),
                     &RED)
             ).map_err(|_| Error::PlotLibError)?
             .label(label.1);

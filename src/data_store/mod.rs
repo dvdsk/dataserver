@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use log::{warn, info, debug, trace, error};
+use log::{warn, info, debug, trace};
 
 use byteorder::{ByteOrder, LittleEndian, NetworkEndian, WriteBytesExt};
 use bytes::Bytes;
@@ -13,17 +13,10 @@ use std::path::PathBuf;
 use std::cmp::Ordering;
 
 use chrono::prelude::*;
-use actix;
 
 use minimal_timeseries::{Timeseries, BoundResult, DecodeParams};
 use std::collections::HashMap;
-
-use telegram_bot::types::refs::UserId as TelegramUserId;
-
-use crate::databases::{WebUserInfo, WebUserDatabase, BotUserInfo, BotUserDatabase};
 use crate::httpserver::data_router_ws_client::SetSliceDecodeInfo;
-use crate::error::DResult;
-use crate::data_store::error_router::ErrorCode;
 
 pub mod specifications;
 pub mod compression;
@@ -31,9 +24,6 @@ pub mod read_to_array;
 pub mod read_to_packets;
 pub mod data_router;
 pub mod error_router;
-
-pub type DataRouterHandle = actix::Addr<data_router::DataRouter>;
-pub type ErrorRouterHandle = actix::Addr<error_router::ErrorRouter>;
 
 use std::f64;
 trait FloatIterExt {

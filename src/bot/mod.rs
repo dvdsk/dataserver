@@ -104,6 +104,7 @@ fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, state: &Da
 			}
 			#[cfg(feature = "plotting")]
 			"/plot" => {
+				dbg!();
 				plot::send(chat_id, user_id, state, TOKEN, args, &userinfo)?; 
 				break;
 			}

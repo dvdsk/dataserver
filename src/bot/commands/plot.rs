@@ -1,6 +1,6 @@
 
 use chrono::offset::{TimeZone};
-use chrono::{Date, Duration, Utc, DateTime};
+use chrono::{Date, Duration, Utc, DateTime, NaiveDateTime};
 use plotters::prelude::*;
 use plotters::style::colors::{WHITE, BLACK, RED};
 use plotters::coord::Shift;
@@ -8,15 +8,14 @@ use plotters::coord::Shift;
 use image::{png::PNGEncoder, RGB};
 use log::{warn, error};
 
-use crate::httpserver::{DataRouterState, InnerState, timeseries_interface};
-use crate::databases::UserDbError;
+use crate::data_store::Data;
+use crate::data_store::{DatasetId, FieldId};
+use crate::databases::{BotUserInfo, UserDbError};
+use crate::data_store::data_router::DataRouterState;
+use crate::data_store::read_to_array::{ReaderInfo, prepare_read_processing, read_into_arrays};
 
-use crate::databases::BotUserInfo;
 use crate::bot::Error as botError;
 use telegram_bot::types::refs::{ChatId, UserId};
-
-use timeseries_interface::{FieldId, DatasetId, Data};
-use timeseries_interface::read_to_array::{ReaderInfo, prepare_read_processing, read_into_arrays};
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -24,7 +23,9 @@ use std::sync::{Arc, RwLock};
 
 #[derive(Debug)]
 pub enum Error{
-    ArgumentError(std::num::ParseIntError),
+    ArgumentParseErrorF(std::num::ParseFloatError),
+    ArgumentParseErrorI(std::num::ParseIntError),
+    IncorrectArgument(String),
     NoAccessToField(FieldId),
     NoAccessToDataSet(DatasetId),
     CouldNotSetupRead(DatasetId, Vec<FieldId>),
@@ -36,25 +37,29 @@ pub enum Error{
 }
 
 pub const USAGE: &str = "/plot <plotable_id> <number><s|m|h|d|w|monthes|years>";
-pub const DESCRIPTION: &str = "send a line graph of a sensor value, a plotable, from a given time ago till now";
+pub const DESCRIPTION: &str = "send a line graph of a sensor value aka plotable, \
+ from a given time ago till now. Optionally adding \"-s\" <start:stop> allows to \
+ specify the start and stop value for the y-axis";
 impl Error {
     pub fn to_text(self, user_id: UserId) -> String {
         match self {
-            Error::ArgumentError(_) => String::from("One of the arguments could not be parsed"),
+            Error::ArgumentParseErrorF(_) => format!("One of the arguments could not be converted to a number\nuse: {}", USAGE),
+            Error::ArgumentParseErrorI(_) => format!("One of the arguments could not be converted to a number\nuse: {}", USAGE),
+            Error::IncorrectArgument(arg) => format!("Incorrectly formatted argument: \"{}\"\nuse: {}", arg, USAGE),
             Error::NoAccessToField(field_id) => format!("You do not have access to field: {}", field_id),
             Error::NoAccessToDataSet(dataset_id) => format!("You do not have access to dataset: {}", dataset_id),
             Error::CouldNotSetupRead(dataset_id, fields) => {
                 error!("could not setup read for dataset {} and fields {:?}", dataset_id, fields);
                 String::from("Apologies an internal error occured, it has been reported")
             },
-            Error::NoDataWithinRange => String::from("We have no data between the times you requested"),
+            Error::NoDataWithinRange => String::from("I have no data between the times you requested"),
             Error::PlotLibError => {
                 error!("internal error in plotting lib");
-                String::from("Apologies an internal error occured, it has been reported")
+                String::from("Apologies an internal error occured, I have reported it")
             },
             Error::EncodingError(error) => {
                 error!("could not encode png: {}", error);
-                String::from("Apologies an internal error occured, it has been reported")
+                String::from("Apologies an internal error occured, I have reported it")
             },
             Error::BotDatabaseError(db_error) => db_error.to_text(user_id),
             Error::NotEnoughArguments => format!("Not enough arguments\nuse: {}", USAGE),            
@@ -64,7 +69,13 @@ impl Error {
 
 impl From<std::num::ParseIntError> for Error {
 	fn from(error: std::num::ParseIntError) -> Self {
-		Error::ArgumentError(error)
+		Error::ArgumentParseErrorI(error)
+	}
+}
+
+impl From<std::num::ParseFloatError> for Error {
+	fn from(error: std::num::ParseFloatError) -> Self {
+		Error::ArgumentParseErrorF(error)
 	}
 }
 
@@ -78,7 +89,7 @@ pub fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &s
     args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo) -> Result<(), botError>{
 
 	let args: Vec<String> =	args.map(|s| s.to_owned() ).collect();
-	let plot = plot(args, state.inner_state(), user_id, userinfo)?;
+	let plot = plot(args, state, user_id, userinfo)?;
 
 	let photo_part = reqwest::multipart::Part::bytes(plot)
 		.mime_str("image/png").unwrap()
@@ -101,41 +112,52 @@ pub fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &s
 	}
 }
 
-fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &BotUserInfo)-> Result<Vec<u8>, Error>{
+fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &BotUserInfo)
+    -> Result<Vec<u8>, Error>{
 
-    let (timerange, set_id, field_ids) = parse_plot_arguments(args)?;
-    let selected_datasets = select_data(state, set_id, field_ids, userinfo)?;
-
-    let dimensions = (900, 900);
+    let (timerange, set_id, field_id, scaling) = parse_plot_arguments(args)?;
+    let selected_datasets = select_data(state, set_id, vec!(field_id), userinfo)?;
+    let dimensions = (900u32, 900u32);
 
     //Init plot
-    let mut subpixelbuffer: Vec<u8> = Vec::new();
-    let root = BitMapBackend::with_buffer(&mut subpixelbuffer, dimensions).into_drawing_area();
+    let mut subpixelbuffer: Vec<u8> = vec!(0u8;(dimensions.0*dimensions.1*3) as usize);
+    let root = BitMapBackend::with_buffer(&mut subpixelbuffer, dimensions)
+        .into_drawing_area();
     //let root = BitMapBackend::new("sample2.png", (width, height)).into_drawing_area();
     root.fill(&WHITE).map_err(|_| Error::PlotLibError)?;
 
     let (to_date, from_date) = timerange;
-    let (to_date, from_date) = (to_date.timestamp(), from_date.timestamp());
+    //let (to_date, from_date) = (to_date.timestamp(), from_date.timestamp());
 
+    let (y_min, y_max) = if let Some(manual) = scaling {
+        manual
+    } else {
+        (0f32,40f32) //TODO replace with auto
+    };
+
+    dbg!((y_min, y_max));
+    dbg!((to_date, from_date));
     let mut chart = ChartBuilder::on(&root)
         .x_label_area_size(40)
         .y_label_area_size(40)
         //.caption("MSFT Stock Price", ("Arial", 50.0).into_font())
-        .build_ranged(from_date..to_date, 0f32..40f32)
+        .build_ranged(from_date..to_date, 40f32..30f32)
         .map_err(|_| Error::PlotLibError)?;
-    chart
+    dbg!();
+    /*chart //Causes crash (div zero), need to solve
         .configure_mesh()
         .line_style_2(&WHITE)
-        .draw().map_err(|_| Error::PlotLibError)?;   
+        .draw().map_err(|_| Error::PlotLibError)?;*/
 
     //add lines
-    for selected_data in selected_datasets {
-        let (shared_x, mut y_datas, mut labels) = read_data(selected_data, &state.data, timerange)?;
+    for selected in selected_datasets {
+        let (shared_x, mut y_datas, mut labels) = read_data(selected, &state.data, timerange)?;
         for (mut y, label) in y_datas.drain(..).zip(labels.drain(..)) {
             chart.draw_series(LineSeries::new(
-                shared_x.iter().map(|x| *x)
-                .zip(y.drain(..)),
-                &RED)
+                shared_x.iter()
+                    .map(|x| DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(*x, 0), Utc))
+                        .zip(y.drain(..)),
+                    &RED)
             ).map_err(|_| Error::PlotLibError)?
             .label(label.1);
         }
@@ -144,7 +166,7 @@ fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &
         .configure_series_labels()
         .background_style(&WHITE.mix(0.8))
         .border_style(&BLACK)
-        .draw().map_err(|_| Error::PlotLibError);
+        .draw().map_err(|_| Error::PlotLibError)?;
 
     drop(chart);
     drop(root);
@@ -158,25 +180,55 @@ fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &
 }
 
 fn parse_plot_arguments(args: Vec<String>)
-     -> Result<((DateTime<Utc>, DateTime<Utc>), DatasetId, Vec<FieldId>), Error>{
-    if args.len() < 4 {return Err(Error::NotEnoughArguments);}
-
-    let timerange_start = Utc.timestamp(args[1].parse::<i64>()?/1000, 0);
-    //let timerange_stop = Utc.timestamp(args[2].parse::<i64>()?/1000, 0);
-    let timerange_stop = Utc::now();
-    let timerange = (timerange_start, timerange_stop);
-
-    let set_id = args[2].parse::<timeseries_interface::DatasetId>()?;
-
-    let field_ids = args[3..]
-        .iter()
-        .map(|arg| arg.parse::<timeseries_interface::FieldId>())
-        .collect::<Result<Vec<timeseries_interface::FieldId>,std::num::ParseIntError>>()?;
+     -> Result<((DateTime<Utc>, DateTime<Utc>), DatasetId, FieldId, Option<(f32,f32)>), Error>{
     
-    Ok((timerange, set_id, field_ids))
+    if args.len() < 2 {return Err(Error::NotEnoughArguments);}
+
+    let mut plotable = args[0].split(":");
+    let set_id = plotable.nth(0)
+        .ok_or(Error::IncorrectArgument(args[0].clone()))?
+        .parse::<DatasetId>()?;
+    
+    let field_id = plotable.next()      
+        .ok_or(Error::IncorrectArgument(args[0].clone()))?
+        .parse::<FieldId>()?;
+
+
+    let end = args[1].find(char::is_alphabetic)
+        .ok_or(Error::IncorrectArgument(args[1].clone()))?;
+    
+    let numb =  args[1][..end].parse::<i64>()?;
+    let unit = &args[1][end..];
+    let duration = match unit {
+        "s" => Duration::seconds(numb),
+        "m" => Duration::minutes(numb),
+        "h" => Duration::hours(numb),
+        "d" => Duration::days(numb),
+        "w" => Duration::weeks(numb),
+        "monthes" => Duration::weeks(4*numb),
+        "years" => Duration::days(365*numb),
+        _ => return Err(Error::IncorrectArgument(args[1].clone())),
+    };
+    let timerange = (Utc::now() - duration, Utc::now());
+
+    //optional argument
+    let mut scaling = if args.len() > 2 {
+        let mut params = args[2].split(":");
+        let y_min = params.nth(0)
+            .ok_or(Error::IncorrectArgument(args[2].clone()))?
+            .parse::<f32>()?;
+        let y_max = params.next()
+            .ok_or(Error::IncorrectArgument(args[2].clone()))?
+            .parse::<f32>()?;
+        Some((y_min, y_max))
+    } else {
+        None
+    };
+    dbg!();
+    Ok((timerange, set_id, field_id, scaling))
 }
 
-pub fn select_data(data: &DataRouterState, set_id: timeseries_interface::DatasetId, field_ids: Vec<FieldId>, userinfo: &BotUserInfo)
+pub fn select_data(data: &DataRouterState, set_id: DatasetId, field_ids: Vec<FieldId>, userinfo: &BotUserInfo)
      -> Result<HashMap<DatasetId, Vec<FieldId>>,Error>{
 
     //get timeseries_with_access for this user
@@ -230,7 +282,7 @@ fn read_data(selected_data: (DatasetId, Vec<FieldId>),
             }
             std::mem::drop(data);
 
-            let (x_shared, y_datas) = read_into_arrays(data_handle, reader_info);
+            let (x_shared, y_datas) = read_into_arrays(data_handle.clone(), reader_info);
             return Ok((x_shared, y_datas, metadata));
         
         

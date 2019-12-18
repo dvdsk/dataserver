@@ -1,2 +1,2 @@
 [target.armv7-unknown-linux-gnueabihf]
-image = "freowin/pi_cross:v4"
+image = "freowin/pi_cross:v6"

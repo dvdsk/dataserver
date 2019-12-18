@@ -72,5 +72,10 @@ num-derive = "0.2"
 
 telegram-bot = "0.6"
 
-plotters = { version = "0.2", optional = true }
-image = { version = "0.2", optional = true }
+#servo-fontconfig-sys = { git = "https://github.com/dskleingeld/libfontconfig" }
+plotters = { version = "0.2", optional = true}
+#plotters = { version = "0.2", optional = true, default-features = false, features = ["bitmap", "datetime"]}
+image = { version = "0.22", optional = true }
+
+#[replace]
+#"servo-fontconfig-sys:4.0.6#servo-fontconfig-sys:4.0.9" = { git = "https://github.com/dskleingeld/libfontconfig" }

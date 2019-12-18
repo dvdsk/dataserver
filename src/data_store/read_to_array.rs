@@ -124,10 +124,13 @@ fn decode_into_array(reader: &mut ReaderInfo, shared_x: &mut Vec<i64>, y_datas: 
 
 	let ReaderInfo {dataset_id, read_state, selector,
 		lines_per_read, line_size, timestamps, line_data } = reader;
+	
 	let line_size = *line_size;
-	let lines_per_sample = selector
-		.as_mut().unwrap()
-		.lines_per_sample.get();
+	let lines_per_sample = if let Some(sel) = selector {
+		sel.lines_per_sample.get()
+	} else {
+		1
+	};
 
 	//add some lines
 	//dbg!(lines_per_sample);

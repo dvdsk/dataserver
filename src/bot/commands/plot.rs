@@ -38,7 +38,7 @@ pub enum Error{
 
 pub const USAGE: &str = "/plot <plotable_id> <number><s|m|h|d|w|monthes|years>";
 pub const DESCRIPTION: &str = "send a line graph of a sensor value aka plotable, \
- from a given time ago till now. Optionally adding \"-s\" <start:stop> allows to \
+ from a given time ago till now. Optionally adding <start:stop> allows to \
  specify the start and stop value for the y-axis";
 impl Error {
     pub fn to_text(self, user_id: UserId) -> String {

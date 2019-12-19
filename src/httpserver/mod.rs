@@ -11,11 +11,10 @@ use std::sync::{mpsc};
 use actix_web::{HttpServer,App, web};
 use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_files as fs;
-use actix::prelude::*;
 
 use crate::config;
 use crate::databases::{WebUserInfo};
-use crate::data_store::{ErrorRouterHandle, DataRouterHandle, data_router::DataRouterState};
+use crate::data_store::{data_router::DataRouterState};
 
 use crate::bot;
 use login_redirect::{CheckLogin};

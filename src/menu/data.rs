@@ -3,16 +3,13 @@ use std::path::Path;
 use std::fs;
 use std::thread;
 use std::time::Duration;
-use std::collections::HashSet;
 
-use dialoguer::{Select, Input, PasswordInput, Checkboxes};
-use telegram_bot::types::refs::UserId as TelegramUserId;
+use dialoguer::{Select, Input};
 use log::{info, error};
 
-use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase, WebUserInfo, BotUserInfo};
-use crate::data_store::{Data, DatasetId, read_to_array};
+use crate::databases::{WebUserDatabase, BotUserDatabase};
+use crate::data_store::{Data, DatasetId};
 use crate::data_store;
-use crate::error::DataserverError as Error;
 
 pub fn add_set(data: &Arc<RwLock<Data>>) {
     

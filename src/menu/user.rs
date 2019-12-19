@@ -234,7 +234,7 @@ fn add_dataset(data: &Arc<RwLock<Data>>, userinfo: &mut WebUserInfo){
         .interact().unwrap();    
 
     let set_id = match list_numb {
-        0 => {return; 0},
+        0 => {return;},
         1 => if let Ok(set_id) = Input::<String>::new()
                 .with_prompt("Enter dataset id").interact()
                 .unwrap().parse::<DatasetId>(){

@@ -20,7 +20,7 @@ use databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
 
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
-use std::io::{stdin, Read};
+use std::io::{Read};
 
 use structopt::StructOpt;
 
@@ -48,14 +48,12 @@ fn main() {
 	}
 
 	error::setup_logging(1).expect("could not set up debugging");
-
 	let config = sled::ConfigBuilder::new() //651ms
 			.path("database".to_owned())
 			.flush_every_ms(None) //do not flush to disk unless explicitly asked
 			.async_io(true)
 			.cache_capacity(1024 * 1024 * 32) //32 mb cache 
 			.build();
-
 	let db = sled::Db::start(config).unwrap();
 
 	//TODO can a tree be opened multiple times?
@@ -65,7 +63,7 @@ fn main() {
 	let data = Arc::new(RwLock::new(data_store::init("data").unwrap()));
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 
-	let sys = actix::System::new("routers");
+	let _sys = actix::System::new("routers");
     let data_router_addr = data_router::DataRouter::default().start();
     let error_router_addr = error_router::ErrorRouter::load(&db, data.clone()).unwrap().start();
 

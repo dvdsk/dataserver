@@ -1,13 +1,9 @@
 use std::sync::{Arc, RwLock};
-use std::thread;
-use std::time::Duration;
 
-use dialoguer::{Select, Input, PasswordInput};
-use telegram_bot::types::refs::UserId as TelegramUserId;
+use dialoguer::{Select};
 
-use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase, WebUserInfo, BotUserInfo};
-use crate::data_store::{Data, Authorisation, DatasetId, FieldId};
-use crate::error::DataserverError as Error;
+use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
+use crate::data_store::{Data};
 
 mod user;
 mod data;

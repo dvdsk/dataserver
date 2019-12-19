@@ -158,9 +158,8 @@ fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 pub fn handle_webhook(state: Data<DataRouterState>, raw_update: Bytes)
 	 -> HttpResponse {
 	
-	//TODO make actix web deserialise bot messages to: 
-	//"telegram_bot::types::update::Update", then we can handle upon that object
-	//FIXME TODO
+	//TODO should hand off to seperate threat as commands
+	//might take too long, causing the request from telegram to timeout
 
 	let update: Update = serde_json::from_slice(&raw_update.to_vec()).unwrap();
 	if let Ok((text, chat_id, user_id)) = to_string_and_ids(update){

@@ -18,6 +18,10 @@ use commands::{help, plotables, show, alias};
 #[cfg(feature = "plotting")]
 use commands::plot;
 
+use std::thread;
+use threadpool::ThreadPool;
+use std::sync::mpsc;
+
 pub const TOKEN: &str = "966207890:AAFyRxiTMSc5R_yQH1zyin1WkEK8Y_5_qEU";
 
 #[derive(Debug)]
@@ -155,18 +159,35 @@ fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 	}
 }
 
-pub fn handle_webhook(state: Data<DataRouterState>, raw_update: Bytes)
-	 -> HttpResponse {
-	
-	//TODO should hand off to seperate threat as commands
-	//might take too long, causing the request from telegram to timeout
-
-	let update: Update = serde_json::from_slice(&raw_update.to_vec()).unwrap();
+fn handle(update: Update, state: DataRouterState){
 	if let Ok((text, chat_id, user_id)) = to_string_and_ids(update){
-		if let Err(error) = handle_command(text, chat_id, user_id, &state.into_inner()){
+		if let Err(error) = handle_command(text, chat_id, user_id, &state){
 			handle_error(error, chat_id, user_id);
 		}
 	}
+}
+
+pub fn handle_requests(reciever: mpsc::Receiver<Update>, state: DataRouterState) {
+	thread::spawn(move || {
+		let pool = ThreadPool::new(4);
+		
+		loop {
+			if let Ok(update) = reciever.recv(){
+				let state_cpy = state.clone();
+				pool.execute(move || handle(update, state_cpy));
+			} else {
+				//other side hung up, must be shutting down
+				break;
+			}
+		}
+	});
+}
+
+pub fn handle_webhook(state: Data<DataRouterState>, raw_update: Bytes)
+	 -> HttpResponse {
+
+	let update: Update = serde_json::from_slice(&raw_update.to_vec()).unwrap();
+	state.into_inner().bot_sender.send(update).unwrap();
 
 	HttpResponse::Ok()
 		.status(StatusCode::OK)

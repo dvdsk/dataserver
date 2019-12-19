@@ -35,6 +35,7 @@ futures = "0.1.28"
 bytes = "0.4.12"
 walkdir = "2.2.5"
 num = "0.2.0"
+threadpool = "1.7.1"
 
 #acme-client = "0.5.3" replaced with patched version that fixes openssl issues
 acme-client = { git = "https://github.com/janderholm/acme-client"}

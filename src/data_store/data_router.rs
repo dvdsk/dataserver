@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock, Mutex, mpsc};
+use std::sync::{Arc, RwLock, Mutex};
 use std::sync::atomic::{AtomicUsize};
 
 use log::{debug, trace};

@@ -121,8 +121,8 @@ pub fn read_into_arrays(data_handle: Arc<RwLock<Data>>, mut reader: ReaderInfo)
 
 fn decode_into_array(reader: &mut ReaderInfo, shared_x: &mut Vec<i64>, y_datas: &mut Vec<Vec<f32>>) {
 
-	let ReaderInfo {dataset_id, read_state, selector,
-		lines_per_read, line_size, timestamps, line_data } = reader;
+	let ReaderInfo {dataset_id:_, read_state, selector,
+		lines_per_read:_, line_size, timestamps:_, line_data:_ } = reader;
 	
 	let line_size = *line_size;
 	let lines_per_sample = if let Some(sel) = selector {

@@ -1,10 +1,6 @@
-
-use chrono::offset::{TimeZone};
-use chrono::{Date, Duration, Utc, DateTime, NaiveDateTime};
+use chrono::{Duration, Utc, DateTime, NaiveDateTime};
 use plotters::prelude::*;
 use plotters::style::colors::{WHITE, BLACK, RED};
-use plotters::coord::Shift;
-//use plotters::chart::context::ChartContext;
 
 use image::{png::PNGEncoder, RGB};
 use log::{warn, error};
@@ -13,7 +9,7 @@ use crate::data_store::Data;
 use crate::data_store::{DatasetId, FieldId};
 use crate::databases::{BotUserInfo, UserDbError};
 use crate::data_store::data_router::DataRouterState;
-use crate::data_store::read_to_array::{ReaderInfo, prepare_read_processing, read_into_arrays};
+use crate::data_store::read_to_array::{prepare_read_processing, read_into_arrays};
 
 use crate::bot::Error as botError;
 use telegram_bot::types::refs::{ChatId, UserId};
@@ -86,11 +82,11 @@ impl From<UserDbError> for Error {
 	}
 }
 
-pub fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
+pub fn send(chat_id: ChatId, state: &DataRouterState, token: &str, 
     args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo) -> Result<(), botError>{
 
 	let args: Vec<String> =	args.map(|s| s.to_owned() ).collect();
-	let plot = plot(args, state, user_id, userinfo)?;
+	let plot = plot(args, state, userinfo)?;
 
 	let photo_part = reqwest::multipart::Part::bytes(plot)
 		.mime_str("image/png").unwrap()
@@ -124,21 +120,29 @@ fn xlimits_from_data(data: &Vec<PlotData>) -> (DateTime<Utc>, DateTime<Utc>) {
     (x_min,x_max)
 }
 fn ylimits_from_data(data: &Vec<PlotData>) -> (f32,f32) {
-    let y_min = data.iter()
+    let mut min = *data.iter()
         .map(|data_set| data_set.1.iter()
             .map(|line| line.iter().min_by(|a,b| a.partial_cmp(b).expect("NAN in plot data")).unwrap())
             .min_by(|a,b| a.partial_cmp(b).expect("NAN in plot data")).unwrap())
         .min_by(|a,b| a.partial_cmp(b).expect("NAN in plot data")).unwrap();
-    let y_max = data.iter()
+    let mut max = *data.iter()
         .map(|data_set| data_set.1.iter()
             .map(|line| line.iter().max_by(|a,b| a.partial_cmp(b).expect("NAN in plot data")).unwrap())
             .max_by(|a,b| a.partial_cmp(b).expect("NAN in plot data")).unwrap())
         .max_by(|a,b| a.partial_cmp(b).expect("NAN in plot data")).unwrap();
-    (*y_min,*y_max)
+    
+    if min == max {
+        min -= 0.1;
+        max += 0.1;
+    } else {
+        min -= 0.025*(max-min);
+        max += 0.025*(max-min)
+    }
+    (min,max)
 }
 
 fn format_str_from_limits(from: &DateTime<Utc>, to: &DateTime<Utc>) -> &'static str {
-    let duration = (*to - *from);
+    let duration = *to - *from;
 
     if duration < Duration::minutes(1){
         "%Ss"
@@ -157,12 +161,12 @@ fn format_str_from_limits(from: &DateTime<Utc>, to: &DateTime<Utc>) -> &'static 
     }
 }
 
-fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &BotUserInfo)
+fn plot(args: Vec<String>, state: &DataRouterState, userinfo: &BotUserInfo)
     -> Result<Vec<u8>, Error> {
 
     const DIMENSIONS: (u32,u32) = (900u32, 900u32);
     let (timerange, set_id, field_id, scaling_args) = parse_plot_arguments(args)?;
-    let selected_datasets = select_data(state, set_id, vec!(field_id), userinfo)?;
+    let selected_datasets = select_data(set_id, vec!(field_id), userinfo)?;
     
     //collect data for plotting
     let plot_data: Result<Vec<PlotData>,Error> = selected_datasets
@@ -186,6 +190,7 @@ fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &
         .into_drawing_area();
     root.fill(&WHITE).map_err(|_| Error::PlotLibError)?;
 
+    dbg!(y_min, y_max);
     let mut chart = ChartBuilder::on(&root)
         .x_label_area_size(40)
         .y_label_area_size(40)
@@ -270,6 +275,10 @@ fn parse_plot_arguments(args: Vec<String>)
         let y_max = params.next()
             .ok_or(Error::IncorrectArgument(args[2].clone()))?
             .parse::<f32>()?;
+        if y_min == y_max {
+            return Err(Error::IncorrectArgument(args[2].clone()));
+        }
+
         Some((y_min, y_max))
     } else {
         None
@@ -278,7 +287,7 @@ fn parse_plot_arguments(args: Vec<String>)
     Ok((timerange, set_id, field_id, scaling))
 }
 
-pub fn select_data(data: &DataRouterState, set_id: DatasetId, field_ids: Vec<FieldId>, userinfo: &BotUserInfo)
+pub fn select_data(set_id: DatasetId, field_ids: Vec<FieldId>, userinfo: &BotUserInfo)
      -> Result<HashMap<DatasetId, Vec<FieldId>>,Error>{
 
     //get timeseries_with_access for this user
@@ -321,7 +330,6 @@ fn read_data(selected_data: (DatasetId, Vec<FieldId>),
     let dataset = data.sets.get_mut(&dataset_id).unwrap();
     if let Some(read_state) = dataset.prepare_read(timerange.0, timerange.1, &field_ids) {
         //prepare for reading and calc number of bytes we will be sending
-        let n_lines = std::cmp::min(read_state.numb_lines, max_plot_points);
         if let Some(reader_info) = prepare_read_processing(
             read_state, &dataset.timeseries, max_plot_points, dataset_id) {
 

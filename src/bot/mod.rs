@@ -18,10 +18,6 @@ use commands::{help, plotables, show, alias};
 #[cfg(feature = "plotting")]
 use commands::plot;
 
-use std::thread;
-use threadpool::ThreadPool;
-use std::sync::mpsc;
-
 pub const TOKEN: &str = "966207890:AAFyRxiTMSc5R_yQH1zyin1WkEK8Y_5_qEU";
 
 #[derive(Debug)]
@@ -75,7 +71,7 @@ fn to_string_and_ids(update: Update) -> Result<(String, ChatId, UserId),Error>{
 	if let UpdateKind::Message(message) = update.kind {
 		let chat_id = message.chat.id();
 		let user_id = message.from.id;
-		if let MessageKind::Text{data, entities} = message.kind {
+		if let MessageKind::Text{data, entities:_} = message.kind {
 			return Ok((data, chat_id, user_id));
 		} else {
 			warn!("unhandled message kind");
@@ -108,7 +104,7 @@ fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, state: &Da
 			}
 			#[cfg(feature = "plotting")]
 			"/plot" => {
-				plot::send(chat_id, user_id, state, TOKEN, args, &userinfo)?; 
+				plot::send(chat_id, state, TOKEN, args, &userinfo)?; 
 				break;
 			}
 			"/help" => {

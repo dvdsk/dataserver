@@ -108,7 +108,6 @@ fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, state: &Da
 			}
 			#[cfg(feature = "plotting")]
 			"/plot" => {
-				dbg!();
 				plot::send(chat_id, user_id, state, TOKEN, args, &userinfo)?; 
 				break;
 			}
@@ -167,27 +166,12 @@ fn handle(update: Update, state: DataRouterState){
 	}
 }
 
-pub fn handle_requests(reciever: mpsc::Receiver<Update>, state: DataRouterState) {
-	thread::spawn(move || {
-		let pool = ThreadPool::new(4);
-		
-		loop {
-			if let Ok(update) = reciever.recv(){
-				let state_cpy = state.clone();
-				pool.execute(move || handle(update, state_cpy));
-			} else {
-				//other side hung up, must be shutting down
-				break;
-			}
-		}
-	});
-}
-
 pub fn handle_webhook(state: Data<DataRouterState>, raw_update: Bytes)
 	 -> HttpResponse {
 
 	let update: Update = serde_json::from_slice(&raw_update.to_vec()).unwrap();
-	state.into_inner().bot_sender.send(update).unwrap();
+	let state_cpy = state.get_ref().clone();
+	state.into_inner().bot_pool.execute(move || handle(update, state_cpy));
 
 	HttpResponse::Ok()
 		.status(StatusCode::OK)
@@ -227,7 +211,6 @@ pub fn set_webhook(domain: &str, token: &str, port: u16) -> Result<(), Error> {
 		  .send()?;
 	
 	if res.status() != reqwest::StatusCode::OK {
-		dbg!(res);
 		Err(Error::CouldNotSetWebhook)
 	} else {
 		info!("set webhook to: {}", webhook_url);

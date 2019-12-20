@@ -4,6 +4,7 @@ use chrono::{Date, Duration, Utc, DateTime, NaiveDateTime};
 use plotters::prelude::*;
 use plotters::style::colors::{WHITE, BLACK, RED};
 use plotters::coord::Shift;
+//use plotters::chart::context::ChartContext;
 
 use image::{png::PNGEncoder, RGB};
 use log::{warn, error};
@@ -112,30 +113,79 @@ pub fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &s
 	}
 }
 
-fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &BotUserInfo)
-    -> Result<Vec<u8>, Error>{
+type PlotData = (Vec<i64>, Vec<Vec<f32>>, Vec<(FieldId, String)>);
+fn xlimits_from_data(data: &Vec<PlotData>) -> (DateTime<Utc>, DateTime<Utc>) {
+    let x_min = data.iter()
+        .map(|d| DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(*d.0.first().unwrap(), 0), Utc))
+        .min().unwrap();
+    let x_max = data.iter()
+        .map(|d| DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(*d.0.last().unwrap(), 0), Utc))
+        .max().unwrap();
+    (x_min,x_max)
+}
+fn ylimits_from_data(data: &Vec<PlotData>) -> (f32,f32) {
+    let y_min = data.iter()
+        .map(|data_set| data_set.1.iter()
+            .map(|line| line.iter().min_by(|a,b| a.partial_cmp(b).expect("NAN in plot data")).unwrap())
+            .min_by(|a,b| a.partial_cmp(b).expect("NAN in plot data")).unwrap())
+        .min_by(|a,b| a.partial_cmp(b).expect("NAN in plot data")).unwrap();
+    let y_max = data.iter()
+        .map(|data_set| data_set.1.iter()
+            .map(|line| line.iter().max_by(|a,b| a.partial_cmp(b).expect("NAN in plot data")).unwrap())
+            .max_by(|a,b| a.partial_cmp(b).expect("NAN in plot data")).unwrap())
+        .max_by(|a,b| a.partial_cmp(b).expect("NAN in plot data")).unwrap();
+    (*y_min,*y_max)
+}
 
-    let (timerange, set_id, field_id, scaling) = parse_plot_arguments(args)?;
+fn format_str_from_limits(from: &DateTime<Utc>, to: &DateTime<Utc>) -> &'static str {
+    let duration = (*to - *from);
+
+    if duration < Duration::minutes(1){
+        "%Ss"
+    } else if duration < Duration::minutes(15){
+        "%Mm:%Ss"
+    } else if duration < Duration::hours(1) {
+        "%Mm"
+    } else if duration < Duration::days(1) {
+        "%Hh:%Mm"
+    } else if duration < Duration::weeks(2) {
+        "%a %Hh"
+    } else if duration < Duration::weeks(5) {
+        "%d-%m"
+    } else {
+        "%v"
+    }
+}
+
+fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &BotUserInfo)
+    -> Result<Vec<u8>, Error> {
+
+    const DIMENSIONS: (u32,u32) = (900u32, 900u32);
+    let (timerange, set_id, field_id, scaling_args) = parse_plot_arguments(args)?;
     let selected_datasets = select_data(state, set_id, vec!(field_id), userinfo)?;
-    let dimensions = (900u32, 900u32);
+    
+    //collect data for plotting
+    let plot_data: Result<Vec<PlotData>,Error> = selected_datasets
+        .into_iter()//.filter_map(Result::ok)
+        .map(|sel| read_data(sel, &state.data, timerange))
+        .collect();
+    let plot_data = plot_data?;
+
+    let (from_date,to_date) = xlimits_from_data(&plot_data);
+    dbg!(from_date, to_date);
+    let x_label_formatstr = format_str_from_limits(&from_date, &to_date);
+    let (y_min, y_max) = if let Some(manual) = scaling_args {
+        manual
+    } else {
+        ylimits_from_data(&plot_data)
+    };
 
     //Init plot
-    let mut subpixelbuffer: Vec<u8> = vec!(0u8;(dimensions.0*dimensions.1*3) as usize);
-    let root = BitMapBackend::with_buffer(&mut subpixelbuffer, dimensions)
+    let mut subpixelbuffer: Vec<u8> = vec!(0u8;(DIMENSIONS.0*DIMENSIONS.1*3) as usize);
+    let root = BitMapBackend::with_buffer(&mut subpixelbuffer, DIMENSIONS)
         .into_drawing_area();
     root.fill(&WHITE).map_err(|_| Error::PlotLibError)?;
 
-    let (from_date, to_date) = timerange;
-    //let (to_date, from_date) = (to_date.timestamp(), from_date.timestamp()); 
-    let (y_min, y_max) = if let Some(manual) = scaling {
-        manual
-    } else {
-        (0f32,40f32) //TODO replace with auto
-    };
-
-    dbg!(to_date);
-    dbg!(from_date);
-    dbg!(from_date..to_date);
     let mut chart = ChartBuilder::on(&root)
         .x_label_area_size(40)
         .y_label_area_size(40)
@@ -144,11 +194,11 @@ fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &
     chart //Causes crash (div zero), or takes forever, need to solve 
         .configure_mesh()
         .line_style_2(&WHITE)
+        .x_label_formatter(&|v| v.format(x_label_formatstr).to_string())
         .draw().map_err(|_| Error::PlotLibError)?;
-
+    
     //add lines
-    for selected in selected_datasets {
-        let (shared_x, mut y_datas, mut labels) = read_data(selected, &state.data, timerange)?;
+    for (shared_x, mut y_datas, mut labels) in plot_data {
         for (mut y, label) in y_datas.drain(..).zip(labels.drain(..)) {
             chart.draw_series(LineSeries::new(
                 shared_x.iter()
@@ -160,6 +210,7 @@ fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &
             .label(label.1);
         }
     }
+    //finish plot
     chart
         .configure_series_labels()
         .background_style(&WHITE.mix(0.8))
@@ -169,9 +220,10 @@ fn plot(args: Vec<String>, state: &DataRouterState, user_id: UserId, userinfo: &
     drop(chart);
     drop(root);
 
+    //plot to png image
     let mut image = Vec::new();
     PNGEncoder::new(&mut image)
-        .encode(&subpixelbuffer, dimensions.0, dimensions.1, RGB(8))
+        .encode(&subpixelbuffer, DIMENSIONS.0, DIMENSIONS.1, RGB(8))
         .map_err(|io_error| Error::EncodingError(io_error))?;
 
     return Ok(image);
@@ -257,7 +309,7 @@ pub fn select_data(data: &DataRouterState, set_id: DatasetId, field_ids: Vec<Fie
 
 fn read_data(selected_data: (DatasetId, Vec<FieldId>), 
     data: &Arc<RwLock<Data>>, timerange: (DateTime<Utc>, DateTime<Utc>))
-     -> Result<(Vec<i64>, Vec<Vec<f32>>,Vec<(FieldId, String)>),Error>{
+     -> Result<PlotData,Error>{
     
     let max_plot_points = 1000;
     let (dataset_id, field_ids) = selected_data;

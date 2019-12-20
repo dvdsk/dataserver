@@ -7,37 +7,35 @@ use minimal_timeseries::Selector;
 
 ///figures out what combination of: ignoring datapoints, averaging, read buffering and
 ///loosse packages should be used to fullfill a data request for a dataset
+#[allow(dead_code)]
 pub fn prepare_read_processing(read_state: ReadState, 
 	timeseries: &minimal_timeseries::Timeseries, 
 	max_points: u64, 
 	dataset_id: DatasetId)
 	 -> Option<ReaderInfo> {
 	
+	if max_points == 0 { warn!("cant create a plot with zero points"); return None; }
+
     //ideal read + ideal package size + ram per sample may not exceed free ram
     const IDEAL_READ_SIZE: usize = 1_000; //in bytes
     //const IDEAL_PACKAGE_SIZE: usize = 1_000;
     const HEADER_SIZE: usize = 4;
     let free_ram = 1_000_000; //1 mb
-    let lines_in_range = read_state.numb_lines; //as u64
 
-    if max_points == 0 { warn!("cant create a plot with zero points"); return None; }
-
-    let line_size = timeseries.line_size;
-    let full_line_size = timeseries.full_line_size;
     let decoded_line_size = read_state.decoded_line_size;
+    let selector = minimal_timeseries::Selector::new(
+		max_points as usize, 
+		read_state.numb_lines as u64, 
+		&timeseries);
 
-    let selector = minimal_timeseries::Selector::new(max_points as usize, lines_in_range as u64, &timeseries);
-    let lines_per_sample = selector.as_ref().map_or(1, |x| x.lines_per_sample.get());
-
-    //user always wants the max specified lines
-    let requested_lines = u64::min(max_points, lines_in_range as u64);
+	//let lines_per_read = 
 
     Some(ReaderInfo{
         dataset_id,
         read_state,
         selector,
         lines_per_read: free_ram/(decoded_line_size),
-        line_size,
+        line_size: timeseries.line_size,
 
         timestamps: Vec::new(),
         line_data: Vec::new(),
@@ -56,6 +54,7 @@ pub struct ReaderInfo {
 	line_data: Vec<u8>,
 }
 
+
 fn create_vector_of_vectors(numb_vectors: usize) -> Vec<Vec<f32>>{
 	let mut vec = Vec::new();
 	for _ in 0..numb_vectors {
@@ -64,13 +63,14 @@ fn create_vector_of_vectors(numb_vectors: usize) -> Vec<Vec<f32>>{
 	return vec;
 }
 
+#[allow(dead_code)]
 pub fn read_into_arrays(data_handle: Arc<RwLock<Data>>, mut reader: ReaderInfo)
 	-> (Vec<i64>, Vec<Vec<f32>>) {
 	
 	let mut shared_x = Vec::new();
 	let mut y_datas = create_vector_of_vectors(reader.read_state.fields.len());
 	
-	if reader.selector.is_none() {
+	if reader.selector.is_none() { //numb_lines <= max_plot_points
 		info!("reading complete dataset");
 		let mut data = data_handle.write().unwrap(); //TODO per dataset then try_lock
 		let dataset = data.sets.get_mut(&reader.dataset_id).unwrap();
@@ -93,7 +93,7 @@ pub fn read_into_arrays(data_handle: Arc<RwLock<Data>>, mut reader: ReaderInfo)
 		return (shared_x, y_datas);
 	}
 
-	while reader.read_state.start_byte <= reader.read_state.stop_byte {
+	while reader.read_state.start_byte < reader.read_state.stop_byte {
 		let mut data = data_handle.write().unwrap(); //TODO per dataset then try_lock
 		let dataset = data.sets.get_mut(&reader.dataset_id).unwrap();
 
@@ -114,7 +114,6 @@ pub fn read_into_arrays(data_handle: Arc<RwLock<Data>>, mut reader: ReaderInfo)
 		std::mem::drop(dataset);
 		std::mem::drop(data);
 
-		//dbg!(&reader.timestamps_buffer.len());
 		decode_into_array(&mut reader, &mut shared_x, &mut y_datas);
 	}
 	return (shared_x, y_datas);	
@@ -133,7 +132,6 @@ fn decode_into_array(reader: &mut ReaderInfo, shared_x: &mut Vec<i64>, y_datas: 
 	};
 
 	//add some lines
-	//dbg!(lines_per_sample);
 	for ts_sum in reader.timestamps
 		.chunks_exact(lines_per_sample).map(|chunk| chunk.iter().sum::<u64>()) {
 		let ts_avg =ts_sum/(lines_per_sample as u64);
@@ -146,9 +144,11 @@ fn decode_into_array(reader: &mut ReaderInfo, shared_x: &mut Vec<i64>, y_datas: 
 			for (field, decoded_field) in read_state.fields.iter().zip(&mut decoded_field_sums) {
 				let decoded: f32 = field.decode::<f32>(&line);
 				*decoded_field += decoded;
+				dbg!(decoded);
 			}
 		}
 		for (decoded_sum,y) in decoded_field_sums.drain(..).zip(y_datas.iter_mut()){
+			dbg!(decoded_sum);
 			y.push(decoded_sum/lines_per_sample as f32);
 		}
 	}//for every sample

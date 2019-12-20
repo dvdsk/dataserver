@@ -50,7 +50,6 @@ impl DataSet {
 		let free_ram = 1_000_000; //1 mb
 		let lines_in_range = read_state.numb_lines; //as u64
 
-		dbg!(lines_in_range);
 		if max_points == 0 { warn!("cant create a plot with zero points"); return None; }
 
 		let line_size = timeseries.line_size;
@@ -62,7 +61,6 @@ impl DataSet {
 
 		//user always wants the max specified lines
 		let requested_lines = u64::min(max_points, lines_in_range as u64);
-		dbg!(requested_lines);
 
 		/*
 		we decide the lines_per_package and lines_per_read based on: (decreasing importance)
@@ -77,11 +75,9 @@ impl DataSet {
 		//lines_per_package should be optimal for reading from disk
 		let bytes_to_read_per_packet_line = lines_per_sample*(full_line_size as usize);
 		let lines_per_package = usize::max(lines_per_sample, IDEAL_READ_SIZE/bytes_to_read_per_packet_line);
-		dbg!(lines_per_package);
 
 		//but more importantly we should send more then one package to allow work to be done parallel
 		let lines_per_package = usize::min(lines_per_package, (requested_lines/3) as usize);
-		dbg!(lines_per_package);
 
 		//and most importantly do not use more ram then availible, we need at least the ram to hold
 		//the package + space to decode one sample.
@@ -92,9 +88,6 @@ impl DataSet {
 
 		let lines_per_read = lines_per_package * lines_per_sample;
 		let n_packages: u16 = (requested_lines/(lines_per_package as u64)) as u16;
-		dbg!(lines_per_read);
-		dbg!(lines_per_package);
-		dbg!(decoded_line_size);
 
 		Some(ReaderInfo::new(
 			dataset_id,
@@ -256,7 +249,6 @@ impl ReaderInfo {
 		//while there is more data available then fits into the current package,
 		//put all the data into a package send it off then create a fresh package.
 		while ldate_remainder.len() >= bytes_to_fill_package {
-			dbg!(lines_to_fill_package);
 			//dbg!(lines_per_sample);
 			//dbg!(tstamp_remainder.len());
 			//dbg!(leftover_package_space*lines_per_sample);
@@ -271,28 +263,20 @@ impl ReaderInfo {
 			lines_to_fill_package = bytes_to_fill_package /decoded_line_size;
 
 			//self.decode_into_package(tstamp_left, ldata_left);
-			//dbg!(self.package.len());
 			Self::decode_into_package(tstamp_left, ldata_left, &mut self.package, self.line_size,
 			                          &self.read_state, lines_per_sample);
-			//dbg!(self.package.len());
 
 			let next_package = Self::new_package(self.package_numb, self.dataset_id, self.bytes_per_package);//prepare next package
 			//replace self.package with next package and send the old self.package
 			if tx.send(mem::replace(&mut self.package, next_package)).is_err() {
-				//dbg!("failed to send package");
 				return PackageResult::ConnectionDropped
 			}
 			if self.package_numb == 0 {
-				//dbg!("last queued");
 				return PackageResult::LastQueued
 			}
 			self.package_numb -= 1; //set package number for next package
-			//dbg!(self.package_numb);
 		}
 		//self.decode_into_package(tstamp_remainder, ldate_remainder);
-		//dbg!("LESS DATA READ THEN CAN BE SAMPLED INTO PACKAGE");
-		//dbg!(self.lines_per_read/self.selector.as_ref().unwrap().lines_per_sample.clone().get());
-		//dbg!(self.bytes_per_package/self.read_state.decoded_line_size);
 
 		Self::decode_into_package(tstamp_remainder, ldate_remainder, &mut self.package, self.line_size,
 			                        &self.read_state, lines_per_sample);
@@ -300,19 +284,14 @@ impl ReaderInfo {
 		let next_package = Self::new_package(self.package_numb, self.dataset_id, self.bytes_per_package);//prepare next package
 		//replace self.package with next package and send the old self.package
 		if tx.send(mem::replace(&mut self.package, next_package)).is_err() {
-			//dbg!("failed to send package");
 			return PackageResult::ConnectionDropped
 		}
 		if self.package_numb == 0 {
-			//dbg!("last queued");
 			return PackageResult::LastQueued
 		}
 		self.package_numb -= 1; //set package number for next package
-		//dbg!(self.package_numb);
 		//TODO what if we hit last package here?
 
-		//dbg!("READ BUFFER HAS BEEN EMPTIED");
-		//dbg!(self.package_numb);
 		PackageResult::BufferEmptied
 	}
 

@@ -118,7 +118,6 @@ impl Handler<data_router::NewData> for WsSession {
 		std::mem::drop(data);
 		//send update
 		debug!("sending update");
-		dbg!(&line);
 		ctx.binary(Bytes::from(line));
 	}
 }
@@ -128,8 +127,6 @@ impl WsSession {
 		if args.len() < 5 {return Ok(()) }
 		self.timerange.start = Utc.timestamp(args[1].parse::<i64>()?/1000, (args[1].parse::<i64>()?%1000) as u32);
 		self.timerange.stop = Utc.timestamp(args[2].parse::<i64>()?/1000, (args[2].parse::<i64>()?%1000) as u32);
-		dbg!(self.timerange.start);
-		dbg!(self.timerange.stop);
 
 		if let Ok(set_id) = args[3].parse::<data_store::DatasetId>() {
 			//check if user has access to the requested dataset
@@ -266,7 +263,6 @@ impl WsSession {
 		//spawn file io thread
 		let (tx, rx) = sync_channel(2);
 		let thread = thread::spawn(move|| {
-			dbg!(&reader_infos);
 			read_into_packages(data_handle, tx, reader_infos); });
 		self.file_io_thread = Some((thread, rx));
 	}
@@ -275,7 +271,6 @@ impl WsSession {
 		if let Some((_thread, rx)) = self.file_io_thread.take() {
 			while let Ok(buffer) = rx.recv() {
 				if ctx.state().alive() {
-					dbg!(buffer.len());
 					ctx.binary(Bytes::from(buffer ));
 				} else {
 					return;

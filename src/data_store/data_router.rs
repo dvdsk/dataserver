@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize};
 
 use log::{debug, trace};
 use actix::prelude::*;
-use telegram_bot::types::update::Update as botUpdate;
+use threadpool::ThreadPool;
 
 use std::collections::{HashMap, HashSet};
 
@@ -19,7 +19,7 @@ pub struct DataRouterState {
 	pub passw_db: PasswordDatabase,
 	pub web_user_db: WebUserDatabase,
 	pub bot_user_db: BotUserDatabase,
-	pub bot_sender: mpsc::Sender<botUpdate>,
+	pub bot_pool: ThreadPool,
 
 	pub data_router_addr: Addr<DataRouter>,
 	pub error_router_addr: Addr<error_router::ErrorRouter>,

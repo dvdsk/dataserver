@@ -13,12 +13,13 @@ mod menu;
 
 use actix::Actor;
 
+use threadpool::ThreadPool;
 use std::sync::atomic::{AtomicUsize};
 use data_store::{error_router, data_router, data_router::DataRouterState};
 
 use databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
 
-use std::sync::{Arc, RwLock, mpsc};
+use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
 use std::io::{Read};
 
@@ -62,7 +63,7 @@ fn main() {
 	let bot_user_db = BotUserDatabase::from_db(&db).unwrap();
 	let data = Arc::new(RwLock::new(data_store::init("data").unwrap()));
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
-	let (bot_sender, bot_reciever) = mpsc::channel();
+	let bot_pool = ThreadPool::new(2);
 
 	let _sys = actix::System::new("routers");
     let data_router_addr = data_router::DataRouter::default().start();
@@ -72,7 +73,7 @@ fn main() {
         passw_db: passw_db.clone(),
         web_user_db: web_user_db.clone(),
 		bot_user_db: bot_user_db.clone(),
-		bot_sender,
+		bot_pool,
         data_router_addr: data_router_addr.clone(),
         error_router_addr: error_router_addr.clone(),
         data: data.clone(),
@@ -87,7 +88,6 @@ fn main() {
         "keys/intermediate.cert", 
         data_router_state.clone(),
 	);
-	let _bot_handle = bot::handle_requests(bot_reciever, data_router_state.clone());
     bot::set_webhook(config::DOMAIN, config::TOKEN, config::PORT).unwrap();
 	
 	if !opt.no_menu {

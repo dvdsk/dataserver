@@ -386,10 +386,6 @@ impl Data {
 		let dataset_id = LittleEndian::read_u16(&data_string[..2]);
 		let key = LittleEndian::read_u64(&data_string[2..10]);
 
-		//dbg!(data_string.clone().to_vec());
-		//dbg!(dataset_id);
-		//dbg!(key);
-
 		if let Some(set) = self.sets.get_mut(&dataset_id){
 			if data_string.len() != set.metadata.fieldsum() as usize +10  {
 				warn!("datastring has invalid length ({}) for node (id: {}), should have length: {}", data_string.len(), dataset_id, set.metadata.fieldsum()+10);

@@ -4,15 +4,19 @@ use std::sync::atomic::{AtomicUsize};
 use log::{debug, trace};
 use actix::prelude::*;
 use threadpool::ThreadPool;
+use evalexpr::{HashMapContext, Context as evalContext};
 
 use std::collections::{HashMap, HashSet};
 
 use super::DatasetId;
 use super::error_router;
-use super::Data;
+use super::{Data, Field};
 
 use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
 use crate::httpserver::Session;
+
+mod alarms;
+use alarms::{Alarm, CompiledAlarm};
 
 #[derive(Clone)]
 pub struct DataRouterState {
@@ -31,43 +35,43 @@ pub struct DataRouterState {
 	pub free_ws_session_ids: Arc<AtomicUsize>,
 }
 
-//TODO extract alarms to theire own module and finish
-// -add database tree for storing data_alarms
-// -add handler for setting and removing data_alarms
-// -add function for httpserver to list data_alarms
-
-enum SimpleAlarmVariant {
-	Over,
-	Under,
-}
-
-struct NotifyMethod {
-	email: Option<String>,
-	telegram: Option<()>,
-	custom: bool,
-}
-
-struct SimpleAlarm {
-	field_id: u16,
-	threshold_value: f32,
-	variant: SimpleAlarmVariant,
-	nofify: NotifyMethod,
-	message: String,
-}
-
-impl SimpleAlarm {
-	fn evalute(&self, msg: &NewData) {
-		unimplemented!();
-	}
-}
-
+type UserName = String;
 type ClientSessionId = u16;
 pub struct DataRouter {
 	sessions: HashMap<ClientSessionId, Clientinfo>,
 	subs: HashMap<DatasetId, HashSet<ClientSessionId>>,
-	alarms : HashMap<DatasetId, HashSet<SimpleAlarm>>,
+	meta: HashMap<DatasetId, Vec<Field<f32>>>,
+	alarms_by_set: HashMap<DatasetId, HashMap<alarms::Id, (CompiledAlarm, UserName)>>,
+	alarms_by_username: HashMap<UserName, Vec<(DatasetId, alarms::Id, Alarm)>>,
+	alarm_context: HashMapContext,
 }
 
+impl DataRouter {
+	fn update_context(&mut self, line: &Vec<u8>, set_id: &DatasetId) {
+		let fields = self.meta.get(set_id).unwrap();
+		for field in fields {
+			let value: f64 = field.decode(&line);
+			let name = format!("{}:{}",set_id,field.id);
+			self.alarm_context.set_value(name.into(),value.into()).unwrap();
+		}
+	}
+
+	pub fn new(data: &Arc<RwLock<Data>>) -> DataRouter {
+		let meta = data.read().unwrap().sets
+			.iter()
+			.map(|(id,set)| (*id, set.metadata.fields.clone() ))
+			.collect();
+
+		DataRouter {
+			sessions: HashMap::new(),
+			subs: HashMap::new(),
+			meta,//TODO load the next two from db
+			alarms_by_set: HashMap::new(),
+			alarms_by_username: HashMap::new(),
+			alarm_context: HashMapContext::new(),
+		}
+	}
+}
 
 #[derive(Message, Clone)]
 pub struct NewData {
@@ -80,20 +84,22 @@ impl Handler<NewData> for DataRouter {
 	type Result = ();
 
 	fn handle(&mut self, msg: NewData, _: &mut Context<Self>) -> Self::Result {
-		//debug!("NewData, subs: {:?}", self.subs);
 		let updated_dataset_id = msg.from_id;
-		//get a list of clients connected to the datasource with new data
-		
-		if let Some(alarms) = self.alarms.get(&updated_dataset_id){
-			for alarm in alarms {
-				alarm.evalute(&msg);
+
+		//check all alarms that could go off
+		if self.alarms_by_set.contains_key(&updated_dataset_id){
+			self.update_context(&msg.line, &updated_dataset_id); //Opt: 
+			if let Some(alarms) = self.alarms_by_set.get(&updated_dataset_id){
+				for (alarm, _) in alarms.values() {
+					alarm.evalute(&self.alarm_context);
+				}
 			}
 		}
-		
+
+		//get a list of clients connected to the datasource with new data
 		if let Some(subs) = self.subs.get(&updated_dataset_id){
 			debug!("subs: {:?}", subs);
 			for websocket_session_id in subs.iter() {
-				//println!("sending signal");
 				// foward new data message to actor that maintains the
 				// websocket connection with this client.
 				let client_websocket_handler = &self.sessions.get(websocket_session_id).unwrap().addr;
@@ -185,18 +191,6 @@ impl Handler<SubscribeToSource> for DataRouter {
 pub struct Clientinfo {
 	addr: Recipient<NewData>,
 	subs: Vec<DatasetId>,
-}
-
-impl Default for DataRouter {
-	fn default() -> DataRouter {
-		let subs = HashMap::new();
-
-		DataRouter {
-			sessions: HashMap::new(),
-			subs: subs,
-			alarms: HashMap::new(),
-		}
-	}
 }
 
 /// Make actor from `ChatServer`

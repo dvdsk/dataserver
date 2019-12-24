@@ -66,7 +66,7 @@ fn main() {
 	let bot_pool = ThreadPool::new(2);
 
 	let _sys = actix::System::new("routers");
-    let data_router_addr = data_router::DataRouter::default().start();
+    let data_router_addr = data_router::DataRouter::new(&data).start();
     let error_router_addr = error_router::ErrorRouter::load(&db, data.clone()).unwrap().start();
 
     let data_router_state = DataRouterState {

@@ -183,6 +183,7 @@ pub struct BotUserInfo {
 	pub timeseries_with_access: HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>,
 	pub username: Option<String>,
 	pub aliases: HashMap<String, String>,
+	pub keyboard: Option<String>,
 }
 
 impl BotUserInfo {
@@ -192,6 +193,7 @@ impl BotUserInfo {
 			timeseries_with_access: timeseries_with_access.clone(),
 			username: None,
 			aliases: HashMap::new(),
+			keyboard: None,
 		}
 	}
 }
@@ -213,10 +215,10 @@ impl BotUserDatabase {
 		}
 	}
 	
-	pub fn set_userdata<U: Into<TelegramUserId>>(&self, user_id: U, user_info: BotUserInfo) 
+	pub fn set_userdata<U: Into<TelegramUserId>>(&self, user_id: U, user_info: &BotUserInfo) 
 	-> Result <(),UserDbError> {
 		let user_id = &user_id.into().to_string();
-		let user_data =	bincode::serialize(&user_info)?;
+		let user_data =	bincode::serialize(user_info)?;
 		self.storage.set(user_id.as_bytes(),user_data)?;
 		self.storage.flush()?;
 		Ok(())

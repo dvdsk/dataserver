@@ -14,7 +14,8 @@ use crate::data_store::data_router::DataRouterState;
 use crate::databases::{BotUserInfo, UserDbError};
 
 mod commands;
-use commands::{help, plotables, show, alias};
+pub use commands::alarms;
+use commands::{help, plotables, show, alias, keyboard};
 #[cfg(feature = "plotting")]
 use commands::plot;
 
@@ -31,6 +32,7 @@ pub enum Error{
 	UnknownAlias(String),
 	ShowError(show::Error),
 	AliasError(alias::Error),
+	KeyBoardError(keyboard::Error),
 
 	#[cfg(feature = "plotting")]
 	PlotError(plot::Error),
@@ -45,6 +47,12 @@ impl From<show::Error> for Error {
 impl From<alias::Error> for Error {
 	fn from(error: alias::Error) -> Self {
 		Error::AliasError(error)
+	}
+}
+
+impl From<keyboard::Error> for Error {
+	fn from(error: keyboard::Error) -> Self {
+		Error::KeyBoardError(error)
 	}
 }
 
@@ -119,6 +127,18 @@ fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, state: &Da
 				show::send(chat_id, state, TOKEN, args, &userinfo)?;
 				break;
 			}
+			"/keyboard" => {
+				keyboard::show(chat_id, TOKEN, userinfo)?;
+				break;
+			}
+			"/keyboard_add" => {
+				keyboard::add_button(chat_id, user_id, state, TOKEN, args, userinfo)?;
+				break;
+			}
+			"/keyboard_remove" => {
+				keyboard::remove_button(chat_id, user_id, state, TOKEN, args, userinfo)?;
+				break;
+			}			
 			"/alias" => {
 				alias::send(chat_id, user_id, state, TOKEN, args, userinfo)?;
 				break;
@@ -142,6 +162,7 @@ fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 		Error::AliasError(error) => error.to_text(user_id),
 		Error::BotDatabaseError(error) => error.to_text(user_id),		
 		Error::ShowError(error) => error.to_text(user_id),
+		Error::KeyBoardError(error) => error.to_text(user_id),
 		Error::UnknownAlias(alias_text) => 
 			format!("your input: \"{}\", is not a possible command or a configured alias. Use /help to get a list of possible commands and configured aliasses", alias_text),		
 		_ => {

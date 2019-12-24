@@ -111,13 +111,21 @@ pub fn send(chat_id: ChatId, state: &DataRouterState, token: &str,
 
 type PlotData = (Vec<i64>, Vec<Vec<f32>>, Vec<(FieldId, String)>);
 fn xlimits_from_data(data: &Vec<PlotData>) -> (DateTime<Utc>, DateTime<Utc>) {
-    let x_min = data.iter()
-        .map(|d| DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(*d.0.first().unwrap(), 0), Utc))
+    let mut min_ts = data.iter()
+        .map(|d| *d.0.first().unwrap())
         .min().unwrap();
-    let x_max = data.iter()
-        .map(|d| DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(*d.0.last().unwrap(), 0), Utc))
+    let mut max_ts = data.iter()
+        .map(|d| *d.0.last().unwrap())
         .max().unwrap();
-    (x_min,x_max)
+
+    assert!(min_ts < max_ts);
+    if min_ts==max_ts { 
+        min_ts -= 1;
+        max_ts += 1;
+    }
+    let min = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(min_ts, 0), Utc);
+    let max = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(max_ts, 0), Utc);
+    (min,max)
 }
 fn ylimits_from_data(data: &Vec<PlotData>) -> (f32,f32) {
     let mut min = *data.iter()
@@ -176,7 +184,7 @@ fn plot(args: Vec<String>, state: &DataRouterState, userinfo: &BotUserInfo)
     let plot_data = plot_data?;
 
     let (from_date,to_date) = xlimits_from_data(&plot_data);
-    dbg!(from_date, to_date);
+    dbg!(&from_date, &to_date);
     let x_label_formatstr = format_str_from_limits(&from_date, &to_date);
     let (y_min, y_max) = if let Some(manual) = scaling_args {
         manual

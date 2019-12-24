@@ -42,7 +42,7 @@ pub fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &s
 
 	if command.len() == 0 {
 		if let Some(old_command) = userinfo.aliases.remove(&alias_name){
-			state.bot_user_db.set_userdata(user_id, userinfo).map_err(|e| Error::DbError(e))?;
+			state.bot_user_db.set_userdata(user_id, &userinfo).map_err(|e| Error::DbError(e))?;
 			text.push_str(&format!("unset \"{}\" {}",alias_name, old_command));
 		} else {
 			text.push_str("did not unset alias as non was set");
@@ -55,7 +55,7 @@ pub fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &s
 		} else {
 			text.push_str("new alias set");
 		}
-		state.bot_user_db.set_userdata(user_id, userinfo).map_err(|e| Error::DbError(e))?;
+		state.bot_user_db.set_userdata(user_id, &userinfo).map_err(|e| Error::DbError(e))?;
 	}
 
 	send_text_reply(chat_id, token, text)?;

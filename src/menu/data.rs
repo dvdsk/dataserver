@@ -140,7 +140,7 @@ fn archive(set_id: DatasetId, user_db: &mut WebUserDatabase,
             if let Some(id) = userinfo.telegram_user_id{
                 let mut botuserinfo = bot_db.get_userdata(id).unwrap();
                 botuserinfo.timeseries_with_access.remove(&set_id);
-                bot_db.set_userdata(id, botuserinfo).unwrap();
+                bot_db.set_userdata(id, &botuserinfo).unwrap();
             }
         }
         user_db.set_userdata(userinfo).unwrap();

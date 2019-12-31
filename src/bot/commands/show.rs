@@ -63,18 +63,18 @@ fn parse_args(args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo)
             .get(&dataset_id)
             .ok_or(Error::NoAccessToDataSet(dataset_id))?;
             //prevent users requesting a field twice (this leads to an overflow later)
-            if fields_with_access.binary_search_by(|auth| auth.as_ref().cmp(&field_id)).is_ok() {
-                
-                if let Some(field_list) = dataset_fields.get_mut(&dataset_id){
-                    if !field_list.contains(&field_id){
-                        field_list.push(field_id);
-                    }
-                } else {
-                    dataset_fields.insert(dataset_id, vec!(field_id));
+        if fields_with_access.binary_search_by(|auth| auth.as_ref().cmp(&field_id)).is_ok() {
+            
+            if let Some(field_list) = dataset_fields.get_mut(&dataset_id){
+                if !field_list.contains(&field_id){
+                    field_list.push(field_id);
                 }
-            } else { 
-                return Err(Error::NoAccessToField(field_id));
+            } else {
+                dataset_fields.insert(dataset_id, vec!(field_id));
             }
+        } else { 
+            return Err(Error::NoAccessToField(field_id));
+        }
     }
     
     if dataset_fields.len() == 0 {

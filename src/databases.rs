@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, FixedOffset};
 use telegram_bot::types::refs::UserId as TelegramUserId;
 
 use crate::error::DataserverError;
@@ -184,6 +184,7 @@ pub struct BotUserInfo {
 	pub username: Option<String>,
 	pub aliases: HashMap<String, String>,
 	pub keyboard: Option<String>,
+	pub timezone_offset: i32, //hours to the east
 }
 
 impl BotUserInfo {
@@ -194,6 +195,7 @@ impl BotUserInfo {
 			username: None,
 			aliases: HashMap::new(),
 			keyboard: None,
+			timezone_offset: 0,
 		}
 	}
 }

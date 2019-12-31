@@ -1,6 +1,7 @@
 use std::sync::{Arc, RwLock, Mutex};
 use std::sync::atomic::{AtomicUsize};
 
+use chrono::Utc;
 use log::{debug, trace};
 use actix::prelude::*;
 use threadpool::ThreadPool;
@@ -16,7 +17,8 @@ use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
 use crate::httpserver::Session;
 
 mod alarms;
-use alarms::{Alarm, CompiledAlarm};
+pub use alarms::{Alarm, CompiledAlarm, NotifyVia};
+pub use alarms::{AddAlarm};
 
 #[derive(Clone)]
 pub struct DataRouterState {
@@ -53,6 +55,7 @@ impl DataRouter {
 			let value: f64 = field.decode(&line);
 			let name = format!("{}:{}",set_id,field.id);
 			self.alarm_context.set_value(name.into(),value.into()).unwrap();
+			//TODO handle TimeZone
 		}
 	}
 
@@ -88,10 +91,11 @@ impl Handler<NewData> for DataRouter {
 
 		//check all alarms that could go off
 		if self.alarms_by_set.contains_key(&updated_dataset_id){
+			let now = Utc::now();
 			self.update_context(&msg.line, &updated_dataset_id); //Opt: 
 			if let Some(alarms) = self.alarms_by_set.get(&updated_dataset_id){
 				for (alarm, _) in alarms.values() {
-					alarm.evalute(&self.alarm_context);
+					alarm.evalute(&mut self.alarm_context, &now);
 				}
 			}
 		}

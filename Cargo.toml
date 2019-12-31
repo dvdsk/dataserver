@@ -79,6 +79,7 @@ plotters = { version = "0.2", optional = true}
 #plotters = { version = "0.2", optional = true, default-features = false, features = ["bitmap", "datetime"]}
 image = { version = "0.22", optional = true }
 evalexpr = "5.0.5"
+regex = "1.3"
 
 #[replace]
 #"servo-fontconfig-sys:4.0.6#servo-fontconfig-sys:4.0.9" = { git = "https://github.com/dskleingeld/libfontconfig" }

@@ -1,4 +1,3 @@
-
 use actix::prelude::*;
 use log::error;
 use evalexpr::{self, 
@@ -7,50 +6,84 @@ use evalexpr::{self,
 	build_operator_tree,
 	error::EvalexprError::VariableIdentifierNotFound};
 use telegram_bot::types::refs::ChatId;
+use chrono::{Weekday, DateTime, Utc, Datelike, Timelike};
+use chrono::offset::{TimeZone, FixedOffset};
+use std::time::{Duration, Instant};
+use std::collections::HashSet;
 
 use super::DataRouter;
 use crate::data_store::DatasetId;
 use crate::bot::alarms;
 
-enum AlarmError {
+pub enum AlarmError {
     TooManyAlarms,
 }
 
 pub type Id = u8;
 #[derive(Clone)]
-struct NotifyVia {
-	email: Option<String>,
-	telegram: Option<ChatId>,
+pub struct NotifyVia {
+	pub email: Option<String>,
+	pub telegram: Option<ChatId>,
 }
 
 #[derive(Clone)]
 pub struct Alarm {
-	expression: String,
-	notify: NotifyVia,
-	message: String,
+	pub expression: String,
+	pub weekday: Option<HashSet<Weekday>>,
+	pub period: Option<Duration>,
+	pub message: Option<String>,
+	pub command: Option<String>,
+	pub tz_offset: i32, //in hours to the east
+	pub notify: NotifyVia,
 }
 
 pub struct CompiledAlarm {
 	expression: evalexpr::Node,
+	weekday: Option<HashSet<Weekday>>,
+	period: Option<(Duration, Instant)>,
+	message: Option<String>,
+	command: Option<String>,
+	timezone: FixedOffset, //in hours to the east
 	notify: NotifyVia,
-	message: String,	
 }
 
 impl From<Alarm> for CompiledAlarm {
 	fn from(alarm: Alarm) -> Self {
-		let Alarm {expression, notify, message} = alarm;
+		let Alarm {expression, 
+			weekday, period, 
+			message, command, 
+			tz_offset, notify} = alarm;
+		let timezone = FixedOffset::east(tz_offset*3600); 
 		let expression = build_operator_tree(&expression).unwrap();
-		
+		let period = period.map(|d| (d, Instant::now()));
+
 		CompiledAlarm {
-			expression, 
-			notify, 
-			message
+			expression,
+			weekday,
+			period,
+			message,
+			command,
+			timezone,
+			notify,
 		}
 	}
 }
 
 impl CompiledAlarm {
-	pub fn evalute(&self, context: &evalexpr::HashMapContext) {
+	pub fn evalute(&self, context: &mut evalexpr::HashMapContext, now: &DateTime::<Utc>) {
+		
+		if let Some((period, last)) = self.period {
+			if last.elapsed() < period {return;}
+		}
+		
+		let now_user_tz = self.timezone.from_utc_datetime(&now.naive_utc());
+		let today_user_tz = now_user_tz.weekday();
+		if let Some(active_weekdays) = &self.weekday {
+			if !active_weekdays.contains(&today_user_tz){return;}
+		}
+
+		let seconds_since_midnight = now_user_tz.num_seconds_from_midnight() as f64;
+		context.set_value("t".to_string(), seconds_since_midnight.into()).unwrap();
 		match self.expression.eval_boolean_with_context(context){
 			Ok(alarm) => if alarm {self.sound_alarm();},
 			Err(error) => match error {
@@ -72,10 +105,10 @@ impl CompiledAlarm {
 }
 
 
-struct AddAlarm {
-    alarm: Alarm,
-    username: String,
-    sets: Vec<DatasetId>,
+pub struct AddAlarm {
+    pub alarm: Alarm,
+    pub username: String,
+    pub sets: Vec<DatasetId>,
 }
 
 impl Message for AddAlarm {

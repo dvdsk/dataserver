@@ -1,17 +1,37 @@
-pub const USAGE_LIST: &str = "/alarms";
-pub const USAGE_ADD: &str = "/alarm_add <alias> ... <alias>";
-pub const USAGE_REMOVE: &str = "/alarm_remove <alias> ... <alias>";
+pub const USAGE: &str = "/alarms";
+pub const DESCRIPTION: &str = "list, add and remove sensor notifications";
 
-pub const DESCRIPTION_LIST: &str = "show the telegram keyboard";
-pub const DESCRIPTION_ADD: &str = "add aliasses to the keyboard";
-pub const DESCRIPTION_REMOVE: &str = "remove aliasses from the keyboard";
+pub const HELP_ADD: &'static str = 
+	"add [options] \"condition\"\n\
+	example: add \"3_0> 3_1 & t>9:30 & t<12:00\" -d [Sunday,Saturday] -p 5h -c \\plotables\
+	\ncondition; a boolean statement that may use these binairy operators: \
+	^ * / % + - < > == != && || on sensor fields (see \\plotables for options) \
+	or time (use the symbole \"t\")\
+	\npossible options:\n\
+	-d [Weekday, .... , Weekday]\n\
+	days on which the condition should be evaluated \
+	example: -d [Saturday, Sunday]\n\
+	-p <number><unit>\n\
+	minimal time between activation of alarm here \
+	unit can be s,m,h,d or w\n\
+	-c <command>\n\
+	here command should be a valid telegram command \
+	for this bot. If the command is more then one word \
+	long it should be enclosed in quotes\n";
+pub const HELP_LIST: &'static str = 
+	"list\n\
+	shows for all set alarms their: id, condition, timezone and action\
+	performed when the condition is satisfied.\n";
+pub const HELP_REMOVE: &'static str = 
+	"remove [alarm_id]\n\
+	removes an active alarm";
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use evalexpr::{build_operator_tree, EvalexprError};
 use chrono::{Weekday, self};
-use regex::Regex;
+use regex::{Regex, Captures};
 use log::error;
 use telegram_bot::types::refs::{ChatId, UserId};
 use crate::databases::{BotUserInfo};
@@ -34,6 +54,7 @@ pub enum Error{
 	ArgumentParseError(std::num::ParseIntError),
 	ExpressionError(EvalexprError),
 	InvalidDay(String),
+	InvalidSubCommand(String),
 }
 
 impl From<std::num::ParseIntError> for Error {
@@ -50,22 +71,21 @@ impl From<EvalexprError> for Error {
 impl Error {
 	pub fn to_text(self, user_id: UserId) -> String {
 		match self {
-			Error::NotEnoughArguments => 
-				format!("Not enough arguments, usage: {}", USAGE_LIST),
-            Error::ArgumentParseError(_) => format!("One of the arguments could not be converted to a number\nuse: {}", USAGE_ADD),
+			Error::NotEnoughArguments => format!("Not enough arguments, usage: {}", HELP_ADD),
+            Error::ArgumentParseError(_) => format!("One of the arguments could not be converted to a number\nuse: {}", HELP_ADD),
             Error::NoAccessToField(field_id) => format!("You do not have access to field: {}", field_id),
             Error::NoAccessToDataSet(dataset_id) => format!("You do not have access to dataset: {}", dataset_id),
 			Error::IncorrectFieldSpecifier(field) => format!("This \"{}\" is not a valid field specification, see the plotables command", field),
-			Error::NoExpression => format!("An alarm must have a condition, see {}", USAGE_ADD),
+			Error::NoExpression => format!("An alarm must have a condition, see\n{}", HELP_ADD),
 			Error::IncorrectTimeUnit(unit) => format!("This \"{}\" is not a valid duration unit, options are s, m, h, d, w", unit),
 			Error::ExpressionError(err) => format!("I could not understand the alarms condition. Cause: {}", err),
 			Error::InvalidDay(day) => format!("I could not understand what day this is: {}", day),
 			Error::BotDatabaseError(db_error) => db_error.to_text(user_id),
+			Error::InvalidSubCommand(input) => format!("not a sub command for alarms: {}", input),
 		}
 	}
 }
 
-//example: add "3_0> 3_1 & t>9:30 & t<12:00" -d [Sunday,Saturday] -p 5h -c \plotables"
 //alarm will fire on a Sunday or Saturday 
 //between 9:30 and 12am if the value of 
 //field 0 of dataset 3 becomes larger then field 1 of dataset 3
@@ -81,14 +101,28 @@ struct Arguments {
 	fields: HashMap<DatasetId, Vec<FieldId>>,
 }
 
+/// replaces any occurence of dd:dd (for example 22:15) 
+/// to the number of seconds since 00:00
+fn rewrite_time(expression: String) -> String {
+	let time_re = Regex::new(r#"(\d{1,2}):(\d\d)"#).unwrap();
+	time_re.replacen(&expression, 0, |caps: &Captures| {
+			let minutes: u32 = caps
+				.get(1).unwrap()
+				.as_str().parse().unwrap();
+			let hours: u32 = caps
+				.get(2).unwrap()
+				.as_str().parse().unwrap();
+			format!("{}",minutes*60+hours*3600)
+	}).to_string()
+}
+
 fn parse_arguments(args: std::str::SplitWhitespace<'_>) -> Result<Arguments, Error>{	
 	let args: String = args.collect();
 	let exp_re = Regex::new(r#""(.*)""#).unwrap();
 	let expression = exp_re.find(&args)
 		.ok_or(Error::NoExpression)?
 		.as_str().to_string();
-	//TODO O.o timezones.... 
-	//TODO rewrite time to seconds since 12am
+	let expression = rewrite_time(expression);
 
 	let day_re = Regex::new(r#"-d \[(.+)\]"#).unwrap();
 	let day: Option<Result<HashSet<Weekday>,Error>> = day_re
@@ -99,11 +133,11 @@ fn parse_arguments(args: std::str::SplitWhitespace<'_>) -> Result<Arguments, Err
 			.map(|day| day.parse::<Weekday>().map_err(|_| 
 				Error::InvalidDay(day.to_owned())))
 			.collect()
-		);//TODO O.o timezones.... 
+		);
 	let day = day.transpose()?;
 
 	let period_re = Regex::new(r#"-p \d[smhdw]"#).unwrap();
-	let period = if let Some(caps) = exp_re.captures(&args){
+	let period = if let Some(caps) = period_re.captures(&args){
 		let numb = caps.get(1).unwrap().as_str().parse::<u64>()?;
 		let unit = caps.get(2).unwrap().as_str();
 		Some(match unit {
@@ -118,12 +152,12 @@ fn parse_arguments(args: std::str::SplitWhitespace<'_>) -> Result<Arguments, Err
 		None
 	};
 
-	let message_re = Regex::new(r#"-m \"(.+)\""#).unwrap();
+	let message_re = Regex::new(r#"-m "(.+)""#).unwrap();
 	let message = message_re
 		.find(&args)
 		.map(|mat| mat.as_str().to_owned());
 
-	let command_re = Regex::new(r#"-c ([^"-\s]+|\".+\")"#).unwrap();
+	let command_re = Regex::new(r#"-c ([^"\-\s]+|".+")"#).unwrap();
 	let command = command_re
 		.find(&args)
 		.map(|mat| mat.as_str().to_owned());
@@ -178,7 +212,7 @@ fn authorized(needed_fields: &HashMap<DatasetId, Vec<FieldId>>,
 	Ok(())
 }
 
-pub fn add(chat_id: ChatId, token: &str, args: std::str::SplitWhitespace<'_>, 
+fn add(chat_id: ChatId, token: &str, args: std::str::SplitWhitespace<'_>, 
 	userinfo: BotUserInfo, state: &DataRouterState) -> Result<(), botError> {
 		
 	let Arguments {expression, 
@@ -213,3 +247,12 @@ pub fn add(chat_id: ChatId, token: &str, args: std::str::SplitWhitespace<'_>,
 	Ok(())
 }
 
+pub fn handle(chat_id: ChatId, token: &str, mut args: std::str::SplitWhitespace<'_>, 
+	userinfo: BotUserInfo, state: &DataRouterState) -> Result<(), botError> {
+
+	let subcommand = args.next().unwrap_or_default();
+	match subcommand {
+		"add" => add(chat_id, token, args, userinfo, state),
+		_ => send_text_reply(chat_id, token, format!("{}\n{}\n{}", HELP_LIST, HELP_ADD, HELP_REMOVE)),
+	}
+}

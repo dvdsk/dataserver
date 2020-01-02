@@ -257,21 +257,22 @@ fn parse_plot_arguments(args: Vec<String>)
         .parse::<FieldId>()?;
 
 
-    let end = args[1].find(char::is_alphabetic)
+    let end = args[1].find(|c: char| c.is_alphabetic() || c == '.')
         .ok_or(Error::IncorrectArgument(args[1].clone()))?;
     
-    let numb =  args[1][..end].parse::<i64>()?;
+    let numb =  args[1][..end].parse::<f32>()?;
     let unit = &args[1][end..];
     let duration = match unit {
-        "s" => Duration::seconds(numb),
-        "m" => Duration::minutes(numb),
-        "h" => Duration::hours(numb),
-        "d" => Duration::days(numb),
-        "w" => Duration::weeks(numb),
-        "monthes" => Duration::weeks(4*numb),
-        "years" => Duration::days(365*numb),
+        "s" =>       numb * (1) as f32,
+        "m" =>       numb * (60) as f32,
+        "h" =>       numb * (3600) as f32,
+        "d" =>       numb * (24*3600) as f32,
+        "w" =>       numb * (7*24*3600) as f32,
+        "monthes" => numb * (4*7*24*3600) as f32,
+        "years" =>   numb * (365*24*3600) as f32,
         _ => return Err(Error::IncorrectArgument(args[1].clone())),
     };
+    let duration = Duration::seconds(duration as i64);
     let timerange = (Utc::now() - duration, Utc::now());
 
     //optional argument

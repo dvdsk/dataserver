@@ -239,7 +239,7 @@ fn add(chat_id: ChatId, token: &str, args: std::str::SplitWhitespace<'_>,
 	//TODO send to datarouter	
 	state.data_router_addr.do_send(AddAlarm {
 		alarm,
-		username: userinfo.username.unwrap().clone(),
+		username: userinfo.username.clone(),
 		sets: fields.keys().map(|id| *id).collect(),
 	});
 	

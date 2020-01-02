@@ -7,7 +7,7 @@ use chrono::Utc;
 use dialoguer::{Select, Input, PasswordInput, Checkboxes};
 use telegram_bot::types::refs::UserId as TelegramUserId;
 
-use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase, WebUserInfo, BotUserInfo};
+use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase, WebUserInfo, BotUserInfo, Access};
 use crate::data_store::{Data, Authorisation, DatasetId, FieldId, MetaData};
 use crate::error::DataserverError as Error;
 
@@ -30,7 +30,9 @@ pub fn menu(user_db: &mut WebUserDatabase, bot_db: &mut BotUserDatabase,
 
     let username = userlist[list_numb - 1].as_str();
     let mut userinfo = user_db.get_userdata(&username).unwrap();
+    let mut botuserinfo = userinfo.telegram_user_id.map(|id| bot_db.get_userdata(id).unwrap());
     let org_userinfo = userinfo.clone();
+    let org_botuserinfo = botuserinfo.clone();
     
     loop {
         let numb_datasets = userinfo.timeseries_with_access.len();
@@ -52,13 +54,16 @@ pub fn menu(user_db: &mut WebUserDatabase, bot_db: &mut BotUserDatabase,
             .interact().unwrap();
         
         match list_numb {
-            0 => change_user_name(&mut userinfo, user_db),
-            1 => set_telegram_id(&mut userinfo),
-            2 => change_dataset_access(&mut userinfo, &data),
+            0 => change_user_name(&mut userinfo, &mut botuserinfo, user_db),
+            1 => set_telegram_id(&mut userinfo, &mut botuserinfo),
+            2 => change_dataset_access(&mut userinfo, &mut botuserinfo, &data),
             3 => change_password(username, passw_db).unwrap(),
             4 => {remove_user(userinfo, user_db, bot_db, passw_db).unwrap(); break;}
             5 => break,
-            6 => {save_changes(userinfo, user_db, org_userinfo, bot_db).unwrap(); break;},
+            6 => {save_changes(user_db, bot_db,
+                userinfo, org_userinfo, 
+                botuserinfo, org_botuserinfo).unwrap(); 
+                break;},
             _ => panic!(),
         } 
     }
@@ -122,34 +127,32 @@ fn remove_user(userinfo: WebUserInfo, user_db: &WebUserDatabase,
     Ok(())
 }
 
-fn save_changes(userinfo: WebUserInfo, user_db: &WebUserDatabase, org_userinfo: WebUserInfo, 
-                bot_db: &mut BotUserDatabase) -> Result<(), Error> {
+fn save_changes(user_db: &WebUserDatabase, bot_db: &mut BotUserDatabase,
+                userinfo: WebUserInfo, org_userinfo: WebUserInfo, 
+                botuser: Option<BotUserInfo>, org_botuser: Option<BotUserInfo>)
+                 -> Result<(), Error> {
+
+    //remove what should be removed
     if org_userinfo.username != userinfo.username {
         user_db.remove_user(org_userinfo.username).unwrap();
     }
+    if org_userinfo.telegram_user_id != userinfo.telegram_user_id {
+        if let Some(telegram_user_id) = org_userinfo.telegram_user_id{
+            bot_db.remove_user(telegram_user_id).unwrap();
+        }
+    }
 
-    //if there was a telegram id set
-    if let Some(org_id) = org_userinfo.telegram_user_id {
-        if let Some(id) = userinfo.telegram_user_id {
-            let botuserinfo = bot_db.get_userdata(org_id)?;
-            bot_db.remove_user(org_id)?;
-            bot_db.set_userdata(id, &botuserinfo)?;
-        } else {
-            bot_db.remove_user(org_id)?;
-        }
-    } else {
-        if let Some(id) = userinfo.telegram_user_id {
-            let botuserinfo = BotUserInfo::from_timeseries_access(&userinfo.timeseries_with_access);
-            bot_db.set_userdata(id, &botuserinfo)?;
-        }
-        //do nothing as there was no telegram id anyway
+    //insert everything what is not None
+    if let Some(botuser) = botuser {
+        let id = userinfo.telegram_user_id.unwrap();
+        bot_db.set_userdata(id, &botuser)?;
     }
 
     user_db.set_userdata(userinfo).unwrap();
     Ok(())
 }
 
-fn change_user_name(userinfo: &mut WebUserInfo, user_db: &WebUserDatabase) {
+fn change_user_name(userinfo: &mut WebUserInfo, botuserinfo: &mut Option<BotUserInfo>, user_db: &WebUserDatabase) {
     let new_name = Input::<String>::new()
     .with_prompt("Enter new username")
     .interact()
@@ -157,6 +160,7 @@ fn change_user_name(userinfo: &mut WebUserInfo, user_db: &WebUserDatabase) {
 
     if new_name.len() > 0 {
         if !user_db.storage.contains_key(&new_name).unwrap() {
+            botuserinfo.as_mut().map(|mut u| u.username=new_name.clone()); 
             userinfo.username = new_name;
         } else {
             println!("cant use \"{}\" as name, already in use", new_name);    
@@ -168,7 +172,7 @@ fn change_user_name(userinfo: &mut WebUserInfo, user_db: &WebUserDatabase) {
     }
 }
 
-fn set_telegram_id(userinfo: &mut WebUserInfo) {
+fn set_telegram_id(userinfo: &mut WebUserInfo, botuser: &mut Option<BotUserInfo>) {
     let new_id = Input::<String>::new()
         .with_prompt("Enter new telegram id")
         .interact()
@@ -176,6 +180,10 @@ fn set_telegram_id(userinfo: &mut WebUserInfo) {
     
     if new_id.len() > 0 {
         if let Ok(new_id) = new_id.parse::<i64>(){
+            if botuser.is_none(){
+                let access = userinfo.timeseries_with_access.clone();
+                *botuser = Some(BotUserInfo::from_access_and_name(access, userinfo.username.clone()));
+            }
             userinfo.telegram_user_id = Some(TelegramUserId::new(new_id));
         } else {
             println!("Can not parse to integer, please try again");            
@@ -183,15 +191,19 @@ fn set_telegram_id(userinfo: &mut WebUserInfo) {
         }
     } else {
         println!("unset telegram id");
+        *botuser = None;
         userinfo.telegram_user_id = None;
         thread::sleep(Duration::from_secs(1));
     }
 }
 
-fn change_dataset_access(userinfo: &mut WebUserInfo, data: &Arc<RwLock<Data>>) {
+fn change_dataset_access(userinfo: &mut WebUserInfo, botuser: &mut Option<BotUserInfo>, 
+    data: &Arc<RwLock<Data>>) {
+    
+    let access = &mut userinfo.timeseries_with_access;
     let data_unlocked = data.read().unwrap();
     let dataset_list: (Vec<String>, Vec<DatasetId>) 
-    = userinfo.timeseries_with_access.iter()
+    = access.iter()
         .map(|(id, _authorizations)| {
             let name = &data_unlocked.sets.get(id).unwrap().metadata.name;
             (format!("modify access to: {}", name), id)})
@@ -207,19 +219,21 @@ fn change_dataset_access(userinfo: &mut WebUserInfo, data: &Arc<RwLock<Data>>) {
 
     match list_numb {
         0 => return,
-        1 => add_dataset(data, userinfo),
+        1 => add_dataset(data, access),
         _ => {
             let set_id = dataset_list.1[list_numb - 2]; 
-            modify_dataset_fields(set_id, userinfo, data);
+            modify_dataset_fields(set_id, access, data);
         }
-    }  
+    }
+
+    botuser.as_mut().map(|mut b| b.timeseries_with_access = access.clone());
 }
 
-fn add_dataset(data: &Arc<RwLock<Data>>, userinfo: &mut WebUserInfo){
+fn add_dataset(data: &Arc<RwLock<Data>>, access: &mut Access){
     let dataset_list: (Vec<String>, Vec<DatasetId>) = data.read()
         .unwrap().sets
         .iter()
-        .filter(|(id, _)| !userinfo.timeseries_with_access.contains_key(&id))
+        .filter(|(id, _)| !access.contains_key(&id))
         .map(|(id, dataset)| 
             (format!("{}: {}",id,dataset.metadata.name), id) 
         ).unzip();
@@ -245,7 +259,8 @@ fn add_dataset(data: &Arc<RwLock<Data>>, userinfo: &mut WebUserInfo){
     };
 
     let authorized_fields = select_fields(set_id, data);
-    userinfo.timeseries_with_access.insert(set_id, authorized_fields);
+    access.insert(set_id, authorized_fields);
+
 }
 
 fn select_fields(set_id: DatasetId, data: &Arc<RwLock<Data>>)
@@ -316,8 +331,8 @@ fn make_field_actions(metadata: &MetaData, accessible_fields: &HashSet<Authorisa
     (removable, removable_ids, addable, addable_ids)
 }
 
-fn modify_dataset_fields(set_id: DatasetId, userinfo: &mut WebUserInfo, data: &Arc<RwLock<Data>>){
-    let fields_with_access = userinfo.timeseries_with_access.get_mut(&set_id);
+fn modify_dataset_fields(set_id: DatasetId, access: &mut Access, data: &Arc<RwLock<Data>>){
+    let fields_with_access = access.get_mut(&set_id);
     if fields_with_access.is_none() {return; }
     let fields_with_access = fields_with_access.unwrap();
     let mut accessible_fields: HashSet<Authorisation> = fields_with_access
@@ -368,5 +383,5 @@ fn modify_dataset_fields(set_id: DatasetId, userinfo: &mut WebUserInfo, data: &A
     }
 
     //no more fields with access left remove dataset from acessible sets
-    userinfo.timeseries_with_access.remove(&set_id);
+    access.remove(&set_id);
 }

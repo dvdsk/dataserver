@@ -111,11 +111,11 @@ impl PasswordDatabase {
 pub struct WebUserDatabase {
     pub storage: Arc<Tree>,
 }
-
+pub type Access = HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>;
 type RecieveErrors = bool;
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct WebUserInfo {
-	pub timeseries_with_access: HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>,
+	pub timeseries_with_access: Access,  
 	pub last_login: DateTime<Utc>, 
 	pub username: String,
 	pub telegram_user_id: Option<TelegramUserId>,
@@ -181,18 +181,18 @@ pub struct BotUserDatabase {
 pub struct BotUserInfo {
 	//keep the authorisation vector sorted
 	pub timeseries_with_access: HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>,
-	pub username: Option<String>,
+	pub username: String,
 	pub aliases: HashMap<String, String>,
 	pub keyboard: Option<String>,
 	pub timezone_offset: i32, //hours to the east
 }
 
 impl BotUserInfo {
-	pub fn from_timeseries_access(timeseries_with_access: &HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>)
+	pub fn from_access_and_name(access: HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>, name: String)
 	-> Self {
 		Self {
-			timeseries_with_access: timeseries_with_access.clone(),
-			username: None,
+			timeseries_with_access: access,
+			username: name,
 			aliases: HashMap::new(),
 			keyboard: None,
 			timezone_offset: 0,

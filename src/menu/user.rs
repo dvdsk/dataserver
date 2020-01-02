@@ -129,7 +129,7 @@ fn remove_user(userinfo: WebUserInfo, user_db: &WebUserDatabase,
 
 fn save_changes(user_db: &WebUserDatabase, bot_db: &mut BotUserDatabase,
                 userinfo: WebUserInfo, org_userinfo: WebUserInfo, 
-                botuser: Option<BotUserInfo>, org_botuser: Option<BotUserInfo>)
+                botuser: Option<BotUserInfo>, _org_botuser: Option<BotUserInfo>)
                  -> Result<(), Error> {
 
     //remove what should be removed

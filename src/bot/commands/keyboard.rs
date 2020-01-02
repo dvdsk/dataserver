@@ -120,7 +120,7 @@ pub fn add_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, tok
 		.map_err(|e| Error::DbError(e))?;
 
 	//update users keyboard
-	reload(chat_id, token, userinfo, "updated keyboard");
+	reload(chat_id, token, userinfo, "updated keyboard")?;
     Ok(())
 }
 
@@ -153,6 +153,6 @@ pub fn remove_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, 
 		.map_err(|e| Error::DbError(e))?;
 
 	//update users keyboard
-	reload(chat_id, token, userinfo, "updated keyboard");
+	reload(chat_id, token, userinfo, "updated keyboard")?;
     Ok(())
 }

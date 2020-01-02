@@ -10,3 +10,5 @@
 /DATA_WITH_ERROR
 /data
 .md
+
+src/config.rs

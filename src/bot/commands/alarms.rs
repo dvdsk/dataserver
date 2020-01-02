@@ -254,5 +254,6 @@ pub fn handle(chat_id: ChatId, token: &str, mut args: std::str::SplitWhitespace<
 	match subcommand {
 		"add" => add(chat_id, token, args, userinfo, state),
 		_ => send_text_reply(chat_id, token, format!("{}\n{}\n{}", HELP_LIST, HELP_ADD, HELP_REMOVE)),
+		//_ => Err(Error::)
 	}
 }

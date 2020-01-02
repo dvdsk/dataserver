@@ -12,6 +12,7 @@ use telegram_bot::types::refs::{ChatId, UserId};
 
 use crate::data_store::data_router::DataRouterState;
 use crate::databases::{BotUserInfo, UserDbError};
+use crate::config::TOKEN;
 
 mod commands;
 pub use commands::alarms;
@@ -19,7 +20,6 @@ use commands::{help, plotables, show, alias, keyboard};
 #[cfg(feature = "plotting")]
 use commands::plot;
 
-pub const TOKEN: &str = "966207890:AAFyRxiTMSc5R_yQH1zyin1WkEK8Y_5_qEU";
 
 #[derive(Debug)]
 pub enum Error{
@@ -207,7 +207,7 @@ pub fn handle_webhook(state: Data<DataRouterState>, raw_update: Bytes)
 		.body("{}")
 }
 
-fn send_text_reply<T: Into<String>>(chat_id: ChatId, token: &str, text: T)
+pub fn send_text_reply<T: Into<String>>(chat_id: ChatId, token: &str, text: T)
 	 -> Result<(), Error>{//add as arg generic ToChatRef (should get from Update)
 	//TODO create a SendMessage, serialise it (use member function serialize) 
 	//then use the HttpRequest fields, (url, method, and body) to send to telegram

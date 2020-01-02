@@ -13,7 +13,8 @@ use std::collections::HashSet;
 
 use super::DataRouter;
 use crate::data_store::DatasetId;
-use crate::bot::alarms;
+use crate::bot;
+use crate::config::TOKEN;
 
 pub enum AlarmError {
     TooManyAlarms,
@@ -98,8 +99,17 @@ impl CompiledAlarm {
 			todo!();
 		}
 		if let Some(chat_id) = &self.notify.telegram {
-
-			todo!();
+			if let Some(message) = &self.message {
+				if let Err(e) = bot::send_text_reply(*chat_id, TOKEN, message){
+					error!("could not send alarm message! error: {:?}",e);
+				}
+			}
+			if let Some(command) = &self.command {
+				todo!();
+				//let user_id = ;
+				//let state = ;
+				//bot::handle_command(command, chat_id, user_id, state);
+			}
 		}
 	}
 }

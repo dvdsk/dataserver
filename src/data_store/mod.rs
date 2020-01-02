@@ -71,6 +71,7 @@ where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+
 	
 		decoded
 	}
+	#[allow(dead_code)]
 	pub fn encode<D>(&self, mut numb: T, line: &mut [u8])
 	where D: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::AddAssign+std::ops::DivAssign{
 

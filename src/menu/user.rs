@@ -132,8 +132,8 @@ fn save_changes(userinfo: WebUserInfo, user_db: &WebUserDatabase, org_userinfo: 
     if let Some(org_id) = org_userinfo.telegram_user_id {
         if let Some(id) = userinfo.telegram_user_id {
             let botuserinfo = bot_db.get_userdata(org_id)?;
-            bot_db.set_userdata(id, &botuserinfo)?;
             bot_db.remove_user(org_id)?;
+            bot_db.set_userdata(id, &botuserinfo)?;
         } else {
             bot_db.remove_user(org_id)?;
         }

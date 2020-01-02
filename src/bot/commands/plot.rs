@@ -247,7 +247,7 @@ fn parse_plot_arguments(args: Vec<String>)
     
     if args.len() < 2 {return Err(Error::NotEnoughArguments);}
 
-    let mut plotable = args[0].split(":");
+    let mut plotable = args[0].split("_");
     let set_id = plotable.nth(0)
         .ok_or(Error::IncorrectArgument(args[0].clone()))?
         .parse::<DatasetId>()?;

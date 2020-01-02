@@ -50,7 +50,7 @@ fn parse_args(args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo)
     let mut dataset_fields: HashMap<DatasetId, Vec<FieldId>> = HashMap::new();
 
     for arg in args {
-        let mut ids = arg.split(':');       
+        let mut ids = arg.split('_');       
         let dataset_id: DatasetId = ids.next()
             .ok_or(Error::ArgumentSplitError(arg.to_owned()))?
             .parse().map_err(|e| Error::ArgumentParseError(arg.to_owned(), e))?;

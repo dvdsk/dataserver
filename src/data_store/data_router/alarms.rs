@@ -8,6 +8,7 @@ use evalexpr::{self,
 use telegram_bot::types::refs::ChatId;
 use chrono::{Weekday, DateTime, Utc, Datelike, Timelike};
 use chrono::offset::{TimeZone, FixedOffset};
+use reqwest;
 use std::time::{Duration, Instant};
 use std::collections::HashSet;
 
@@ -16,8 +17,19 @@ use crate::data_store::DatasetId;
 use crate::bot;
 use crate::config::TOKEN;
 
+#[derive(Debug)]
 pub enum AlarmError {
-    TooManyAlarms,
+	TooManyAlarms,
+	CouldNotNotify(reqwest::Response),
+}
+
+impl From<bot::Error> for AlarmError {
+	fn from(err: bot::Error) -> Self {
+		match err {
+			bot::Error::InvalidServerResponse(resp) => AlarmError::CouldNotNotify(resp),
+			_ => unreachable!(),
+		}
+	}
 }
 
 pub type Id = u8;
@@ -71,38 +83,45 @@ impl From<Alarm> for CompiledAlarm {
 }
 
 impl CompiledAlarm {
-	pub fn evalute(&self, context: &mut evalexpr::HashMapContext, now: &DateTime::<Utc>) {
+	pub fn evalute(&self, context: &mut evalexpr::HashMapContext, 
+		now: &DateTime::<Utc>) -> Result<(), AlarmError> {
 		
 		if let Some((period, last)) = self.period {
-			if last.elapsed() < period {return;}
+			if last.elapsed() < period {return Ok(());}
 		}
 		
 		let now_user_tz = self.timezone.from_utc_datetime(&now.naive_utc());
 		let today_user_tz = now_user_tz.weekday();
 		if let Some(active_weekdays) = &self.weekday {
-			if !active_weekdays.contains(&today_user_tz){return;}
+			if !active_weekdays.contains(&today_user_tz){return Ok(());}
 		}
 
 		let seconds_since_midnight = now_user_tz.num_seconds_from_midnight() as f64;
 		context.set_value("t".to_string(), seconds_since_midnight.into()).unwrap();
+		dbg!();
 		match self.expression.eval_boolean_with_context(context){
-			Ok(alarm) => if alarm {self.sound_alarm();},
+			Ok(alarm) => if alarm {self.sound_alarm()?; dbg!();},
 			Err(error) => match error {
-					VariableIdentifierNotFound(_) => return,
-					_ => error!("{:?}", error),
+					VariableIdentifierNotFound(_) => {
+						dbg!();
+						//if happens for long time warn user
+					}
+					_ => {error!("{:?}", error); dbg!();},
 			}
 		}
+		Ok(())
 	}
 
-	fn sound_alarm(&self) {
+	fn sound_alarm(&self) -> Result<(), AlarmError>{
 		if let Some(_email) = &self.notify.email {
 			todo!();
 		}
 		if let Some(chat_id) = &self.notify.telegram {
 			if let Some(message) = &self.message {
-				if let Err(e) = bot::send_text_reply(*chat_id, TOKEN, message){
-					error!("could not send alarm message! error: {:?}",e);
-				}
+				bot::send_text_reply(*chat_id, TOKEN, message)?;
+			} else {
+				let text = format!("alarm: {}", self.expression);
+				bot::send_text_reply(*chat_id, TOKEN, text)?;
 			}
 			if let Some(command) = &self.command {
 				todo!();
@@ -111,6 +130,7 @@ impl CompiledAlarm {
 				//bot::handle_command(command, chat_id, user_id, state);
 			}
 		}
+		Ok(())
 	}
 }
 
@@ -129,9 +149,11 @@ impl Handler<AddAlarm> for DataRouter {
 	type Result = Result<(),AlarmError>;
 
 	fn handle(&mut self, msg: AddAlarm, _: &mut Context<Self>) -> Self::Result {
+		dbg!("add alarm?");
 		let mut set_id_alarm = Vec::with_capacity(msg.sets.len()); 
         for set_id in msg.sets {
-            let list = self.alarms_by_set.get_mut(&set_id).unwrap();
+			dbg!(&set_id);
+			let list = self.alarms_by_set.get_mut(&set_id).unwrap();
             
             let free_id = (std::u8::MIN..std::u8::MAX)
                 .skip_while(|x| list.contains_key(x))

@@ -19,7 +19,7 @@ pub fn send(chat_id: ChatId, userinfo: &BotUserInfo, state: &DataRouterState, to
 
 		for field_id in authorized_fields.iter().map(|f| FieldId::from(f) as usize) {
 		    let field = &metadata.fields[field_id];
-            text.push_str(&format!("{}:{}\t\t\t{}\n", dataset_id, field_id, field.name));
+            text.push_str(&format!("{}_{}\t\t\t{}\n", dataset_id, field_id, field.name));
 		}
 	}
 

@@ -32,7 +32,6 @@ use std::time::Duration;
 use evalexpr::{build_operator_tree, EvalexprError};
 use chrono::{Weekday, self};
 use regex::{Regex, Captures};
-use log::error;
 use telegram_bot::types::refs::{ChatId, UserId};
 use crate::databases::{BotUserInfo};
 use crate::data_store::data_router::{DataRouterState, Alarm, AddAlarm, NotifyVia};

@@ -89,7 +89,7 @@ pub struct Logindata {
 }
 
 /// State and POST Params
-pub fn login_get_and_check(
+pub async fn login_get_and_check(
 		id: Identity,
 		state: Data<DataRouterState>,
 		req: HttpRequest,
@@ -102,7 +102,6 @@ pub fn login_get_and_check(
 
     //if login valid (check passwdb) load userinfo
     let state = &mut state.get_ref();
-
     if state.passw_db.verify_password(params.u.as_str().as_bytes(), params.p.as_str().as_bytes()).is_err(){
 		warn!("incorrect password");
 		return Ok(HttpResponse::build(http::StatusCode::UNAUTHORIZED)
@@ -141,7 +140,7 @@ pub struct TelegramId {
 	id: String,
 }
 
-pub fn set_telegram_id_post(
+pub async fn set_telegram_id_post(
 		id: Identity,
 		state: Data<DataRouterState>,
 		params: Form<TelegramId>) -> wResult<HttpResponse> {
@@ -154,26 +153,36 @@ pub fn set_telegram_id_post(
 pub fn new_data_post(state: Data<DataRouterState>, body: Bytes)
 	 -> HttpResponse {
 	
-	let now = Utc::now();
-	let data = state.data.clone();//clones pointer
-	let data_router_addr = state.data_router_addr.clone(); //FIXME CLONE SHOULD NOT BE NEEDED
+	//TODO remove this debug section
+	state.data_router_addr.do_send(data_router::DebugActix {
+		test_numb: 2,
+	});
+	dbg!();
+	//
 
-	let mut data = data.write().unwrap();
+	let now = Utc::now();
+	let mut data = state.data.write().unwrap();
 	match data.store_new_data(body, now) {
 		Ok((set_id, data_string)) => {
 			trace!("stored new data");
-			data_router_addr.do_send(data_router::NewData {
+			state.data_router_addr.do_send(data_router::NewData2 {
+				from_id: set_id.clone(),
+				line: data_string.clone(),
+				timestamp: now.timestamp()
+			});
+			state.data_router_addr.do_send(data_router::NewData {
 				from_id: set_id,
 				line: data_string,
 				timestamp: now.timestamp()
 			});
+			dbg!();
 			HttpResponse::Ok().status(StatusCode::OK).finish() },
 		Err(_) => HttpResponse::Ok().status(StatusCode::FORBIDDEN).finish(),
 	}
 }
 
 /// do websocket handshake and start `MyWebSocket` actor
-pub fn data_router_ws_index(
+pub async fn data_router_ws_index(
 	id: Identity,
 	state: Data<DataRouterState>, 
 	req: HttpRequest,
@@ -209,7 +218,7 @@ pub fn data_router_ws_index(
 }
 
 /// do websocket handshake and start `MyWebSocket` actor
-pub fn error_router_ws_index(
+pub async fn error_router_ws_index(
 	id: Identity,
 	state: Data<DataRouterState>, 
 	req: HttpRequest,

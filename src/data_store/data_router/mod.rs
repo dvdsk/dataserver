@@ -18,7 +18,7 @@ use crate::httpserver::Session;
 
 mod alarms;
 pub use alarms::{Alarm, CompiledAlarm, NotifyVia};
-pub use alarms::{AddAlarm};
+//pub use alarms::{AddAlarm};
 
 #[derive(Clone)]
 pub struct DataRouterState {
@@ -76,6 +76,7 @@ impl DataRouter {
 }
 
 #[derive(Message, Clone)]
+#[rtype(result = "()")]
 pub struct NewData {
 	pub from_id: DatasetId,
 	pub line: Vec<u8>,
@@ -86,6 +87,8 @@ impl Handler<NewData> for DataRouter {
 	type Result = ();
 
 	fn handle(&mut self, msg: NewData, _: &mut Context<Self>) -> Self::Result {
+		dbg!();
+		println!("test");
 		let updated_dataset_id = msg.from_id;
 
 		//check all alarms that could go off
@@ -109,6 +112,22 @@ impl Handler<NewData> for DataRouter {
 				client_websocket_handler.do_send(msg.clone()).unwrap();
 			}
 		}
+	}
+}
+
+#[derive(Message, Clone)]
+#[rtype(result = "()")]
+pub struct NewData2 {
+	pub from_id: DatasetId,
+	pub line: Vec<u8>,
+	pub timestamp: i64,
+}
+
+impl Handler<NewData2> for DataRouter {
+	type Result = ();
+
+	fn handle(&mut self, msg: NewData2, _: &mut Context<Self>) -> Self::Result {
+		dbg!();
 	}
 }
 
@@ -140,6 +159,7 @@ impl Handler<Connect> for DataRouter {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct Disconnect {
 	pub ws_session_id: u16,
 }
@@ -163,6 +183,7 @@ impl Handler<Disconnect> for DataRouter {
 
 /// New chat session is created
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct SubscribeToSource {
 	pub ws_session_id: u16,
 	pub set_id: DatasetId,
@@ -191,12 +212,72 @@ impl Handler<SubscribeToSource> for DataRouter {
 	}
 }
 
+//#[derive(Message, Clone)]
+pub struct AddAlarm {
+    pub alarm: Alarm,
+    pub username: String,
+    pub sets: Vec<DatasetId>,
+}
+
+impl Message for AddAlarm {
+	type Result = usize;
+}
+
+impl Handler<AddAlarm> for DataRouter {
+	//type Result = Result<(),AlarmError>;
+	type Result = usize;
+
+	fn handle(&mut self, msg: AddAlarm, ctx: &mut Context<Self>) -> Self::Result {
+		dbg!();
+		10usize
+	}
+
+	/*fn handle(&mut self, msg: AddAlarm, _: &mut Context<Self>) -> Self::Result {
+		dbg!("add alarm?");
+		let mut set_id_alarm = Vec::with_capacity(msg.sets.len()); 
+        for set_id in msg.sets {
+			dbg!(&set_id);
+			let list = self.alarms_by_set.get_mut(&set_id).unwrap();
+            
+            let free_id = (std::u8::MIN..std::u8::MAX)
+                .skip_while(|x| list.contains_key(x))
+                .next().unwrap();//.ok_or(AlarmError::TooManyAlarms).unwrap();//?;
+			
+			let alarm: CompiledAlarm = msg.alarm.clone().into();
+			list.insert(free_id, (alarm, msg.username.clone())).unwrap();
+            set_id_alarm.push((set_id, free_id, msg.alarm.clone()));
+        }
+		self.alarms_by_username.insert(msg.username, set_id_alarm).unwrap();
+		
+		//Ok(())
+	}*/
+}
+
 pub struct Clientinfo {
 	addr: Recipient<NewData>,
 	subs: Vec<DatasetId>,
 }
 
-/// Make actor from `ChatServer`
+/// New chat session is created
+#[derive(Message)]
+#[rtype(u16)]
+pub struct DebugActix {
+	pub test_numb: u16,
+}
+
+impl Handler<DebugActix> for DataRouter {
+	type Result = u16;
+
+	fn handle(&mut self, msg: DebugActix, _: &mut Context<Self>) -> Self::Result {
+		dbg!();
+		let numb = msg.test_numb;
+		let numb = numb + 1;
+		numb
+	}
+}
+
+
+/// Make actor
 impl Actor for DataRouter {
 	/// We are going to use simple Context, we just need ability to communicate
 	/// with other actors.
@@ -204,3 +285,4 @@ impl Actor for DataRouter {
 }
 
 ///////////////////////////////////
+

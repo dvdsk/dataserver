@@ -15,13 +15,8 @@ use telegram_bot::types::refs::UserId as TelegramUserId;
 
 use crate::error::DataserverError;
 
-static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
+static PBKDF2_ALG: pbkdf2::Algorithm = pbkdf2::PBKDF2_HMAC_SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
-const PBKDF2_ITERATIONS: NonZeroU32 = unsafe {NonZeroU32::new_unchecked(100_000)};
-const DB_SALT_COMPONENT: [u8; 16] = [ // This value was generated from a secure PRNG. //TODO check this
-	0xd6, 0x26, 0x98, 0xda, 0xf4, 0xdc, 0x50, 0x52,
-	0x24, 0xf2, 0x27, 0xd1, 0xfe, 0x39, 0x01, 0x8a];
-
 
 pub enum PasswDbError {
 	WrongUsername,
@@ -31,6 +26,8 @@ pub enum PasswDbError {
 
 #[derive(Debug, Clone)]
 pub struct PasswordDatabase {
+	pbkdf2_iterations: NonZeroU32,
+	db_salt_component: [u8; 16],
     pub storage: Arc<Tree>,
 }
 
@@ -54,6 +51,12 @@ impl From<bincode::Error> for LoadDbError {
 impl PasswordDatabase {
 	pub fn from_db(db: &Db) -> Result<Self,sled::Error> {
 		Ok(Self { 
+			pbkdf2_iterations: NonZeroU32::new(100_000).unwrap(),
+			db_salt_component: [
+				// This value was generated from a secure PRNG.
+				0xd6, 0x26, 0x98, 0xda, 0xf4, 0xdc, 0x50, 0x52,
+				0x24, 0xf2, 0x27, 0xd1, 0xfe, 0x39, 0x01, 0x8a
+			],
 			storage: db.open_tree("passw_database")?, //created it not exist
 		})
 	}
@@ -62,7 +65,8 @@ impl PasswordDatabase {
 	 -> Result<(), sled::Error> {
 		let salt = self.salt(username);
 		let mut credential = [0u8; CREDENTIAL_LEN];
-		pbkdf2::derive(DIGEST_ALG, PBKDF2_ITERATIONS, &salt, password, &mut credential);
+		pbkdf2::derive(PBKDF2_ALG, self.pbkdf2_iterations, 
+			&salt, password, &mut credential);
 		
 		self.storage.set(username, &credential)?;
 		self.storage.flush()?;
@@ -79,9 +83,8 @@ impl PasswordDatabase {
 		if let Ok(db_entry) = self.storage.get(username) {
 			if let Some(credential) = db_entry {
 				let salted_attempt = self.salt(username);
-			 	pbkdf2::verify(DIGEST_ALG, PBKDF2_ITERATIONS, &salted_attempt,
-					attempted_password,
-					&credential)
+				 pbkdf2::verify(PBKDF2_ALG, self.pbkdf2_iterations, 
+					&salted_attempt, attempted_password, &credential)
 					.map_err(|_| PasswDbError::WrongPassword)				
 			} else { Err(PasswDbError::WrongUsername) }
 		} else { Err(PasswDbError::Internal )}
@@ -98,8 +101,9 @@ impl PasswordDatabase {
 	// but common case that the user has used the same password for
 	// multiple systems.
 	pub fn salt(&self, username: &[u8]) -> Vec<u8> {
-		let mut salt = Vec::with_capacity(DB_SALT_COMPONENT.len() + username.len());
-		salt.extend(DB_SALT_COMPONENT.as_ref());
+		let mut salt = Vec::with_capacity(self.db_salt_component.len() 
+			+ username.len());
+		salt.extend(self.db_salt_component.as_ref());
 		salt.extend(username);
 		salt
 	}

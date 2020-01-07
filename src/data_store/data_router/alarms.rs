@@ -134,19 +134,20 @@ impl CompiledAlarm {
 	}
 }
 
-
-pub struct AddAlarm {
+//#[derive(Message, Clone)]
+/*pub struct AddAlarm {
     pub alarm: Alarm,
     pub username: String,
     pub sets: Vec<DatasetId>,
-}
+}*/
 
-impl Message for AddAlarm {
-    type Result = Result<(),AlarmError>;
-}
+//impl Message for AddAlarm {
+//    type Result = Result<(),AlarmError>;
+//}
 
-impl Handler<AddAlarm> for DataRouter {
-	type Result = Result<(),AlarmError>;
+/*impl Handler<AddAlarm> for DataRouter {
+	//type Result = Result<(),AlarmError>;
+	type Result = ();
 
 	fn handle(&mut self, msg: AddAlarm, _: &mut Context<Self>) -> Self::Result {
 		dbg!("add alarm?");
@@ -157,7 +158,7 @@ impl Handler<AddAlarm> for DataRouter {
             
             let free_id = (std::u8::MIN..std::u8::MAX)
                 .skip_while(|x| list.contains_key(x))
-                .next().ok_or(AlarmError::TooManyAlarms)?;
+                .next().ok_or(AlarmError::TooManyAlarms).unwrap();//?;
 			
 			let alarm: CompiledAlarm = msg.alarm.clone().into();
 			list.insert(free_id, (alarm, msg.username.clone())).unwrap();
@@ -165,10 +166,10 @@ impl Handler<AddAlarm> for DataRouter {
         }
 		self.alarms_by_username.insert(msg.username, set_id_alarm).unwrap();
 		
-		Ok(())
+		//Ok(())
 	}
-}
-
+}*/
+/*
 struct ListAlarms {
     username: String,
 }
@@ -201,4 +202,4 @@ impl Handler<RemoveAlarm> for DataRouter {
 	fn handle(&mut self, msg: RemoveAlarm, _: &mut Context<Self>) -> Self::Result {
 
 	}
-}
+}*/

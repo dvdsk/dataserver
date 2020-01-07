@@ -22,17 +22,18 @@ actix-net = "0.2.6"
 actix-identity = "0.2.0"
 actix-files = "0.2.1"
 actix-service = "1.0.1"
+yarte = { version ="0.5", features=["with-actix-web"] }
 #temporary override of indirect dependency as 69.2 is not semver compatible
 onig_sys= "=69.1.0" 
 
-yarte = { version ="0.3.2", features=["with-actix-web"]  }
+
 
 sled = "0.24.1"
 
 rustls = "0.16.0"
 ring = "0.16.9"
 
-bytes = "0.4.12"
+bytes = "0.5"
 walkdir = "2.2.5"
 num = "0.2.0"
 threadpool = "1.7.1"

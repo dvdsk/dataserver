@@ -3,8 +3,6 @@ use log::{trace};
 
 use actix_web_actors::ws;
 
-use futures::Future;
-
 use std::sync::{Arc, Mutex};
 
 use crate::httpserver::Session;
@@ -37,12 +35,12 @@ impl Actor for WsSession {
 
 		let addr = ctx.address();
 		self.router_addr
-            .send(error_router::Connect {
+            .try_send(error_router::Connect {
                 addr: addr.recipient(),
                 ws_session_id: self.ws_session_id,
 				subscribed_errors,
             })
-            .wait().unwrap();
+            .unwrap();
 	}
 
 	fn stopping(&mut self, _ctx: &mut Self::Context) -> Running {
@@ -66,10 +64,14 @@ impl Handler<error_router::NewFormattedError> for WsSession {
 
 
 /// Handler for `ws::Message`
-impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsSession {
 	
-	fn handle(&mut self, msg: ws::Message, _ctx: &mut Self::Context) {
+	fn handle(
+        &mut self,
+        msg: Result<ws::Message, ws::ProtocolError>,
+        ctx: &mut Self::Context,
+    ) {
 		// process websocket messages
-		println!("WS: {:?}", msg);
+		println!("WS: {:?}", msg.unwrap()); // TODO FIXME should handle error here
 	}
 }

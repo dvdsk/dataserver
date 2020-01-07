@@ -34,7 +34,7 @@ use chrono::{Weekday, self};
 use regex::{Regex, Captures};
 use telegram_bot::types::refs::{ChatId, UserId};
 use crate::databases::{BotUserInfo};
-use crate::data_store::data_router::{DataRouterState, Alarm, AddAlarm, NotifyVia};
+use crate::data_store::data_router::{DataRouterState, Alarm, NotifyVia, self};
 use crate::data_store::{DatasetId, FieldId};
 
 use super::super::send_text_reply;
@@ -235,13 +235,12 @@ fn add(chat_id: ChatId, token: &str, args: std::str::SplitWhitespace<'_>,
 		notify,
 	};
 
-	//TODO send to datarouter	
-	state.data_router_addr.do_send(AddAlarm {
+	let res = state.data_router_addr.try_send(data_router::AddAlarm {
 		alarm,
 		username: userinfo.username.clone(),
 		sets: fields.keys().map(|id| *id).collect(),
-	});
-	
+	}).unwrap();
+	dbg!(res);
 	send_text_reply(chat_id, token, "alarm is set")?;
 	Ok(())
 }

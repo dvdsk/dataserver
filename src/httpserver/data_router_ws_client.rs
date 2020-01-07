@@ -79,12 +79,12 @@ impl Actor for WsSession {
 	fn started(&mut self, ctx: &mut Self::Context) {
 
 		let addr = ctx.address();
-			self.data_router_addr
-            .send(data_router::Connect {
+		self.data_router_addr
+            .try_send(data_router::Connect {
                 addr: addr.recipient(),
                 ws_session_id: self.ws_session_id,
             })
-            .wait().unwrap();
+			.unwrap();
 	}
 
 	fn stopping(&mut self, _ctx: &mut Self::Context) -> Running {
@@ -290,12 +290,16 @@ pub struct SetSliceDecodeInfo {
 }
 
 /// Handler for `ws::Message`
-impl StreamHandler<ws::Message, ws::ProtocolError> for WsSession {
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsSession {
 	
-	fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
+	fn handle(
+        &mut self,
+        msg: Result<ws::Message, ws::ProtocolError>,
+        ctx: &mut Self::Context,
+    ) {
 		// process websocket messages
 		//println!("WS: {:?}", msg);
-		match msg {
+		match msg.unwrap() { // TODO FIXME should handle error here
 			ws::Message::Text(text) => {
 				let m = text.trim();
 				if m.starts_with('/') {

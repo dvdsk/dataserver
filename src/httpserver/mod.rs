@@ -44,7 +44,7 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
            let data = actix_web::web::Data::new(data_router_state.clone());
            
            App::new()
-               .register_data(data)
+               .app_data(data)
                .wrap(IdentityService::new(
                    CookieIdentityPolicy::new(&cookie_key[..])
                    .domain(config::DOMAIN)
@@ -86,7 +86,7 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
        //.bind_rustls("0.0.0.0:8080", tls_config).unwrap()
        //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
        .shutdown_timeout(5)    // shut down 5 seconds after getting the signal to shut down
-       .start(); // end of App::new()
+       .run(); // end of App::new()
 
 
        let _ = tx.send(web_server);

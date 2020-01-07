@@ -57,7 +57,7 @@ fn get_port() -> Result<u32, ()> {
 	}
 }
 
-fn index() -> impl Responder {
+async fn index() -> impl Responder {
     HttpResponse::Ok().body("Hello world!, the certificate challange server is up")
 }
 
@@ -78,7 +78,7 @@ pub fn host_server() -> Result<actix_web::dev::Server, ()> {
 			)
 			.bind(&socket).expect(&format!("Can not bind to {}",socket))
 			.shutdown_timeout(5)    // <- Set shutdown timeout to 5 seconds
-			.start();
+			.run();
 
 			let _ = tx.send(addr);
 			let _ = sys.run();

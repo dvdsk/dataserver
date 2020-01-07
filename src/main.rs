@@ -11,8 +11,7 @@ mod httpserver;
 mod data_store;
 mod menu;
 
-use actix::Actor;
-
+use actix::prelude::*;
 use threadpool::ThreadPool;
 use std::sync::atomic::{AtomicUsize};
 use data_store::{error_router, data_router, data_router::DataRouterState};
@@ -22,6 +21,7 @@ use databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
 use std::io::{Read};
+use std::thread;
 
 use structopt::StructOpt;
 
@@ -35,7 +35,8 @@ struct Opt {
 	no_menu: bool,
 }
 
-fn main() {
+#[actix_rt::main]
+async fn main() {
 	let opt = Opt::from_args();
 	
 	//only do if certs need update
@@ -65,7 +66,7 @@ fn main() {
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 	let bot_pool = ThreadPool::new(2);
 
-	let _sys = actix::System::new("routers");
+	let system = actix::System::new("routers");
     let data_router_addr = data_router::DataRouter::new(&data).start();
     let error_router_addr = error_router::ErrorRouter::load(&db, data.clone()).unwrap().start();
 
@@ -90,12 +91,18 @@ fn main() {
 	);
     bot::set_webhook(config::DOMAIN, config::TOKEN, config::PORT).unwrap();
 	
-	if !opt.no_menu {
-		menu::command_line_interface(data, passw_db, web_user_db, bot_user_db);
-	} else {
-		println!("press enter to stop");
-		std::io::stdin().read_exact(&mut [0]).unwrap();
-	}
+	use data_store::data_router::DebugActix;
+	dbg!(data_router_addr.do_send(DebugActix {test_numb: 1}));
+	dbg!(data_router_addr.try_send(DebugActix {test_numb: 1}));
+
+	//thread::spawn(move || {
+		if !opt.no_menu {
+			menu::command_line_interface(data, passw_db, web_user_db, bot_user_db);
+		} else {
+			println!("press enter to stop");
+			std::io::stdin().read_exact(&mut [0]).unwrap();
+		}
+	//})
 
 	println!("shutting down, goodby!");
 	web_handle.stop(true);

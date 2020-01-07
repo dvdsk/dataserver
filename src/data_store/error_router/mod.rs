@@ -122,6 +122,7 @@ pub struct ErrorRouter {
 
 
 #[derive(Message, Clone)]
+#[rtype(result = "()")]
 pub struct NewError {
 	pub dataset_id: DatasetId,
 	pub field_ids: Vec<FieldId>,
@@ -229,12 +230,14 @@ impl Handler<NewError> for ErrorRouter {
 	}
 }
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct NewFormattedError {
 	pub error_message: String,
 }
 
 /// New chat session is created
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct Connect {
 	pub addr: Recipient<NewFormattedError>,
 	pub ws_session_id: u16,
@@ -271,6 +274,7 @@ impl Handler<Connect> for ErrorRouter {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct Disconnect {
 	pub ws_session_id: u16,
 }

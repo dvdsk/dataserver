@@ -11,6 +11,7 @@ mod httpserver;
 mod data_store;
 mod menu;
 
+use menu::Menu;
 use actix::prelude::*;
 use threadpool::ThreadPool;
 use std::sync::atomic::{AtomicUsize};
@@ -20,8 +21,6 @@ use databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
 
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
-use std::io::{Read};
-use std::thread;
 
 use structopt::StructOpt;
 
@@ -44,7 +43,7 @@ async fn main() {
 		//generate_and_sign_keys
 		if let Err(error) = certificate_manager::generate_and_sign_keys(
 			config::DOMAIN, "keys/cert.key", "keys/cert.cert", "keys/user.key",
-		) {
+		).await {
 			println!("could not auto generate certificate, error: {:?}", error)
 		}
 	}
@@ -62,13 +61,16 @@ async fn main() {
 	let passw_db = PasswordDatabase::from_db(&db).unwrap();
 	let web_user_db = WebUserDatabase::from_db(&db).unwrap();
 	let bot_user_db = BotUserDatabase::from_db(&db).unwrap();
+	
 	let data = Arc::new(RwLock::new(data_store::init("data").unwrap()));
+	
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 	let bot_pool = ThreadPool::new(2);
-
-	let system = actix::System::new("routers");
+	
     let data_router_addr = data_router::DataRouter::new(&data).start();
-    let error_router_addr = error_router::ErrorRouter::load(&db, data.clone()).unwrap().start();
+	
+	let error_router_addr = error_router::ErrorRouter::load(&db, data.clone())
+	.unwrap().start();
 
     let data_router_state = DataRouterState {
         passw_db: passw_db.clone(),
@@ -83,6 +85,7 @@ async fn main() {
         free_ws_session_ids: Arc::new(AtomicUsize::new(0)),
     };
 
+	//runs in its own thread
 	let web_handle = httpserver::start(
         "keys/cert.key", 
         "keys/cert.cert", 
@@ -92,18 +95,16 @@ async fn main() {
     bot::set_webhook(config::DOMAIN, config::TOKEN, config::PORT).unwrap();
 	
 	use data_store::data_router::DebugActix;
-	dbg!(data_router_addr.do_send(DebugActix {test_numb: 1}));
-	dbg!(data_router_addr.try_send(DebugActix {test_numb: 1}));
+	let res1 = data_router_addr.send(DebugActix {test_numb: 1});
+	let res2 = data_router_addr.send(DebugActix {test_numb: 5});
+	dbg!(futures::join!(res1, res2));
+	
+	let menu_future = if !opt.no_menu {
+		Menu::gui(data, passw_db, web_user_db, bot_user_db)
+	} else {
+		Menu::simple()
+	};
 
-	//thread::spawn(move || {
-		if !opt.no_menu {
-			menu::command_line_interface(data, passw_db, web_user_db, bot_user_db);
-		} else {
-			println!("press enter to stop");
-			std::io::stdin().read_exact(&mut [0]).unwrap();
-		}
-	//})
-
-	println!("shutting down, goodby!");
-	web_handle.stop(true);
+	menu_future.await;
+	web_handle.stop(true).await;
 }

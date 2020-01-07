@@ -5,7 +5,6 @@ use log::{warn, info, debug, trace};
 use actix_web_actors::ws;
 
 use chrono::{Utc};
-use futures::Future;
 
 use std::sync::{Arc,RwLock, Mutex};
 use std::collections::HashMap;

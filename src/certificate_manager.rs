@@ -105,7 +105,7 @@ fn make_domain_list(domain: &str) -> (String, String) {
 	}
 }
 
-pub fn generate_and_sign_keys<T: AsRef<Path>>(
+pub async fn generate_and_sign_keys<T: AsRef<Path>>(
 	domain: &str,
 	signed_cert: T,
 	private_key: T,
@@ -162,7 +162,7 @@ pub fn generate_and_sign_keys<T: AsRef<Path>>(
 	}
 
 	//done, we can shut this server down non gracefully
-	server.stop(false);
+	server.stop(false).await;
 	//clean up challange dir
 	remove_dir_all(".tmp/www")?;
 

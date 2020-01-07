@@ -1,7 +1,5 @@
-use actix::prelude::*;
 use log::error;
 use evalexpr::{self, 
-	HashMapContext, 
 	Context as evalContext,
 	build_operator_tree,
 	error::EvalexprError::VariableIdentifierNotFound};
@@ -12,8 +10,6 @@ use reqwest;
 use std::time::{Duration, Instant};
 use std::collections::HashSet;
 
-use super::DataRouter;
-use crate::data_store::DatasetId;
 use crate::bot;
 use crate::config::TOKEN;
 

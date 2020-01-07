@@ -69,7 +69,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsSession {
 	fn handle(
         &mut self,
         msg: Result<ws::Message, ws::ProtocolError>,
-        ctx: &mut Self::Context,
+        _ctx: &mut Self::Context,
     ) {
 		// process websocket messages
 		println!("WS: {:?}", msg.unwrap()); // TODO FIXME should handle error here

@@ -168,7 +168,9 @@ fn archive(set_id: DatasetId, user_db: &mut WebUserDatabase,
         org_location.set_extension(extension);
         new_location.set_extension(extension);
         if let Err(e) = fs::rename(&org_location, &new_location){
-            error!("could not move file {:?} to {:?}", org_location, new_location);
+            error!("could not move file {:?} to {:?}, cause: {:?}", 
+                org_location, 
+                new_location, e);
         };
     }
 }

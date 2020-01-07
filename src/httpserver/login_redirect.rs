@@ -1,4 +1,3 @@
-use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use actix_service::{Service, Transform};
@@ -6,7 +5,6 @@ use actix_web::dev::{ServiceRequest, ServiceResponse};
 use actix_web::{http, Error, HttpResponse, web};
 
 use futures::future::{ok, Either, Ready};
-use futures::Future;
 
 use log::{info};
 

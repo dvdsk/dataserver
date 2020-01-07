@@ -1,7 +1,13 @@
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::io::Read;
+
+use std::task::{Waker, Context, Poll};
+use std::future::Future;
+use std::pin::Pin;
 
 use dialoguer::{Select};
-
 use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
 use crate::data_store::{Data};
 
@@ -20,7 +26,7 @@ fn main_menu() -> usize {
         .interact().unwrap()
 }
 
-pub fn command_line_interface(data: Arc<RwLock<Data>>, 
+fn command_line_interface(data: Arc<RwLock<Data>>, 
                           mut passw_db: PasswordDatabase, 
                           mut web_user_db: WebUserDatabase,
                           mut bot_user_db: BotUserDatabase){
@@ -39,20 +45,62 @@ pub fn command_line_interface(data: Arc<RwLock<Data>>,
     }
 }
 
-// fn command_line_interface(data: Arc<RwLock<data_store::Data>>, 
-//     mut passw_db: PasswordDatabase, 
-//     mut web_user_db: WebUserDatabase,
-//     mut bot_user_db: BotUserDatabase){
-// loop {
-// let mut input = String::new();
-// stdin().read_line(&mut input).unwrap();
-// match input.as_str() {
-// "t\n" => helper::send_test_data_over_http(data.clone(), 8070),
-// "n\n" => helper::add_user(&mut passw_db, &mut web_user_db),
-// "a\n" => helper::add_dataset(&mut web_user_db, &data),
-// "o\n" => helper::add_fields_to_user(&mut web_user_db, &mut bot_user_db),
-// "q\n" => break,
-// _ => println!("unhandled"),
-// };
-// }
-// }
+pub struct Menu {
+	_thread: thread::JoinHandle<()>,
+	waker: Arc<Mutex<Option<Waker>>>,
+	done: Arc<AtomicBool>,
+}
+
+impl Menu {
+	pub fn gui(data: Arc<RwLock<Data>>, passw_db: PasswordDatabase, 
+		web_user_db: WebUserDatabase, bot_user_db: BotUserDatabase) -> Self {
+		
+		let waker = Arc::new(Mutex::new(None));
+		let done = Arc::new(AtomicBool::new(false));
+		Self{
+			done: done.clone(),
+			waker: waker.clone(),
+			_thread: thread::spawn(move || {
+				command_line_interface(
+					data, 
+					passw_db, 
+					web_user_db, 
+					bot_user_db);
+				done.store(true, Ordering::SeqCst);
+				if let Some(waker) = waker.lock().unwrap().take(){
+					waker.wake();
+				}
+			}),
+		}
+	}
+
+	pub fn simple() -> Self {
+		let waker = Arc::new(Mutex::new(None));
+		let done = Arc::new(AtomicBool::new(false));
+		Self{
+			done: done.clone(),
+			waker: waker.clone(),
+			_thread: thread::spawn(move || {
+				println!("press enter to stop");
+				std::io::stdin().read_exact(&mut [0]).unwrap();
+				done.store(true, Ordering::SeqCst);
+				if let Some(waker) = waker.lock().unwrap().take(){
+					waker.wake();
+				}
+			}),
+		}
+	}
+}
+
+impl Future for Menu {
+	type Output = ();
+	
+	fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+		if self.done.load(Ordering::SeqCst) {
+			Poll::Ready(())
+		} else {
+			self.waker.lock().unwrap().replace(cx.waker().clone());
+			Poll::Pending
+		}
+	}
+}

@@ -97,7 +97,7 @@ impl Handler<NewData> for DataRouter {
 			self.update_context(&msg.line, &updated_dataset_id); //Opt: 
 			if let Some(alarms) = self.alarms_by_set.get(&updated_dataset_id){
 				for (alarm, _) in alarms.values() {
-					alarm.evalute(&mut self.alarm_context, &now);
+					alarm.evalute(&mut self.alarm_context, &now).unwrap();
 				}
 			}
 		}
@@ -227,12 +227,7 @@ impl Handler<AddAlarm> for DataRouter {
 	//type Result = Result<(),AlarmError>;
 	type Result = usize;
 
-	fn handle(&mut self, msg: AddAlarm, ctx: &mut Context<Self>) -> Self::Result {
-		dbg!();
-		10usize
-	}
-
-	/*fn handle(&mut self, msg: AddAlarm, _: &mut Context<Self>) -> Self::Result {
+	fn handle(&mut self, msg: AddAlarm, _: &mut Context<Self>) -> Self::Result {
 		dbg!("add alarm?");
 		let mut set_id_alarm = Vec::with_capacity(msg.sets.len()); 
         for set_id in msg.sets {
@@ -249,8 +244,9 @@ impl Handler<AddAlarm> for DataRouter {
         }
 		self.alarms_by_username.insert(msg.username, set_id_alarm).unwrap();
 		
+		10usize
 		//Ok(())
-	}*/
+	}
 }
 
 pub struct Clientinfo {
@@ -282,6 +278,11 @@ impl Actor for DataRouter {
 	/// We are going to use simple Context, we just need ability to communicate
 	/// with other actors.
 	type Context = Context<Self>;
+
+    fn started(&mut self, _ctx: &mut Context<Self>) {
+        // start heartbeats otherwise server will disconnect after 10 seconds
+        dbg!("started datarouter");
+    }
 }
 
 ///////////////////////////////////

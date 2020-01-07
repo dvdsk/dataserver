@@ -19,9 +19,6 @@ use crate::data_store::{data_router::DataRouterState};
 use crate::bot;
 use login_redirect::{CheckLogin};
 
-
-pub type ServerHandle = actix::Addr<actix_net::server::Server>;
-
 pub struct Session { 
 	db_entry: WebUserInfo,
     //add more temporary user specific data as needed

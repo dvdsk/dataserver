@@ -232,18 +232,23 @@ impl Handler<AddAlarm> for DataRouter {
 		let mut set_id_alarm = Vec::with_capacity(msg.sets.len()); 
         for set_id in msg.sets {
 			dbg!(&set_id);
-			let list = self.alarms_by_set.get_mut(&set_id).unwrap();
+			let list = if let Some(list) = self.alarms_by_set.get_mut(&set_id){
+				list
+			} else {
+				self.alarms_by_set.insert(set_id, HashMap::new());
+				self.alarms_by_set.get_mut(&set_id).unwrap()
+			};
             
             let free_id = (std::u8::MIN..std::u8::MAX)
                 .skip_while(|x| list.contains_key(x))
                 .next().unwrap();//.ok_or(AlarmError::TooManyAlarms).unwrap();//?;
 			
 			let alarm: CompiledAlarm = msg.alarm.clone().into();
-			list.insert(free_id, (alarm, msg.username.clone())).unwrap();
+			list.insert(free_id, (alarm, msg.username.clone()));
             set_id_alarm.push((set_id, free_id, msg.alarm.clone()));
         }
-		self.alarms_by_username.insert(msg.username, set_id_alarm).unwrap();
-		
+		self.alarms_by_username.insert(msg.username, set_id_alarm);
+		//TODO sync changes to disk
 		10usize
 		//Ok(())
 	}

@@ -101,5 +101,5 @@ async fn main() {
 	};
 
 	menu_future.await;
-	web_handle.stop(true).await;
+	web_handle.stop(false).await;
 }

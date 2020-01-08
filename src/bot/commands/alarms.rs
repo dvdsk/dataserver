@@ -116,14 +116,15 @@ fn rewrite_time(expression: String) -> String {
 	}).to_string()
 }
 
-fn parse_arguments(args: std::str::SplitWhitespace<'_>) -> Result<Arguments, Error>{	
-	let args: String = args.collect();
+fn parse_arguments(args: &str) -> Result<Arguments, Error>{	
+	dbg!(&args);//FIXME problem seems to be no spaces anymore here
 	let exp_re = Regex::new(r#""(.*)""#).unwrap();
 	let expression = exp_re.find(&args)
-		.ok_or(Error::NoExpression)?
-		.as_str().to_string();
+		.ok_or(Error::NoExpression)?.as_str();
+	let expression = expression.get(1..expression.len()-1).unwrap().to_owned();
+	dbg!("exp");
+	dbg!(&expression);
 	let expression = rewrite_time(expression);
-	let expression = expression.replace("_", "a");
 
 	let day_re = Regex::new(r#"-d \[(.+)\]"#).unwrap();
 	let day: Option<Result<HashSet<Weekday>,Error>> = day_re
@@ -165,8 +166,10 @@ fn parse_arguments(args: std::str::SplitWhitespace<'_>) -> Result<Arguments, Err
 
 	let mut fields: HashMap<DatasetId, Vec<FieldId>> = HashMap::new();
 	let re = Regex::new(r#"\d+_\d+"#).unwrap();
+	dbg!(&expression);
 	for ids_str in re.find_iter(&expression)
 		.map(|s| s.as_str()){
+		dbg!(&ids_str);
 
 		let mut split = ids_str.splitn(2, '_');
 		let set_id = split.nth(0)
@@ -183,6 +186,12 @@ fn parse_arguments(args: std::str::SplitWhitespace<'_>) -> Result<Arguments, Err
 			fields.insert(set_id, vec![field_id]);
 		}
 	}
+
+	//add v in front of variables
+	let re = Regex::new(r#"(\d+)_(\d+)"#).unwrap();
+	let expression = re.replace(&expression, |caps: &Captures| {
+		format!("v{}a{}",&caps[1], &caps[2])
+	}).to_string();
 
 	Ok(Arguments {
 		expression,
@@ -213,7 +222,7 @@ fn authorized(needed_fields: &HashMap<DatasetId, Vec<FieldId>>,
 	Ok(())
 }
 
-async fn add(chat_id: ChatId, token: &str, args: std::str::SplitWhitespace<'_>, 
+async fn add(chat_id: ChatId, token: &str, args: &str, 
 	userinfo: BotUserInfo, state: &DataRouterState) -> Result<(), botError> {
 		
 	let Arguments {expression, 
@@ -237,25 +246,33 @@ async fn add(chat_id: ChatId, token: &str, args: std::str::SplitWhitespace<'_>,
 		notify,
 	};
 
-	let res = state.data_router_addr.try_send(AddAlarm {
+	dbg!(&fields);
+	let res = state.data_router_addr.send(AddAlarm {
 		alarm,
 		username: userinfo.username.clone(),
 		sets: fields.keys().map(|id| *id).collect(),
-	}).unwrap();
+	}).await.unwrap();
 	dbg!(res);
 	send_text_reply(chat_id, token, "alarm is set").await?;
 	Ok(())
 }
 
-pub async fn handle(chat_id: ChatId, token: &str, mut args: std::str::SplitWhitespace<'_>, 
+pub async fn handle(chat_id: ChatId, token: &str, text: String, 
 	userinfo: BotUserInfo, state: &DataRouterState) -> Result<(), botError> {
 
-	let subcommand = args.next().unwrap_or_default();
+	dbg!(&text);
+	let mut text = text.trim_start().splitn(2, ' ');
+	dbg!(&text);
+	let subcommand = text.next().unwrap_or_default();
+	let args = text.next().unwrap_or_default();
+	dbg!(subcommand);
+	dbg!(args);
 	match subcommand {
 		"add" => add(chat_id, token, args, userinfo, state).await,
 		"list" => list(chat_id, token, userinfo, state).await,
-		_ => send_text_reply(chat_id, token, format!("{}\n{}\n{}", HELP_LIST, HELP_ADD, HELP_REMOVE)).await,
-		//_ => Err(Error::)
+		_ => send_text_reply(chat_id, token, format!("Could not recognise the \
+			subcommand, see documentation: \n{}\n{}\n{}", 
+			HELP_LIST, HELP_ADD, HELP_REMOVE)).await,
 	}
 }
 
@@ -271,16 +288,18 @@ pub async fn handle(chat_id: ChatId, token: &str, mut args: std::str::SplitWhite
 
 async fn list(chat_id: ChatId, token: &str, userinfo: BotUserInfo, state: &DataRouterState)
  -> Result<(), botError> {
-	
+	dbg!("");
 	let alarms: Option<Vec<(DatasetId, AlarmId, Alarm)>> 
 	= state.data_router_addr.send(ListAlarms {
 		username: userinfo.username,
 	}).await.unwrap();
-
+	dbg!();
 	let mut list = String::default();
 	if let Some(alarms) = alarms {
+		dbg!(&alarms);
 		for (set_id, alarm_id, alarm) in alarms {
-			list.push_str(&format!("*{}_{}\n\texpr: {}", 
+			dbg!(&alarm_id);
+			list.push_str(&format!("{}_{}\n\texpr: {}", 
 				set_id, alarm_id, 
 				alarm.expression));
 			
@@ -302,6 +321,7 @@ async fn list(chat_id: ChatId, token: &str, userinfo: BotUserInfo, state: &DataR
 	} else {
 		list.push_str("I have no alarms");
 	}
-	send_text_reply(chat_id, token, list).await;
+	dbg!(&list);
+	send_text_reply(chat_id, token, list).await?;
 	Ok(())
 }

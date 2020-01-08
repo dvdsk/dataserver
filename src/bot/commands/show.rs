@@ -44,12 +44,12 @@ impl From<UserDbError> for Error {
 	}
 }
 
-fn parse_args(args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo)
+fn parse_args(args: String, userinfo: &BotUserInfo)
     -> Result<Vec<(DatasetId, Vec<FieldId>)>, Error> {
        //keep a list of fields for each dataset
     let mut dataset_fields: HashMap<DatasetId, Vec<FieldId>> = HashMap::new();
 
-    for arg in args {
+    for arg in args.split_whitespace() {
         let mut ids = arg.split('_');       
         let dataset_id: DatasetId = ids.next()
             .ok_or(Error::ArgumentSplitError(arg.to_owned()))?
@@ -92,7 +92,7 @@ fn parse_args(args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo)
 }
 
 pub async fn send(chat_id: ChatId, state: &DataRouterState, token: &str, 
-    args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo)
+    args: String, userinfo: &BotUserInfo)
      -> Result<(), botError>{
 
     let mut text = String::default();

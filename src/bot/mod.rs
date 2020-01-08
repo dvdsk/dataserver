@@ -26,6 +26,7 @@ pub enum Error{
 	HttpClientError(reqwest::Error),
 	CouldNotSetWebhook,
 	InvalidServerResponse(reqwest::Response),
+	InvalidServerResponseBlocking(reqwest::blocking::Response),
 	UnhandledUpdateKind,
 	UnhandledMessageKind,
 	BotDatabaseError(UserDbError),
@@ -110,9 +111,10 @@ async fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, stat
 	let userinfo = state.bot_user_db.get_userdata(user_id)?;
 
 	loop {
-		let mut args = text.as_str().split_whitespace();
-		let command = args.next().unwrap_or_default();
-		match command {
+		let split = text.find(char::is_whitespace);
+		let mut command = text;
+		let args = command.split_off(split.unwrap_or(0));
+		match command.as_str() {
 			"/test" => {
 				send_text_reply(chat_id, TOKEN, "hi").await?; 
 				break;
@@ -157,11 +159,11 @@ async fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, stat
 			}
 			&_ => {}
 		}
-		if let Some(alias_text) = resolve_alias(command, &userinfo)?{
+		if let Some(alias_text) = resolve_alias(&command, &userinfo)?{
 			text = alias_text; //FIXME //TODO allows loops in aliasses, thats fun right? (fix after fun)
 		} else {
-			warn!("no known command or alias: {:?}", command);
-			return Err(Error::UnknownAlias(command.to_owned()));
+			warn!("no known command or alias: {:?}", &command);
+			return Err(Error::UnknownAlias(command));
 		}
 	}
 	Ok(())
@@ -224,6 +226,28 @@ pub async fn send_text_reply<T: Into<String>>(chat_id: ChatId, token: &str, text
 	
 	if resp.status() != reqwest::StatusCode::OK {
 		Err(Error::InvalidServerResponse(resp))
+	} else {
+		info!("send message");
+		Ok(())
+	}
+}
+
+pub fn send_text_reply_blocking<T: Into<String>>(chat_id: ChatId, token: &str, text: T)
+	 -> Result<(), Error>{//add as arg generic ToChatRef (should get from Update)
+	//TODO create a SendMessage, serialise it (use member function serialize) 
+	//then use the HttpRequest fields, (url, method, and body) to send to telegram
+	let url = format!("https://api.telegram.org/bot{}/sendMessage", token);	
+	let form = reqwest::blocking::multipart::Form::new()
+		.text("chat_id", chat_id.to_string())
+		.text("text", text.into());
+
+	let client = reqwest::blocking::Client::new();
+	let resp = client.post(&url)
+		.multipart(form).send()?;
+	//https://stackoverflow.com/questions/57540455/error-blockingclientinfuturecontext-when-trying-to-make-a-request-from-within
+	
+	if resp.status() != reqwest::StatusCode::OK {
+		Err(Error::InvalidServerResponseBlocking(resp))
 	} else {
 		info!("send message");
 		Ok(())

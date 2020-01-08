@@ -83,9 +83,11 @@ impl From<UserDbError> for Error {
 }
 
 pub async fn send(chat_id: ChatId, state: &DataRouterState, token: &str, 
-    args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo) -> Result<(), botError>{
+    args: String, userinfo: &BotUserInfo) -> Result<(), botError>{
 
-	let args: Vec<String> =	args.map(|s| s.to_owned() ).collect();
+    let args: Vec<String> =	args.split_whitespace()
+        .map(|s| s.to_owned() )
+        .collect();
 	let plot = plot(args, state, userinfo)?;
 
 	let photo_part = reqwest::multipart::Part::bytes(plot)

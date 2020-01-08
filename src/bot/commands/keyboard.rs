@@ -81,7 +81,7 @@ async fn reload(chat_id: ChatId, token: &str, userinfo: BotUserInfo, text: &str)
 //replykeyboardmarkup
 type Keyboard = Vec<Vec<String>>;
 pub async fn add_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
-    args: std::str::SplitWhitespace<'_>, mut userinfo: BotUserInfo)
+    args: String, mut userinfo: BotUserInfo)
      -> Result<(), botError> {
 
 	let mut keyboard: Keyboard = //load or create keyboard
@@ -94,7 +94,7 @@ pub async fn add_button(chat_id: ChatId, user_id: UserId, state: &DataRouterStat
 	};
 	
 	//is there enough space on the keyboard
-	let to_add: Vec<String> = args.map(|x| x.to_string()).collect();
+	let to_add: Vec<String> = args.split_whitespace().map(|x| x.to_string()).collect();
 	let used: usize = keyboard.iter().map(|row| row.len()).sum();
 	let free = CAPACITY - used;
 	if free < to_add.len() {
@@ -126,7 +126,7 @@ pub async fn add_button(chat_id: ChatId, user_id: UserId, state: &DataRouterStat
 
 
 pub async fn remove_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
-    args: std::str::SplitWhitespace<'_>, mut userinfo: BotUserInfo)
+    args: String, mut userinfo: BotUserInfo)
      -> Result<(), botError> {
 
 	//load keyboard
@@ -134,7 +134,7 @@ pub async fn remove_button(chat_id: ChatId, user_id: UserId, state: &DataRouterS
 	let keyboard: Keyboard = serde_json::from_str(&keyboard_str).unwrap();
 	
 	//flattern and recreate keyboard without the to be removed keys
-	let to_remove: HashSet<String> = args.map(|s|s.to_string()).collect();
+	let to_remove: HashSet<String> = args.split_whitespace().map(|s|s.to_string()).collect();
 	let keyboard: Keyboard = keyboard
 		.into_iter()
 		.flatten()

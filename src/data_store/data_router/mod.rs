@@ -6,6 +6,7 @@ use log::{debug, trace};
 use actix::prelude::*;
 use threadpool::ThreadPool;
 use evalexpr::{HashMapContext, Context as evalContext};
+use futures::executor;
 
 use std::collections::{HashMap, HashSet};
 
@@ -53,12 +54,13 @@ impl DataRouter {
 		let fields = self.meta.get(set_id).unwrap();
 		for field in fields {
 			let value: f64 = field.decode(&line);
-			let name = format!("{}a{}",set_id,field.id);
+			let name = format!("v{}a{}",set_id,field.id);
 			self.alarm_context.set_value(name.into(),value.into()).unwrap();
 		}
 	}
 
 	pub fn new(data: &Arc<RwLock<Data>>) -> DataRouter {
+		dbg!();
 		let meta = data.read().unwrap().sets
 			.iter()
 			.map(|(id,set)| (*id, set.metadata.fields.clone() ))
@@ -87,6 +89,7 @@ impl Handler<NewData> for DataRouter {
 	type Result = ();
 
 	fn handle(&mut self, msg: NewData, _: &mut Context<Self>) -> Self::Result {
+		dbg!();
 		let updated_dataset_id = msg.from_id;
 
 		//check all alarms that could go off
@@ -95,7 +98,10 @@ impl Handler<NewData> for DataRouter {
 			self.update_context(&msg.line, &updated_dataset_id); //Opt: 
 			if let Some(alarms) = self.alarms_by_set.get(&updated_dataset_id){
 				for (alarm, _) in alarms.values() {
-					actix::fut::wrap_future::<_, Self>(alarm.evalute(&mut self.alarm_context, &now));
+					dbg!();
+					//let res = executor::block_on(
+					alarm.evalute(&mut self.alarm_context, &now);
+					//dbg!(res);
 				}
 			}
 		}

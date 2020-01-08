@@ -33,13 +33,13 @@ impl From<bot::Error> for AlarmError {
 }
 
 pub type Id = u8;
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NotifyVia {
 	pub email: Option<String>,
 	pub telegram: Option<ChatId>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Alarm {
 	pub expression: String,
 	pub weekday: Option<HashSet<Weekday>>,
@@ -83,9 +83,10 @@ impl From<Alarm> for CompiledAlarm {
 }
 
 impl CompiledAlarm {
-	pub async fn evalute(&self, context: &mut evalexpr::HashMapContext, 
+	pub fn evalute(&self, context: &mut evalexpr::HashMapContext, 
 		now: &DateTime::<Utc>) -> Result<(), AlarmError> {
 		
+		dbg!();
 		if let Some((period, last)) = self.period {
 			if last.elapsed() < period {return Ok(());}
 		}
@@ -98,11 +99,14 @@ impl CompiledAlarm {
 
 		let seconds_since_midnight = now_user_tz.num_seconds_from_midnight() as f64;
 		context.set_value("t".to_string(), seconds_since_midnight.into()).unwrap();
+		dbg!(&self.expression);
+		dbg!(&context);
 		match self.expression.eval_boolean_with_context(context){
-			Ok(alarm) => if alarm {self.sound_alarm().await?; dbg!();},
+			Ok(alarm) => if alarm {dbg!(); self.sound_alarm()?;},
 			Err(error) => match error {
 					VariableIdentifierNotFound(_) => {
-						//if happens for long time warn user
+						dbg!();
+						//TODO if happens for long time warn user
 					}
 					_ => {error!("{:?}", error); dbg!();},
 			}
@@ -110,16 +114,19 @@ impl CompiledAlarm {
 		Ok(())
 	}
 
-	async fn sound_alarm(&self) -> Result<(), AlarmError>{
+	fn sound_alarm(&self) -> Result<(), AlarmError>{
+		dbg!();
 		if let Some(_email) = &self.notify.email {
 			todo!();
 		}
+		dbg!();
 		if let Some(chat_id) = &self.notify.telegram {
+			dbg!();
 			if let Some(message) = &self.message {
-				bot::send_text_reply(*chat_id, TOKEN, message).await?;
+				bot::send_text_reply_blocking(*chat_id, TOKEN, message)?;
 			} else {
 				let text = format!("alarm: {}", self.expression);
-				bot::send_text_reply(*chat_id, TOKEN, text).await?;
+				bot::send_text_reply_blocking(*chat_id, TOKEN, text)?;
 			}
 			if let Some(command) = &self.command {
 				todo!();
@@ -146,7 +153,8 @@ impl Handler<AddAlarm> for DataRouter {
 
 	fn handle(&mut self, msg: AddAlarm, _: &mut Context<Self>) -> Self::Result {
 		let mut set_id_alarm = Vec::with_capacity(msg.sets.len()); 
-        for set_id in msg.sets {
+		dbg!(&msg.sets);
+		for set_id in msg.sets {
 			let list = if let Some(list) = self.alarms_by_set.get_mut(&set_id){
 				list
 			} else {
@@ -160,9 +168,11 @@ impl Handler<AddAlarm> for DataRouter {
 			
 			let alarm: CompiledAlarm = msg.alarm.clone().into();
 			list.insert(free_id, (alarm, msg.username.clone()));
-            set_id_alarm.push((set_id, free_id, msg.alarm.clone()));
+			set_id_alarm.push((set_id, free_id, msg.alarm.clone()));
+			dbg!(&set_id_alarm);
         }
 		self.alarms_by_username.insert(msg.username, set_id_alarm);
+		dbg!("inserted into alarms_by_username");
 		//TODO sync changes to disk
 		Ok(())
 	}
@@ -178,12 +188,14 @@ impl Handler<ListAlarms> for DataRouter {
 	type Result = Option<Vec<(DatasetId, Id, Alarm)>>;
 
 	fn handle(&mut self, msg: ListAlarms, _: &mut Context<Self>) -> Self::Result {
+		dbg!(&self.alarms_by_username);
 		let list = self.alarms_by_username
 			.get(&msg.username).map(|set| set.iter()
 					.map(|(set_id, alarm_id, alarm)| 
 						(*set_id, *alarm_id, alarm.clone())
 				).collect());
-        list
+		dbg!(&list);
+		list
 	}
 }
 /*

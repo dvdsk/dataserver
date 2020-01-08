@@ -29,10 +29,10 @@ impl Error {
 }
 
 pub async fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str,
-    mut args: std::str::SplitWhitespace<'_>, mut userinfo: BotUserInfo)
+    args: String, mut userinfo: BotUserInfo)
      -> Result<(), botError>{
-	let mut text = String::default();
 
+	let mut args = args.split_whitespace();
 	let alias_name = args.next()
 		.ok_or(Error::NotEnoughArguments)?
 		.to_owned();
@@ -40,6 +40,7 @@ pub async fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, tok
 	let mut command = String::default();
 	args.for_each(|arg| {command.push_str(arg); command.push(' ')});
 
+	let mut text = String::default();
 	if command.len() == 0 {
 		if let Some(old_command) = userinfo.aliases.remove(&alias_name){
 			state.bot_user_db.set_userdata(user_id, &userinfo).map_err(|e| Error::DbError(e))?;

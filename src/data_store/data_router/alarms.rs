@@ -123,10 +123,12 @@ impl CompiledAlarm {
 		if let Some(chat_id) = &self.notify.telegram {
 			dbg!();
 			if let Some(message) = &self.message {
-				bot::send_text_reply_blocking(*chat_id, TOKEN, message)?;
+				//bot::send_text_reply_blocking(*chat_id, TOKEN, message)?;
+				dbg!(message);
 			} else {
 				let text = format!("alarm: {}", self.expression);
-				bot::send_text_reply_blocking(*chat_id, TOKEN, text)?;
+				//bot::send_text_reply_blocking(*chat_id, TOKEN, text)?;
+				dbg!(text);
 			}
 			if let Some(command) = &self.command {
 				todo!();

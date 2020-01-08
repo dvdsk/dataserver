@@ -91,7 +91,7 @@ fn parse_args(args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo)
     Ok(dataset_fields)
 }
 
-pub fn send(chat_id: ChatId, state: &DataRouterState, token: &str, 
+pub async fn send(chat_id: ChatId, state: &DataRouterState, token: &str, 
     args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo)
      -> Result<(), botError>{
 
@@ -115,7 +115,7 @@ pub fn send(chat_id: ChatId, state: &DataRouterState, token: &str,
         }
     }
     
-    send_text_reply(chat_id, token, text)?;
+    send_text_reply(chat_id, token, text).await?;
     Ok(())
 }
 

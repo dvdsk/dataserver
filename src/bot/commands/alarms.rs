@@ -34,7 +34,8 @@ use chrono::{Weekday, self};
 use regex::{Regex, Captures};
 use telegram_bot::types::refs::{ChatId, UserId};
 use crate::databases::{BotUserInfo};
-use crate::data_store::data_router::{DataRouterState, Alarm, NotifyVia, self};
+use crate::data_store::data_router::{DataRouterState, Alarm, NotifyVia};
+use crate::data_store::data_router::{AddAlarm, ListAlarms, AlarmId};
 use crate::data_store::{DatasetId, FieldId};
 
 use super::super::send_text_reply;
@@ -122,6 +123,7 @@ fn parse_arguments(args: std::str::SplitWhitespace<'_>) -> Result<Arguments, Err
 		.ok_or(Error::NoExpression)?
 		.as_str().to_string();
 	let expression = rewrite_time(expression);
+	let expression = expression.replace("_", "a");
 
 	let day_re = Regex::new(r#"-d \[(.+)\]"#).unwrap();
 	let day: Option<Result<HashSet<Weekday>,Error>> = day_re
@@ -211,7 +213,7 @@ fn authorized(needed_fields: &HashMap<DatasetId, Vec<FieldId>>,
 	Ok(())
 }
 
-fn add(chat_id: ChatId, token: &str, args: std::str::SplitWhitespace<'_>, 
+async fn add(chat_id: ChatId, token: &str, args: std::str::SplitWhitespace<'_>, 
 	userinfo: BotUserInfo, state: &DataRouterState) -> Result<(), botError> {
 		
 	let Arguments {expression, 
@@ -235,23 +237,71 @@ fn add(chat_id: ChatId, token: &str, args: std::str::SplitWhitespace<'_>,
 		notify,
 	};
 
-	let res = state.data_router_addr.try_send(data_router::AddAlarm {
+	let res = state.data_router_addr.try_send(AddAlarm {
 		alarm,
 		username: userinfo.username.clone(),
 		sets: fields.keys().map(|id| *id).collect(),
 	}).unwrap();
 	dbg!(res);
-	send_text_reply(chat_id, token, "alarm is set")?;
+	send_text_reply(chat_id, token, "alarm is set").await?;
 	Ok(())
 }
 
-pub fn handle(chat_id: ChatId, token: &str, mut args: std::str::SplitWhitespace<'_>, 
+pub async fn handle(chat_id: ChatId, token: &str, mut args: std::str::SplitWhitespace<'_>, 
 	userinfo: BotUserInfo, state: &DataRouterState) -> Result<(), botError> {
 
 	let subcommand = args.next().unwrap_or_default();
 	match subcommand {
-		"add" => add(chat_id, token, args, userinfo, state),
-		_ => send_text_reply(chat_id, token, format!("{}\n{}\n{}", HELP_LIST, HELP_ADD, HELP_REMOVE)),
+		"add" => add(chat_id, token, args, userinfo, state).await,
+		"list" => list(chat_id, token, userinfo, state).await,
+		_ => send_text_reply(chat_id, token, format!("{}\n{}\n{}", HELP_LIST, HELP_ADD, HELP_REMOVE)).await,
 		//_ => Err(Error::)
 	}
+}
+
+/*pub struct Alarm {
+	pub expression: String,
+	pub weekday: Option<HashSet<Weekday>>,
+	pub period: Option<Duration>,
+	pub message: Option<String>,
+	pub command: Option<String>,
+	pub tz_offset: i32, //in hours to the east
+	pub notify: NotifyVia,
+}*/
+
+async fn list(chat_id: ChatId, token: &str, userinfo: BotUserInfo, state: &DataRouterState)
+ -> Result<(), botError> {
+	
+	let alarms: Option<Vec<(DatasetId, AlarmId, Alarm)>> 
+	= state.data_router_addr.send(ListAlarms {
+		username: userinfo.username,
+	}).await.unwrap();
+
+	let mut list = String::default();
+	if let Some(alarms) = alarms {
+		for (set_id, alarm_id, alarm) in alarms {
+			list.push_str(&format!("*{}_{}\n\texpr: {}", 
+				set_id, alarm_id, 
+				alarm.expression));
+			
+			if let Some(days) = alarm.weekday {
+				let valid_days: String = days.iter()
+					.map(|d| format!("{:?},", d)) //FIXME debug should move to display
+					.collect();
+				list.push_str(&format!("valid on: [{}]\n", valid_days));
+			}
+
+			if let Some(period) = alarm.period {
+				list.push_str(&format!("cooldown: {:?}\n", period)); //FIXME custom format funct
+			}
+
+			if let Some(message) = alarm.message {
+				list.push_str(&format!("message: {}\n", message));
+			}
+		}
+	} else {
+		list.push_str("I have no alarms");
+	}
+	send_text_reply(chat_id, token, list).await;
+	Ok(())
 }

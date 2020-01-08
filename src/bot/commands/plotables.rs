@@ -6,9 +6,10 @@ use crate::data_store::{data_router::DataRouterState, FieldId};
 
 pub const USAGE: &str = "/plotables";
 pub const DESCRIPTION: &str = "shows all possible data input for the plot function";
-pub fn send(chat_id: ChatId, userinfo: &BotUserInfo, state: &DataRouterState, token: &str)
+pub async fn send(chat_id: ChatId, userinfo: &BotUserInfo, state: &DataRouterState, token: &str)
      -> Result<(), Error> {
-	let mut text = String::default();
+	
+		let mut text = String::default();
 	const HEADER: &str = "\n<plotable id> <plotable name>\n";
 
 	let data = state.data.read().unwrap();	
@@ -26,5 +27,5 @@ pub fn send(chat_id: ChatId, userinfo: &BotUserInfo, state: &DataRouterState, to
 	if text.len() == 0 {
 		text.push_str("you have no plotables")
 	}
-	send_text_reply(chat_id, token, text)
+	send_text_reply(chat_id, token, text).await
 }

@@ -46,13 +46,13 @@ impl Error {
 	}
 }
 
-pub fn show(chat_id: ChatId, token: &str, userinfo: BotUserInfo)
+pub async fn show(chat_id: ChatId, token: &str, userinfo: BotUserInfo)
     -> Result<(), botError>{
     
-	reload(chat_id, token, userinfo, "showing the user keyboard")
+	reload(chat_id, token, userinfo, "showing the user keyboard").await
 }
 
-fn reload(chat_id: ChatId, token: &str, userinfo: BotUserInfo, text: &str)
+async fn reload(chat_id: ChatId, token: &str, userinfo: BotUserInfo, text: &str)
     -> Result<(), botError>{
     
 	let keyboard_json = userinfo.keyboard.ok_or(Error::NoKeyboardSet)?;
@@ -68,7 +68,7 @@ fn reload(chat_id: ChatId, token: &str, userinfo: BotUserInfo, text: &str)
 
 	let client = reqwest::Client::new();
 	let resp = client.post(&url)
-		.multipart(form).send()?;
+		.multipart(form).send().await?;
     
     dbg!(&resp);
 	if resp.status() != reqwest::StatusCode::OK {
@@ -80,7 +80,7 @@ fn reload(chat_id: ChatId, token: &str, userinfo: BotUserInfo, text: &str)
 
 //replykeyboardmarkup
 type Keyboard = Vec<Vec<String>>;
-pub fn add_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
+pub async fn add_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
     args: std::str::SplitWhitespace<'_>, mut userinfo: BotUserInfo)
      -> Result<(), botError> {
 
@@ -120,12 +120,12 @@ pub fn add_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, tok
 		.map_err(|e| Error::DbError(e))?;
 
 	//update users keyboard
-	reload(chat_id, token, userinfo, "updated keyboard")?;
+	reload(chat_id, token, userinfo, "updated keyboard").await?;
     Ok(())
 }
 
 
-pub fn remove_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
+pub async fn remove_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
     args: std::str::SplitWhitespace<'_>, mut userinfo: BotUserInfo)
      -> Result<(), botError> {
 
@@ -153,6 +153,6 @@ pub fn remove_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, 
 		.map_err(|e| Error::DbError(e))?;
 
 	//update users keyboard
-	reload(chat_id, token, userinfo, "updated keyboard")?;
+	reload(chat_id, token, userinfo, "updated keyboard").await?;
     Ok(())
 }

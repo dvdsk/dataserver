@@ -10,7 +10,7 @@ use super::plot;
 
 const USAGE: &str = "/help";
 const DESCRIPTION: &str = "shows this list";
-pub fn send(chat_id: ChatId, user_info: &BotUserInfo, token: &str)
+pub async fn send(chat_id: ChatId, user_info: &BotUserInfo, token: &str)
 	-> Result<(), Error> {
 	let aliasses = &user_info.aliases;
 
@@ -41,6 +41,6 @@ pub fn send(chat_id: ChatId, user_info: &BotUserInfo, token: &str)
 	for (alias, alias_expanded) in aliasses.iter() {
 		text.push_str(&format!(" {}: {}\n",alias,alias_expanded));
 	}
-	send_text_reply(chat_id, token, text)?;
+	send_text_reply(chat_id, token, text).await?;
 	Ok(())
 }

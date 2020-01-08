@@ -28,7 +28,7 @@ impl Error {
 	}
 }
 
-pub fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str,
+pub async fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str,
     mut args: std::str::SplitWhitespace<'_>, mut userinfo: BotUserInfo)
      -> Result<(), botError>{
 	let mut text = String::default();
@@ -58,6 +58,6 @@ pub fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &s
 		state.bot_user_db.set_userdata(user_id, &userinfo).map_err(|e| Error::DbError(e))?;
 	}
 
-	send_text_reply(chat_id, token, text)?;
+	send_text_reply(chat_id, token, text).await?;
 	Ok(())
 }

@@ -152,30 +152,17 @@ pub async fn set_telegram_id_post(
 
 pub fn new_data_post(state: Data<DataRouterState>, body: Bytes)
 	 -> HttpResponse {
-	
-	//TODO remove this debug section
-	state.data_router_addr.do_send(data_router::DebugActix {
-		test_numb: 2,
-	});
-	dbg!();
-	//
 
 	let now = Utc::now();
 	let mut data = state.data.write().unwrap();
 	match data.store_new_data(body, now) {
 		Ok((set_id, data_string)) => {
 			trace!("stored new data");
-			state.data_router_addr.do_send(data_router::NewData2 {
-				from_id: set_id.clone(),
-				line: data_string.clone(),
-				timestamp: now.timestamp()
-			});
 			state.data_router_addr.do_send(data_router::NewData {
 				from_id: set_id,
 				line: data_string,
 				timestamp: now.timestamp()
 			});
-			dbg!();
 			HttpResponse::Ok().status(StatusCode::OK).finish() },
 		Err(_) => HttpResponse::Ok().status(StatusCode::FORBIDDEN).finish(),
 	}

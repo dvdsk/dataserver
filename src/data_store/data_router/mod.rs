@@ -17,8 +17,8 @@ use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
 use crate::httpserver::Session;
 
 mod alarms;
-pub use alarms::{Alarm, CompiledAlarm, NotifyVia};
-//pub use alarms::{AddAlarm};
+pub use alarms::{Alarm, CompiledAlarm, NotifyVia, AddAlarm, ListAlarms};
+pub use alarms::Id as AlarmId;
 
 #[derive(Clone)]
 pub struct DataRouterState {
@@ -53,7 +53,7 @@ impl DataRouter {
 		let fields = self.meta.get(set_id).unwrap();
 		for field in fields {
 			let value: f64 = field.decode(&line);
-			let name = format!("{}_{}",set_id,field.id);
+			let name = format!("{}a{}",set_id,field.id);
 			self.alarm_context.set_value(name.into(),value.into()).unwrap();
 		}
 	}
@@ -87,8 +87,6 @@ impl Handler<NewData> for DataRouter {
 	type Result = ();
 
 	fn handle(&mut self, msg: NewData, _: &mut Context<Self>) -> Self::Result {
-		dbg!();
-		println!("test");
 		let updated_dataset_id = msg.from_id;
 
 		//check all alarms that could go off
@@ -97,7 +95,7 @@ impl Handler<NewData> for DataRouter {
 			self.update_context(&msg.line, &updated_dataset_id); //Opt: 
 			if let Some(alarms) = self.alarms_by_set.get(&updated_dataset_id){
 				for (alarm, _) in alarms.values() {
-					alarm.evalute(&mut self.alarm_context, &now).unwrap();
+					actix::fut::wrap_future::<_, Self>(alarm.evalute(&mut self.alarm_context, &now));
 				}
 			}
 		}
@@ -112,22 +110,6 @@ impl Handler<NewData> for DataRouter {
 				client_websocket_handler.do_send(msg.clone()).unwrap();
 			}
 		}
-	}
-}
-
-#[derive(Message, Clone)]
-#[rtype(result = "()")]
-pub struct NewData2 {
-	pub from_id: DatasetId,
-	pub line: Vec<u8>,
-	pub timestamp: i64,
-}
-
-impl Handler<NewData2> for DataRouter {
-	type Result = ();
-
-	fn handle(&mut self, msg: NewData2, _: &mut Context<Self>) -> Self::Result {
-		dbg!();
 	}
 }
 
@@ -212,71 +194,10 @@ impl Handler<SubscribeToSource> for DataRouter {
 	}
 }
 
-//#[derive(Message, Clone)]
-pub struct AddAlarm {
-    pub alarm: Alarm,
-    pub username: String,
-    pub sets: Vec<DatasetId>,
-}
-
-impl Message for AddAlarm {
-	type Result = usize;
-}
-
-impl Handler<AddAlarm> for DataRouter {
-	//type Result = Result<(),AlarmError>;
-	type Result = usize;
-
-	fn handle(&mut self, msg: AddAlarm, _: &mut Context<Self>) -> Self::Result {
-		dbg!("add alarm?");
-		let mut set_id_alarm = Vec::with_capacity(msg.sets.len()); 
-        for set_id in msg.sets {
-			dbg!(&set_id);
-			let list = if let Some(list) = self.alarms_by_set.get_mut(&set_id){
-				list
-			} else {
-				self.alarms_by_set.insert(set_id, HashMap::new());
-				self.alarms_by_set.get_mut(&set_id).unwrap()
-			};
-            
-            let free_id = (std::u8::MIN..std::u8::MAX)
-                .skip_while(|x| list.contains_key(x))
-                .next().unwrap();//.ok_or(AlarmError::TooManyAlarms).unwrap();//?;
-			
-			let alarm: CompiledAlarm = msg.alarm.clone().into();
-			list.insert(free_id, (alarm, msg.username.clone()));
-            set_id_alarm.push((set_id, free_id, msg.alarm.clone()));
-        }
-		self.alarms_by_username.insert(msg.username, set_id_alarm);
-		//TODO sync changes to disk
-		10usize
-		//Ok(())
-	}
-}
-
 pub struct Clientinfo {
 	addr: Recipient<NewData>,
 	subs: Vec<DatasetId>,
 }
-
-/// New chat session is created
-#[derive(Message)]
-#[rtype(u16)]
-pub struct DebugActix {
-	pub test_numb: u16,
-}
-
-impl Handler<DebugActix> for DataRouter {
-	type Result = u16;
-
-	fn handle(&mut self, msg: DebugActix, _: &mut Context<Self>) -> Self::Result {
-		dbg!();
-		let numb = msg.test_numb;
-		let numb = numb + 1;
-		numb
-	}
-}
-
 
 /// Make actor
 impl Actor for DataRouter {

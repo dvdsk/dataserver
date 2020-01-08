@@ -92,12 +92,7 @@ async fn main() {
         "keys/intermediate.cert", 
         data_router_state.clone(),
 	);
-    bot::set_webhook(config::DOMAIN, config::TOKEN, config::PORT).unwrap();
-	
-	use data_store::data_router::DebugActix;
-	let res1 = data_router_addr.send(DebugActix {test_numb: 1});
-	let res2 = data_router_addr.send(DebugActix {test_numb: 5});
-	dbg!(futures::join!(res1, res2));
+    bot::set_webhook(config::DOMAIN, config::TOKEN, config::PORT).await.unwrap();
 	
 	let menu_future = if !opt.no_menu {
 		Menu::gui(data, passw_db, web_user_db, bot_user_db)

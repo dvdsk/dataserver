@@ -60,7 +60,7 @@ serde_yaml = "0.8.7"
 serde_json = "1.0.33"
 
 #for testing
-reqwest = "=0.9.17" #pinned to old version until ascync await is her
+reqwest = "=0.10"
 byteorder = "1.2.6"
 
 #minimal_timeseries = { path = "../minimal_timeseries" }

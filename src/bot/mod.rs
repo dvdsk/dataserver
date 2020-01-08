@@ -106,7 +106,7 @@ fn resolve_alias(possible_alias: &str, userinfo: &BotUserInfo) -> Result<Option<
 	}
 }
 
-fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, state: &DataRouterState) -> Result<(), Error>{
+async fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, state: &DataRouterState) -> Result<(), Error>{
 	let userinfo = state.bot_user_db.get_userdata(user_id)?;
 
 	loop {
@@ -114,44 +114,45 @@ fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, state: &Da
 		let command = args.next().unwrap_or_default();
 		match command {
 			"/test" => {
-				send_text_reply(chat_id, TOKEN, "hi")?; 
+				send_text_reply(chat_id, TOKEN, "hi").await?; 
 				break;
 			}
+			//TODO needs to use threadpool
 			#[cfg(feature = "plotting")]
 			"/plot" => {
-				plot::send(chat_id, state, TOKEN, args, &userinfo)?; 
+				plot::send(chat_id, state, TOKEN, args, &userinfo).await?; 
 				break;
 			}
 			"/help" => {
-				help::send(chat_id, &userinfo, TOKEN)?; 
+				help::send(chat_id, &userinfo, TOKEN).await?; 
 				break;
 			}
 			"/plotables" => {
-				plotables::send(chat_id, &userinfo, state, TOKEN)?;
+				plotables::send(chat_id, &userinfo, state, TOKEN).await?;
 				break;
 			}
 			"/show" => {
-				show::send(chat_id, state, TOKEN, args, &userinfo)?;
+				show::send(chat_id, state, TOKEN, args, &userinfo).await?;
 				break;
 			}
 			"/keyboard" => {
-				keyboard::show(chat_id, TOKEN, userinfo)?;
+				keyboard::show(chat_id, TOKEN, userinfo).await?;
 				break;
 			}
 			"/keyboard_add" => {
-				keyboard::add_button(chat_id, user_id, state, TOKEN, args, userinfo)?;
+				keyboard::add_button(chat_id, user_id, state, TOKEN, args, userinfo).await?;
 				break;
 			}
 			"/keyboard_remove" => {
-				keyboard::remove_button(chat_id, user_id, state, TOKEN, args, userinfo)?;
+				keyboard::remove_button(chat_id, user_id, state, TOKEN, args, userinfo).await?;
 				break;
 			}
 			"/alarm" => {
-				alarms::handle(chat_id, TOKEN, args, userinfo, state)?;
+				alarms::handle(chat_id, TOKEN, args, userinfo, state).await?;
 				break;
 			}	
 			"/alias" => {
-				alias::send(chat_id, user_id, state, TOKEN, args, userinfo)?;
+				alias::send(chat_id, user_id, state, TOKEN, args, userinfo).await?;
 				break;
 			}
 			&_ => {}
@@ -166,7 +167,7 @@ fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, state: &Da
 	Ok(())
 }
 
-fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
+async fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 	let error_message = match error {
 		#[cfg(feature = "plotting")]
 		Error::PlotError(error) => error.to_text(user_id),
@@ -182,32 +183,32 @@ fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 			format!("apologies, an internal error happend this has been reported and will be fixed as soon as possible")
 		}	
 	};
-	if let Err(error) = send_text_reply(chat_id, TOKEN, error_message){
+	if let Err(error) = send_text_reply(chat_id, TOKEN, error_message).await{
 		error!("Could not send text reply to user: {:?}", error);
 	}
 }
 
-fn handle(update: Update, state: DataRouterState){
+async fn handle(update: Update, state: DataRouterState){
 	if let Ok((text, chat_id, user_id)) = to_string_and_ids(update){
-		if let Err(error) = handle_command(text, chat_id, user_id, &state){
+		if let Err(error) = handle_command(text, chat_id, user_id, &state).await{
 			handle_error(error, chat_id, user_id);
 		}
 	}
 }
 
-pub fn handle_webhook(state: Data<DataRouterState>, raw_update: Bytes)
+pub async fn handle_webhook(state: Data<DataRouterState>, raw_update: Bytes)
 	 -> HttpResponse {
 
 	let update: Update = serde_json::from_slice(&raw_update.to_vec()).unwrap();
 	let state_cpy = state.get_ref().clone();
-	state.into_inner().bot_pool.execute(move || handle(update, state_cpy));
+	handle(update, state_cpy).await;
 
 	HttpResponse::Ok()
 		.status(StatusCode::OK)
 		.body("{}")
 }
 
-pub fn send_text_reply<T: Into<String>>(chat_id: ChatId, token: &str, text: T)
+pub async fn send_text_reply<T: Into<String>>(chat_id: ChatId, token: &str, text: T)
 	 -> Result<(), Error>{//add as arg generic ToChatRef (should get from Update)
 	//TODO create a SendMessage, serialise it (use member function serialize) 
 	//then use the HttpRequest fields, (url, method, and body) to send to telegram
@@ -218,7 +219,7 @@ pub fn send_text_reply<T: Into<String>>(chat_id: ChatId, token: &str, text: T)
 
 	let client = reqwest::Client::new();
 	let resp = client.post(&url)
-		.multipart(form).send()?;
+		.multipart(form).send().await?;
 	//https://stackoverflow.com/questions/57540455/error-blockingclientinfuturecontext-when-trying-to-make-a-request-from-within
 	
 	if resp.status() != reqwest::StatusCode::OK {
@@ -229,7 +230,7 @@ pub fn send_text_reply<T: Into<String>>(chat_id: ChatId, token: &str, text: T)
 	}
 }
 
-pub fn set_webhook(domain: &str, token: &str, port: u16) -> Result<(), Error> {
+pub async fn set_webhook(domain: &str, token: &str, port: u16) -> Result<(), Error> {
 	let url = format!("https://api.telegram.org/bot{}/setWebhook", token);
 	let webhook_url = format!("{}:{}/{}",domain, port, token);
 
@@ -237,7 +238,7 @@ pub fn set_webhook(domain: &str, token: &str, port: u16) -> Result<(), Error> {
 	let client = reqwest::Client::new();
 	let res = client.post(url.as_str())
 	      .form(&params)
-		  .send()?;
+		  .send().await?;
 	
 	if res.status() != reqwest::StatusCode::OK {
 		Err(Error::CouldNotSetWebhook)

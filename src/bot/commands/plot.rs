@@ -82,7 +82,7 @@ impl From<UserDbError> for Error {
 	}
 }
 
-pub fn send(chat_id: ChatId, state: &DataRouterState, token: &str, 
+pub async fn send(chat_id: ChatId, state: &DataRouterState, token: &str, 
     args: std::str::SplitWhitespace<'_>, userinfo: &BotUserInfo) -> Result<(), botError>{
 
 	let args: Vec<String> =	args.map(|s| s.to_owned() ).collect();
@@ -100,7 +100,7 @@ pub fn send(chat_id: ChatId, state: &DataRouterState, token: &str,
 
 	let client = reqwest::Client::new();
 	let resp = client.post(&url)
-		.multipart(form).send()?;
+		.multipart(form).send().await?;
 	
 	if resp.status() != reqwest::StatusCode::OK {
 		Err(botError::InvalidServerResponse(resp))

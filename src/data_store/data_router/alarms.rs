@@ -8,7 +8,7 @@ use chrono::{Weekday, DateTime, Utc, Datelike, Timelike};
 use chrono::offset::{TimeZone, FixedOffset};
 use reqwest;
 use actix::prelude::*;
-
+use threadpool::ThreadPool;
 use std::time::{Duration, Instant};
 use std::collections::{HashSet, HashMap};
 
@@ -52,6 +52,7 @@ pub struct Alarm {
 
 pub struct CompiledAlarm {
 	expression: evalexpr::Node,
+	expr_string: String,
 	weekday: Option<HashSet<Weekday>>,
 	period: Option<(Duration, Instant)>,
 	message: Option<String>,
@@ -67,11 +68,13 @@ impl From<Alarm> for CompiledAlarm {
 			message, command, 
 			tz_offset, notify} = alarm;
 		let timezone = FixedOffset::east(tz_offset*3600); 
-		let expression = build_operator_tree(&expression).unwrap();
+		let expr_string = expression;
+		let expression = build_operator_tree(&expr_string).unwrap();
 		let period = period.map(|d| (d, Instant::now()));
 
 		CompiledAlarm {
 			expression,
+			expr_string,
 			weekday,
 			period,
 			message,
@@ -82,9 +85,10 @@ impl From<Alarm> for CompiledAlarm {
 	}
 }
 
+use futures;
 impl CompiledAlarm {
 	pub fn evalute(&self, context: &mut evalexpr::HashMapContext, 
-		now: &DateTime::<Utc>) -> Result<(), AlarmError> {
+		now: &DateTime::<Utc>, pool: &ThreadPool) -> Result<(), AlarmError> {
 		
 		dbg!();
 		if let Some((period, last)) = self.period {
@@ -102,7 +106,16 @@ impl CompiledAlarm {
 		dbg!(&self.expression);
 		dbg!(&context);
 		match self.expression.eval_boolean_with_context(context){
-			Ok(alarm) => if alarm {dbg!(); self.sound_alarm()?;},
+			Ok(alarm_condition) => if alarm_condition {
+				dbg!();
+				let notify = self.notify.clone();
+				let message = self.message.clone();
+				let command = self.command.clone();
+				let expr_string = self.expr_string.clone();
+				pool.execute(move || {
+					sound_alarm(notify, message, expr_string, command);
+				});
+			},
 			Err(error) => match error {
 					VariableIdentifierNotFound(_) => {
 						dbg!();
@@ -113,34 +126,36 @@ impl CompiledAlarm {
 		}
 		Ok(())
 	}
-
-	fn sound_alarm(&self) -> Result<(), AlarmError>{
-		dbg!();
-		if let Some(_email) = &self.notify.email {
-			todo!();
-		}
-		dbg!();
-		if let Some(chat_id) = &self.notify.telegram {
-			dbg!();
-			if let Some(message) = &self.message {
-				//bot::send_text_reply_blocking(*chat_id, TOKEN, message)?;
-				dbg!(message);
-			} else {
-				let text = format!("alarm: {}", self.expression);
-				//bot::send_text_reply_blocking(*chat_id, TOKEN, text)?;
-				dbg!(text);
-			}
-			if let Some(command) = &self.command {
-				todo!();
-				//let user_id = ;
-				//let state = ;
-				//bot::handle_command(command, chat_id, user_id, state);
-			}
-		}
-		Ok(())
-	}
 }
 
+fn sound_alarm(notify: NotifyVia, message: Option<String>,
+	expression: String, command: Option<String>)
+		-> Result<(), AlarmError>{
+
+	dbg!();
+	if let Some(_email) = &notify.email {
+		todo!();
+	}
+	dbg!();
+	if let Some(chat_id) = &notify.telegram {
+		dbg!();
+		if let Some(message) = &message {
+			bot::send_text_reply_blocking(*chat_id, TOKEN, message)?;
+			//dbg!(message);
+		} else {
+			let text = format!("alarm: {}", expression);
+			bot::send_text_reply_blocking(*chat_id, TOKEN, text)?;
+			//dbg!(text);
+		}
+		if let Some(command) = &command {
+			todo!();
+			//let user_id = ;
+			//let state = ;
+			//bot::handle_command(command, chat_id, user_id, state);
+		}
+	}
+	Ok(())
+}
 
 #[derive(Message)]
 #[rtype(result = "Result<(),AlarmError>")]

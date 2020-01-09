@@ -47,6 +47,7 @@ pub struct DataRouter {
 	alarms_by_set: HashMap<DatasetId, HashMap<alarms::Id, (CompiledAlarm, UserName)>>,
 	alarms_by_username: HashMap<UserName, Vec<(DatasetId, alarms::Id, Alarm)>>,
 	alarm_context: HashMapContext,
+	async_pool: ThreadPool,
 }
 
 impl DataRouter {
@@ -73,6 +74,7 @@ impl DataRouter {
 			alarms_by_set: HashMap::new(),
 			alarms_by_username: HashMap::new(),
 			alarm_context: HashMapContext::new(),
+			async_pool: ThreadPool::new(2),
 		}
 	}
 }
@@ -98,10 +100,7 @@ impl Handler<NewData> for DataRouter {
 			self.update_context(&msg.line, &updated_dataset_id); //Opt: 
 			if let Some(alarms) = self.alarms_by_set.get(&updated_dataset_id){
 				for (alarm, _) in alarms.values() {
-					dbg!();
-					//let res = executor::block_on(
-					alarm.evalute(&mut self.alarm_context, &now);
-					//dbg!(res);
+					alarm.evalute(&mut self.alarm_context, &now, &self.async_pool);
 				}
 			}
 		}

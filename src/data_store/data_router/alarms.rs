@@ -85,7 +85,6 @@ impl From<Alarm> for CompiledAlarm {
 	}
 }
 
-use futures;
 impl CompiledAlarm {
 	pub fn evalute(&self, context: &mut evalexpr::HashMapContext, 
 		now: &DateTime::<Utc>, pool: &ThreadPool) -> Result<(), AlarmError> {
@@ -128,9 +127,9 @@ impl CompiledAlarm {
 	}
 }
 
+//TODO //FIXME has to handle error without returning
 fn sound_alarm(notify: NotifyVia, message: Option<String>,
-	expression: String, command: Option<String>)
-		-> Result<(), AlarmError>{
+	expression: String, command: Option<String>){
 
 	dbg!();
 	if let Some(_email) = &notify.email {
@@ -140,11 +139,11 @@ fn sound_alarm(notify: NotifyVia, message: Option<String>,
 	if let Some(chat_id) = &notify.telegram {
 		dbg!();
 		if let Some(message) = &message {
-			bot::send_text_reply_blocking(*chat_id, TOKEN, message)?;
+			bot::send_text_reply_blocking(*chat_id, TOKEN, message);
 			//dbg!(message);
 		} else {
 			let text = format!("alarm: {}", expression);
-			bot::send_text_reply_blocking(*chat_id, TOKEN, text)?;
+			bot::send_text_reply_blocking(*chat_id, TOKEN, text);
 			//dbg!(text);
 		}
 		if let Some(command) = &command {
@@ -154,7 +153,6 @@ fn sound_alarm(notify: NotifyVia, message: Option<String>,
 			//bot::handle_command(command, chat_id, user_id, state);
 		}
 	}
-	Ok(())
 }
 
 #[derive(Message)]

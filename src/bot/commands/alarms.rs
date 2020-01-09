@@ -76,7 +76,7 @@ impl Error {
             Error::NoAccessToField(field_id) => format!("You do not have access to field: {}", field_id),
             Error::NoAccessToDataSet(dataset_id) => format!("You do not have access to dataset: {}", dataset_id),
 			Error::IncorrectFieldSpecifier(field) => format!("This \"{}\" is not a valid field specification, see the plotables command", field),
-			Error::NoExpression => format!("An alarm must have a condition, see\n{}", HELP_ADD),
+			Error::NoExpression => format!("An alarm must have a condition, type /alarms for help"),
 			Error::IncorrectTimeUnit(unit) => format!("This \"{}\" is not a valid duration unit, options are s, m, h, d, w", unit),
 			Error::ExpressionError(err) => format!("I could not understand the alarms condition. Cause: {}", err),
 			Error::InvalidDay(day) => format!("I could not understand what day this is: {}", day),
@@ -186,12 +186,6 @@ fn parse_arguments(args: &str) -> Result<Arguments, Error>{
 			fields.insert(set_id, vec![field_id]);
 		}
 	}
-
-	//add v in front of variables
-	let re = Regex::new(r#"(\d+)_(\d+)"#).unwrap();
-	let expression = re.replace(&expression, |caps: &Captures| {
-		format!("v{}a{}",&caps[1], &caps[2])
-	}).to_string();
 
 	Ok(Arguments {
 		expression,

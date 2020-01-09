@@ -193,7 +193,7 @@ async fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 async fn handle(update: Update, state: DataRouterState){
 	if let Ok((text, chat_id, user_id)) = to_string_and_ids(update){
 		if let Err(error) = handle_command(text, chat_id, user_id, &state).await{
-			handle_error(error, chat_id, user_id);
+			handle_error(error, chat_id, user_id).await;
 		}
 	}
 }

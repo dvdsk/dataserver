@@ -55,7 +55,7 @@ impl DataRouter {
 		let fields = self.meta.get(set_id).unwrap();
 		for field in fields {
 			let value: f64 = field.decode(&line);
-			let name = format!("v{}a{}",set_id,field.id);
+			let name = format!("{}_{}",set_id,field.id);
 			self.alarm_context.set_value(name.into(),value.into()).unwrap();
 		}
 	}

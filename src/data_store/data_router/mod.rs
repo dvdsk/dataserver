@@ -98,8 +98,8 @@ impl Handler<NewData> for DataRouter {
 		if self.alarms_by_set.contains_key(&updated_dataset_id){
 			let now = Utc::now();
 			self.update_context(&msg.line, &updated_dataset_id); //Opt: 
-			if let Some(alarms) = self.alarms_by_set.get(&updated_dataset_id){
-				for (alarm, _) in alarms.values() {
+			if let Some(alarms) = self.alarms_by_set.get_mut(&updated_dataset_id){
+				for (alarm, _) in alarms.values_mut() {
 					alarm.evalute(&mut self.alarm_context, &now, &self.async_pool);
 				}
 			}

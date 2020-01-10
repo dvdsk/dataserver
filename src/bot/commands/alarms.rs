@@ -17,7 +17,12 @@ pub const HELP_ADD: &'static str =
 	-c <command>\n\
 	here command should be a valid telegram command \
 	for this bot. If the command is more then one word \
-	long it should be enclosed in quotes\n";
+	long it should be enclosed in quotes\n\
+	-bc\n\
+	prevent alarm from being triggerd continuesly, once \
+	an alarm is triggerd disarm and set a counter \
+	alarm that will re-enable it once one of the values \
+	it watches deviates 10% from the alarm activation value\n";
 pub const HELP_LIST: &'static str = 
 	"list\n\
 	shows for all set alarms their: id, condition, timezone and action\
@@ -94,6 +99,7 @@ impl Error {
 //-m message 
 struct Arguments {
 	expression: String,
+	counter_expr: bool,
 	day: Option<HashSet<Weekday>>,
 	period: Option<Duration>,
 	message: Option<String>,
@@ -164,6 +170,8 @@ fn parse_arguments(args: &str) -> Result<Arguments, Error>{
 		.find(&args)
 		.map(|mat| mat.as_str().to_owned());
 
+	let counter_expr = args.contains("-bc");
+
 	let mut fields: HashMap<DatasetId, Vec<FieldId>> = HashMap::new();
 	let re = Regex::new(r#"\d+_\d+"#).unwrap();
 	dbg!(&expression);
@@ -189,6 +197,7 @@ fn parse_arguments(args: &str) -> Result<Arguments, Error>{
 
 	Ok(Arguments {
 		expression,
+		counter_expr,
 		day,
 		period,
 		message,
@@ -219,9 +228,8 @@ fn authorized(needed_fields: &HashMap<DatasetId, Vec<FieldId>>,
 async fn add(chat_id: ChatId, token: &str, args: &str, 
 	userinfo: BotUserInfo, state: &DataRouterState) -> Result<(), botError> {
 		
-	let Arguments {expression, 
-		day, period, 
-		message, command, 
+	let Arguments {expression, counter_expr,
+		day, period, message, command, 
 		fields} = parse_arguments(args)?;
 	authorized(&fields, &userinfo)?;
 
@@ -230,8 +238,13 @@ async fn add(chat_id: ChatId, token: &str, args: &str,
 	
 	let tz_offset = userinfo.timezone_offset;
 	let notify = NotifyVia {email: None, telegram: Some(chat_id),};
+	let inv_expr = if counter_expr {
+		Some(get_inverse_expression(&expression, 0.1))
+	} else { None };
+
 	let alarm = Alarm {
 		expression,
+		inv_expr,
 		weekday: day,
 		period: period,
 		message,
@@ -318,4 +331,72 @@ async fn list(chat_id: ChatId, token: &str, userinfo: BotUserInfo, state: &DataR
 	dbg!(&list);
 	send_text_reply(chat_id, token, list).await?;
 	Ok(())
+}
+
+fn get_inverse_expression(expression: &str, percentage: f32) -> String {
+	let var_vs_numb = Regex::new(
+		r#"(\d+_\d+)\s((?:<=)|(?:>=)|(?:==)|(?:!=)|>|<)\s(\d+\.?\d+*)"#)
+		.unwrap();
+	let numb_vs_var = Regex::new(
+		r#"(\d+\.?\d*)\s((?:<=)|(?:>=)|(?:==)|(?:!=)|>|<)\s(\d+_\d+)"#)
+		.unwrap();
+
+	let adjust_up = |x| x*(1f32+percentage);
+	let adjust_down = |x| x*(1f32-percentage);
+	let inverse = var_vs_numb.replace_all(expression, |caps: &Captures| {
+		let numb = caps[3].parse::<f32>().unwrap();
+		let (inv_op, adj_numb) = match &caps[2] {
+			"<=" => (">", adjust_up(numb)),
+			"<" => (">=", adjust_up(numb)),
+			">" => ("<=", adjust_down(numb)),
+			">=" => ("<", adjust_down(numb)),
+			"==" => ("!=", numb),
+			"!=" => ("==", numb),
+			_ => unreachable!(),
+		};
+		format!("{} {} {}", &caps[1], inv_op, adj_numb)
+	});
+	let inverse = numb_vs_var.replace_all(&inverse, |caps: &Captures| {
+		let numb = caps[1].parse::<f32>().unwrap();
+		let (inv_op, adj_numb) = match &caps[2] {
+			"<=" => (">", adjust_up(numb)),
+			"<" => (">=", adjust_up(numb)),
+			">" => ("<=", adjust_down(numb)),
+			">=" => ("<", adjust_down(numb)),
+			"==" => ("!=", numb),
+			"!=" => ("==", numb),
+			_ => unreachable!(),
+		};
+		format!("{} {} {}", adj_numb, inv_op, &caps[3])
+	});
+
+	inverse.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	
+	#[test]
+	fn test_invert() {
+		let inverse = get_inverse_expression("13_11 > 21.53", 0.1);
+		let correct_inv = "13_11 <= 19.377";
+		assert_eq!(inverse, correct_inv);
+
+		let inverse = get_inverse_expression("1_1 >= 2", 0.1);
+		let correct_inv = "1_1 < 1.8";
+		assert_eq!(inverse, correct_inv);
+
+		let inverse = get_inverse_expression("10_0 < 5", 0.1);
+		let correct_inv = "10_0 >= 5.5";
+		assert_eq!(inverse, correct_inv);
+
+		let inverse = get_inverse_expression("5_0 != 5", 0.1);
+		let correct_inv = "5_0 == 5";
+		assert_eq!(inverse, correct_inv);
+
+		let inverse = get_inverse_expression("5 != 1_2", 0.1);
+		let correct_inv = "5 == 1_2";
+		assert_eq!(inverse, correct_inv);
+	}
 }

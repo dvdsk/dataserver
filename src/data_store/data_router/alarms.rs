@@ -11,6 +11,7 @@ use actix::prelude::*;
 use threadpool::ThreadPool;
 use std::time::{Duration, Instant};
 use std::collections::{HashSet, HashMap};
+use regex::Regex;
 
 use crate::bot;
 use crate::config::TOKEN;
@@ -42,6 +43,7 @@ pub struct NotifyVia {
 #[derive(Clone, Debug)]
 pub struct Alarm {
 	pub expression: String,
+	pub inv_expr: Option<String>,
 	pub weekday: Option<HashSet<Weekday>>,
 	pub period: Option<Duration>,
 	pub message: Option<String>,
@@ -52,6 +54,9 @@ pub struct Alarm {
 
 pub struct CompiledAlarm {
 	expression: evalexpr::Node,
+	inv_expr: Option<evalexpr::Node>,
+	inverted: bool,
+
 	expr_string: String,
 	weekday: Option<HashSet<Weekday>>,
 	period: Option<(Duration, Instant)>,
@@ -64,16 +69,19 @@ pub struct CompiledAlarm {
 impl From<Alarm> for CompiledAlarm {
 	fn from(alarm: Alarm) -> Self {
 		let Alarm {expression, 
-			weekday, period, 
-			message, command, 
+			inv_expr, weekday, 
+			period, message, command, 
 			tz_offset, notify} = alarm;
 		let timezone = FixedOffset::east(tz_offset*3600); 
 		let expr_string = expression;
 		let expression = build_operator_tree(&expr_string).unwrap();
-		let period = period.map(|d| (d, Instant::now()));
+		let inv_expr = inv_expr.map(|expr| build_operator_tree(&expr).unwrap());
+		let period = period.map(|delay| (delay, Instant::now()));
 
 		CompiledAlarm {
 			expression,
+			inv_expr,
+			inverted: false,
 			expr_string,
 			weekday,
 			period,
@@ -86,7 +94,7 @@ impl From<Alarm> for CompiledAlarm {
 }
 
 impl CompiledAlarm {
-	pub fn evalute(&self, context: &mut evalexpr::HashMapContext, 
+	pub fn evalute(&mut self, context: &mut evalexpr::HashMapContext, 
 		now: &DateTime::<Utc>, pool: &ThreadPool) -> Result<(), AlarmError> {
 		
 		dbg!();
@@ -102,18 +110,28 @@ impl CompiledAlarm {
 
 		let seconds_since_midnight = now_user_tz.num_seconds_from_midnight() as f64;
 		context.set_value("t".to_string(), seconds_since_midnight.into()).unwrap();
-		dbg!(&self.expression);
+		
+		let to_evaluate = if self.inverted { 
+			self.inv_expr.as_ref().unwrap() 
+		} else { 
+			&self.expression
+		};
+
+		dbg!(&to_evaluate);
 		dbg!(&context);
-		match self.expression.eval_boolean_with_context(context){
+
+		match to_evaluate.eval_boolean_with_context(context){
 			Ok(alarm_condition) => if alarm_condition {
-				dbg!();
 				let notify = self.notify.clone();
 				let message = self.message.clone();
 				let command = self.command.clone();
 				let expr_string = self.expr_string.clone();
+				let inverted = self.inverted;
 				pool.execute(move || {
-					sound_alarm(notify, message, expr_string, command);
+					sound_alarm(notify, message, 
+						expr_string, command, inverted);
 				});
+				if self.inv_expr.is_some() {self.inverted = !self.inverted;}
 			},
 			Err(error) => match error {
 					VariableIdentifierNotFound(_) => {
@@ -129,23 +147,25 @@ impl CompiledAlarm {
 
 //TODO //FIXME has to handle error without returning
 fn sound_alarm(notify: NotifyVia, message: Option<String>,
-	expression: String, command: Option<String>){
+	expression: String, command: Option<String>, inverted: bool){
+
+	let to_send = if let Some(message) = &message {
+		message.to_owned()
+	} else {
+		if inverted {
+			format!("alarm re-enabled: {}", expression)
+		} else {
+			format!("alarm fired: {}", expression)
+		}
+	};
 
 	dbg!();
 	if let Some(_email) = &notify.email {
 		todo!();
 	}
-	dbg!();
 	if let Some(chat_id) = &notify.telegram {
-		dbg!();
-		if let Some(message) = &message {
-			bot::send_text_reply_blocking(*chat_id, TOKEN, message);
-			//dbg!(message);
-		} else {
-			let text = format!("alarm: {}", expression);
-			bot::send_text_reply_blocking(*chat_id, TOKEN, text);
-			//dbg!(text);
-		}
+		bot::send_text_reply_blocking(*chat_id, TOKEN, to_send);
+
 		if let Some(command) = &command {
 			todo!();
 			//let user_id = ;

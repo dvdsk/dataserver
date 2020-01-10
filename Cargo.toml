@@ -5,6 +5,10 @@ authors = ["David Kleingeld <dskleingeld@gmail.com>"]
 edition = "2018"
 publish = false
 
+[profile.release]
+lto = true
+#panic = 'abort'
+
 [features]
 plotting = ["plotters", "image"]
 

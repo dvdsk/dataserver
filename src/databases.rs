@@ -12,7 +12,9 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc, FixedOffset};
 use telegram_bot::types::refs::UserId as TelegramUserId;
+use byteorder::{BigEndian, WriteBytesExt};
 
+use crate::data_store::data_router::Alarm;
 use crate::error::DataserverError;
 
 static PBKDF2_ALG: pbkdf2::Algorithm = pbkdf2::PBKDF2_HMAC_SHA256;
@@ -143,7 +145,6 @@ impl From<bincode::Error> for UserDbError {
     }
 }
 
-
 impl WebUserDatabase {
 	pub fn from_db(db: &Db) -> Result<Self,sled::Error> {
 		Ok(WebUserDatabase { 
@@ -237,6 +238,59 @@ impl BotUserDatabase {
 		Ok(())
 	}
 }
+
+#[derive(Debug, Clone)]
+pub struct AlarmDatabase {
+	pub db: Db,
+	pub storage: Arc<Tree>,
+}
+
+//#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub type AlarmList = Vec<Alarm>;
+
+impl AlarmDatabase {
+	pub fn from_db(db: &Db) ->Result<Self, sled::Error> {
+		Ok(Self { 
+			db: db.clone(),
+			storage: db.open_tree("alarms")?, //created it not exist
+		})
+	}
+
+	pub fn get_alarms<T: AsRef<[u8]>>(&self, username: T) -> Result<AlarmList, UserDbError> {
+		let username = username.as_ref();
+
+		
+		
+		if let Some(alarm_list) = self.storage.get(username)? {
+			let alarm_list = bincode::deserialize(&alarm_list)?;
+			Ok(alarm_list)
+		} else {
+			Err(UserDbError::UserNotInDb)
+		}
+	}
+
+	pub fn add_alarms<T: AsRef<[u8]>>(&self, username: T) -> Result<(), sled::Error> {
+		let id = self.storage.generate_id()?
+		let mut key = username.as_ref().to_vec();
+		key.write_u64::<BigEndian>(id).unwrap();
+
+
+		user_end.push(0); user_end.push(0);
+
+
+		if let Some(last_entry) = self.storage
+			.range(user_start..user_end.as_ref())
+			.keys()
+			.next_back(){
+
+			let counter = last_entry[0] + last_entry[1]
+		}
+
+
+		Ok(())
+	}
+}
+
 
 impl UserDbError {
 	pub fn to_text(self, user_id: TelegramUserId) -> String {

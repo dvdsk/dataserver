@@ -12,6 +12,7 @@ use threadpool::ThreadPool;
 use std::time::{Duration, Instant};
 use std::collections::{HashSet, HashMap};
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 use crate::bot;
 use crate::config::TOKEN;
@@ -34,13 +35,13 @@ impl From<bot::Error> for AlarmError {
 }
 
 pub type Id = u8;
-#[derive(Clone, Debug)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct NotifyVia {
 	pub email: Option<String>,
 	pub telegram: Option<ChatId>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Alarm {
 	pub expression: String,
 	pub inv_expr: Option<String>,

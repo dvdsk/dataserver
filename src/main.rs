@@ -61,7 +61,7 @@ async fn main() {
 	let passw_db = PasswordDatabase::from_db(&db).unwrap();
 	let web_user_db = WebUserDatabase::from_db(&db).unwrap();
 	let bot_user_db = BotUserDatabase::from_db(&db).unwrap();
-	
+	let alarm_db = 
 	let data = Arc::new(RwLock::new(data_store::init("data").unwrap()));
 	
 	let sessions = Arc::new(RwLock::new(HashMap::new()));

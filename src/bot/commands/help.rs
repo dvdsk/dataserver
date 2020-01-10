@@ -1,4 +1,4 @@
-use crate::databases::BotUserInfo;
+use crate::databases::User;
 use crate::bot::Error;
 use telegram_bot::types::refs::ChatId;
 
@@ -10,7 +10,7 @@ use super::plot;
 
 const USAGE: &str = "/help";
 const DESCRIPTION: &str = "shows this list";
-pub async fn send(chat_id: ChatId, user_info: &BotUserInfo, token: &str)
+pub async fn send(chat_id: ChatId, user_info: &User, token: &str)
 	-> Result<(), Error> {
 	let aliasses = &user_info.aliases;
 

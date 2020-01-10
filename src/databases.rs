@@ -8,7 +8,7 @@ use log::error;
 use ring::{digest, pbkdf2};
 use std::collections::HashMap;
 use std::num::NonZeroU32;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use chrono::{DateTime, Utc, FixedOffset};
 use telegram_bot::types::refs::UserId as TelegramUserId;
@@ -28,7 +28,7 @@ pub enum PasswDbError {
 pub struct PasswordDatabase {
 	pbkdf2_iterations: NonZeroU32,
 	db_salt_component: [u8; 16],
-    pub storage: Arc<Tree>,
+    pub storage: Tree,
 }
 
 #[derive(Debug)]
@@ -110,19 +110,19 @@ impl PasswordDatabase {
 }
 
 /////////////////////////////////////////////////////////////////////////////////
- 
-#[derive(Debug, Clone)]
-pub struct WebUserDatabase {
-    pub storage: Arc<Tree>,
-}
 pub type Access = HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>;
 type RecieveErrors = bool;
+type UserId = u64;
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub struct WebUserInfo {
+pub struct User {
+	pub id: UserId,
 	pub timeseries_with_access: Access,  
 	pub last_login: DateTime<Utc>, 
 	pub username: String,
 	pub telegram_user_id: Option<TelegramUserId>,
+	pub aliases: HashMap<String, String>,
+	pub keyboard: Option<String>,
+	pub timezone_offset: i32, //hours to the east
 }
 
 #[derive(Debug)]
@@ -143,98 +143,82 @@ impl From<bincode::Error> for UserDbError {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct UserDatabase {
+	pub storage: Tree,
+	db: Db,
+}
 
-impl WebUserDatabase {
+impl UserDatabase {
 	pub fn from_db(db: &Db) -> Result<Self,sled::Error> {
-		Ok(WebUserDatabase { 
+		Ok(UserDatabase { 
 			storage: db.open_tree("web_user_database")?, //created it not exist
+			db: db.clone(),
 		})
 	}
 
-	pub fn get_userdata<T: AsRef<[u8]>>(&self, username: T) -> Result<WebUserInfo, UserDbError> {
-		let username = username.as_ref();
-		if let Some(user_data) = self.storage.get(username)? {
-			let user_info = bincode::deserialize(&user_data)?;
-			Ok(user_info)
+	pub fn get_user(&self, id: UserId) -> Result<User, UserDbError> {
+		let key = id.to_be_bytes();
+		if let Some(user) = self.storage.get(key)? {
+			let user = bincode::deserialize(&user)?;
+			Ok(user)
 		} else {
 			Err(UserDbError::UserNotInDb)
 		}
 	}
 	
-	pub fn set_userdata(&self, user_info: WebUserInfo) 
+	pub async fn set_user(&self, user: User) 
 	-> Result <(),UserDbError> {
-		let username = user_info.username.as_str().as_bytes();
-		let user_data =	bincode::serialize(&user_info)?;
-		self.storage.set(username,user_data)?;
-		self.storage.flush()?;
+		let key = user.id.to_be_bytes();
+		let user =	bincode::serialize(&user)?;
+		self.storage.insert(key,user)?;
+		self.storage.flush_async().await?;
 		Ok(())
 	}
 
-	pub fn remove_user<T: AsRef<[u8]>>(&self, username: T) -> Result<(), UserDbError> {
-		self.storage.del(username)?;
+	pub async fn remove_user<T: AsRef<[u8]>>(&self, id: UserId) -> Result<(), UserDbError> {
+		let key = id.to_be_bytes();
+		self.storage.remove(key)?;
+		self.storage.flush_async().await?;
 		Ok(())
 	}
-}
 
-#[derive(Debug, Clone)]
-pub struct BotUserDatabase {
-    pub storage: Arc<Tree>,
-}
+	pub async fn new_user(&self, username: String) -> Result<(), UserDbError>{
+		let id = self.db.generate_id()?;
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub struct BotUserInfo {
-	//keep the authorisation vector sorted
-	pub timeseries_with_access: HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>,
-	pub username: String,
-	pub aliases: HashMap<String, String>,
-	pub keyboard: Option<String>,
-	pub timezone_offset: i32, //hours to the east
-}
-
-impl BotUserInfo {
-	pub fn from_access_and_name(access: HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>, name: String)
-	-> Self {
-		Self {
-			timeseries_with_access: access,
-			username: name,
+		let user = User {
+			id,
+			timeseries_with_access: HashMap::new(),  
+			last_login: Utc::now(), 
+			username: username,
+			telegram_user_id: None,
 			aliases: HashMap::new(),
 			keyboard: None,
-			timezone_offset: 0,
-		}
+			timezone_offset: 0, //hours to the east			
+		};
+
+		self.set_user(user).await?;
+		Ok(())
 	}
 }
 
-impl BotUserDatabase {
-	pub fn from_db(db: &Db) -> Result<Self,sled::Error> {
-		Ok(Self { 
-			storage: db.open_tree("bot_user_database")?, //created it not exist
-		})
+#[derive(Clone)]
+pub struct UserLookup {
+	name_to_id: Arc<RwLock<HashMap<String, UserId>>>,
+	bot_id_to_id: Arc<RwLock<HashMap<TelegramUserId, UserId>>>,
+}
+impl UserLookup {
+	pub fn by_name(&self, username: &String)
+	 -> Result<UserId, UserDbError> {
+		let id = self.name_to_id.read().unwrap().get(username)
+			.ok_or(UserDbError::UserNotInDb)?;
+		Ok(*id)
 	}
-
-	pub fn get_userdata(&self, user_id: TelegramUserId) -> Result<BotUserInfo, UserDbError> {
-		let user_id = &user_id.to_string();
-		if let Some(user_data) = self.storage.get(user_id.as_bytes())? {
-			let user_info = bincode::deserialize(&user_data)?;
-			Ok(user_info)
-		} else {
-			Err(UserDbError::UserNotInDb)
-		}
-	}
-	
-	pub fn set_userdata<U: Into<TelegramUserId>>(&self, user_id: U, user_info: &BotUserInfo) 
-	-> Result <(),UserDbError> {
-		let user_id = &user_id.into().to_string();
-		let user_data =	bincode::serialize(user_info)?;
-		self.storage.set(user_id.as_bytes(),user_data)?;
-		self.storage.flush()?;
-		Ok(())
-	}
-
-	pub fn remove_user<U: Into<TelegramUserId>>(&mut self, user_id: U)
-	-> Result<(), UserDbError> {
-		let user_id = &user_id.into().to_string();
-		self.storage.del(user_id.as_bytes())?;
-		Ok(())
+	pub fn by_telegram_id(&self, telegram_id: &TelegramUserId)
+	 -> Result<UserId, UserDbError> {
+		let id = self.bot_id_to_id.read().unwrap().get(telegram_id)
+			.ok_or(UserDbError::UserNotInDb)?;
+		Ok(*id)
 	}
 }
 

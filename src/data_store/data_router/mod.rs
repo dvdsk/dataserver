@@ -14,7 +14,7 @@ use super::DatasetId;
 use super::error_router;
 use super::{Data, Field};
 
-use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
+use crate::databases::{PasswordDatabase, UserDatabase, UserLookup};
 use crate::httpserver::Session;
 
 mod alarms;
@@ -24,8 +24,8 @@ pub use alarms::Id as AlarmId;
 #[derive(Clone)]
 pub struct DataRouterState {
 	pub passw_db: PasswordDatabase,
-	pub web_user_db: WebUserDatabase,
-	pub bot_user_db: BotUserDatabase,
+	pub user_db: UserDatabase,
+	pub db_lookup: UserLookup,
 	pub bot_pool: ThreadPool,
 
 	pub data_router_addr: Addr<DataRouter>,

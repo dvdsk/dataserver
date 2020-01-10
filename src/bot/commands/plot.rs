@@ -83,7 +83,7 @@ impl From<UserDbError> for Error {
 }
 
 pub async fn send(chat_id: ChatId, state: &DataRouterState, token: &str, 
-    args: String, userinfo: &BotUserInfo) -> Result<(), botError>{
+    args: String, user: &User) -> Result<(), botError>{
 
     let args: Vec<String> =	args.split_whitespace()
         .map(|s| s.to_owned() )

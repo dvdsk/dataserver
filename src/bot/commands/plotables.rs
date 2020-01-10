@@ -1,4 +1,4 @@
-use crate::databases::BotUserInfo;
+use crate::databases::User;
 use crate::bot::{Error, send_text_reply};
 use telegram_bot::types::refs::ChatId;
 
@@ -6,7 +6,7 @@ use crate::data_store::{data_router::DataRouterState, FieldId};
 
 pub const USAGE: &str = "/plotables";
 pub const DESCRIPTION: &str = "shows all possible data input for the plot function";
-pub async fn send(chat_id: ChatId, userinfo: &BotUserInfo, state: &DataRouterState, token: &str)
+pub async fn send(chat_id: ChatId, userinfo: &User, state: &DataRouterState, token: &str)
      -> Result<(), Error> {
 	
 		let mut text = String::default();

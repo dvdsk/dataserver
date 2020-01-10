@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use telegram_bot::types::refs::{ChatId, UserId};
 
 use crate::data_store::{DatasetId, FieldId};
-use crate::databases::{BotUserInfo, UserDbError};
+use crate::databases::{User, UserDbError};
 use crate::data_store::data_router::DataRouterState;
 
 use super::super::send_text_reply;

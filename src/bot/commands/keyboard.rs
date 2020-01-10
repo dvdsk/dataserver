@@ -11,7 +11,7 @@ use itertools::Itertools;
 
 use log::error;
 use telegram_bot::types::refs::{ChatId, UserId};
-use crate::databases::{BotUserInfo};
+use crate::databases::{User};
 use crate::data_store::data_router::DataRouterState;
 
 use crate::bot::Error as botError;
@@ -46,13 +46,13 @@ impl Error {
 	}
 }
 
-pub async fn show(chat_id: ChatId, token: &str, userinfo: BotUserInfo)
+pub async fn show(chat_id: ChatId, token: &str, userinfo: User)
     -> Result<(), botError>{
     
 	reload(chat_id, token, userinfo, "showing the user keyboard").await
 }
 
-async fn reload(chat_id: ChatId, token: &str, userinfo: BotUserInfo, text: &str)
+async fn reload(chat_id: ChatId, token: &str, userinfo: User, text: &str)
     -> Result<(), botError>{
     
 	let keyboard_json = userinfo.keyboard.ok_or(Error::NoKeyboardSet)?;
@@ -81,7 +81,7 @@ async fn reload(chat_id: ChatId, token: &str, userinfo: BotUserInfo, text: &str)
 //replykeyboardmarkup
 type Keyboard = Vec<Vec<String>>;
 pub async fn add_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
-    args: String, mut userinfo: BotUserInfo)
+    args: String, mut userinfo: User)
      -> Result<(), botError> {
 
 	let mut keyboard: Keyboard = //load or create keyboard
@@ -126,7 +126,7 @@ pub async fn add_button(chat_id: ChatId, user_id: UserId, state: &DataRouterStat
 
 
 pub async fn remove_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
-    args: String, mut userinfo: BotUserInfo)
+    args: String, mut userinfo: User)
      -> Result<(), botError> {
 
 	//load keyboard

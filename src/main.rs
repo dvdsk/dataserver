@@ -49,13 +49,11 @@ async fn main() {
 	}
 
 	error::setup_logging(1).expect("could not set up debugging");
-	let config = sled::ConfigBuilder::new() //651ms
-			.path("database".to_owned())
+	let db = sled::Config::default() //651ms
+			.path("database")
 			.flush_every_ms(None) //do not flush to disk unless explicitly asked
-			.async_io(true)
 			.cache_capacity(1024 * 1024 * 32) //32 mb cache 
-			.build();
-	let db = sled::Db::start(config).unwrap();
+			.open().unwrap();
 
 	//TODO can a tree be opened multiple times?
 	let passw_db = PasswordDatabase::from_db(&db).unwrap();

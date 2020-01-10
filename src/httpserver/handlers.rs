@@ -110,12 +110,11 @@ pub async fn login_get_and_check(
 	} else { info!("user logged in");}
 	
 	//copy userinfo into new session
-	let userinfo = state.web_user_db.get_userdata(&params.u).unwrap();
-	//userinfo.last_login = Utc::now();
-	//passw_db.set_userdata(params.u.as_str().as_bytes(), userinfo.clone());
+	let db_id = state.db_lookup.by_name(&params.u).unwrap();
+	let user = state.user_db.get_user(db_id).unwrap();
 	
 	let session = Session {
-		db_entry: userinfo,
+		db_entry: user,
 	};
 
 	//find free session_numb, set new session number and store new session

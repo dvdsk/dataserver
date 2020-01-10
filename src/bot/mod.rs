@@ -125,7 +125,7 @@ async fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId,
 			//TODO needs to use threadpool
 			#[cfg(feature = "plotting")]
 			"/plot" => {
-				plot::send(chat_id, state, TOKEN, args, &userinfo).await?; 
+				plot::send(chat_id, state, TOKEN, args, &user).await?; 
 				break;
 			}
 			"/help" => {

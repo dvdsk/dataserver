@@ -7,7 +7,7 @@ use std::time::Duration;
 use dialoguer::{Select, Input};
 use log::{info, error};
 
-use crate::databases::{WebUserDatabase, BotUserDatabase};
+use crate::databases::{UserDatabase, UserLookup};
 use crate::data_store::{Data, DatasetId};
 use crate::data_store;
 

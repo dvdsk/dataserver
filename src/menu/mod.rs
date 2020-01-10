@@ -8,7 +8,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use dialoguer::{Select};
-use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
+use crate::databases::{PasswordDatabase, UserDatabase, UserLookup};
 use crate::data_store::{Data};
 
 mod user;

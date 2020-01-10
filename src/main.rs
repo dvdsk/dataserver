@@ -17,7 +17,7 @@ use threadpool::ThreadPool;
 use std::sync::atomic::{AtomicUsize};
 use data_store::{error_router, data_router, data_router::DataRouterState};
 
-use databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
+use databases::{PasswordDatabase, UserDatabase, UserLookup};
 
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
@@ -57,8 +57,8 @@ async fn main() {
 
 	//TODO can a tree be opened multiple times?
 	let passw_db = PasswordDatabase::from_db(&db).unwrap();
-	let web_user_db = WebUserDatabase::from_db(&db).unwrap();
-	let bot_user_db = BotUserDatabase::from_db(&db).unwrap();
+	let user_db = UserDatabase::from_db(&db).unwrap();
+	let db_lookup = UserLookup::from_user_db(&user_db).unwrap();
 	
 	let data = Arc::new(RwLock::new(data_store::init("data").unwrap()));
 	
@@ -72,8 +72,8 @@ async fn main() {
 
     let data_router_state = DataRouterState {
         passw_db: passw_db.clone(),
-        web_user_db: web_user_db.clone(),
-		bot_user_db: bot_user_db.clone(),
+        user_db: user_db.clone(),
+		db_lookup: db_lookup.clone(),
 		bot_pool,
         data_router_addr: data_router_addr.clone(),
         error_router_addr: error_router_addr.clone(),
@@ -93,7 +93,7 @@ async fn main() {
     bot::set_webhook(config::DOMAIN, config::TOKEN, config::PORT).await.unwrap();
 	
 	let menu_future = if !opt.no_menu {
-		Menu::gui(data, passw_db, web_user_db, bot_user_db)
+		Menu::gui(data, passw_db, user_db, db_lookup)
 	} else {
 		Menu::simple()
 	};

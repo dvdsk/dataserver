@@ -38,7 +38,7 @@ use evalexpr::{build_operator_tree, EvalexprError};
 use chrono::{Weekday, self};
 use regex::{Regex, Captures};
 use telegram_bot::types::refs::{ChatId, UserId};
-use crate::databases::{BotUserInfo};
+use crate::databases::User;
 use crate::data_store::data_router::{DataRouterState, Alarm, NotifyVia};
 use crate::data_store::data_router::{AddAlarm, ListAlarms, AlarmId};
 use crate::data_store::{DatasetId, FieldId};
@@ -207,10 +207,10 @@ fn parse_arguments(args: &str) -> Result<Arguments, Error>{
 }
 
 fn authorized(needed_fields: &HashMap<DatasetId, Vec<FieldId>>, 
-	userinfo: &BotUserInfo) -> Result<(), Error>{
+	user: &User) -> Result<(), Error>{
 
 	for (set_id, list) in needed_fields.iter() {
-		let fields_with_access = userinfo
+		let fields_with_access = user
 			.timeseries_with_access
 			.get(&set_id)
 			.ok_or(Error::NoAccessToDataSet(*set_id))?;
@@ -226,17 +226,17 @@ fn authorized(needed_fields: &HashMap<DatasetId, Vec<FieldId>>,
 }
 
 async fn add(chat_id: ChatId, token: &str, args: &str, 
-	userinfo: BotUserInfo, state: &DataRouterState) -> Result<(), botError> {
+	user: User, state: &DataRouterState) -> Result<(), botError> {
 		
 	let Arguments {expression, counter_expr,
 		day, period, message, command, 
 		fields} = parse_arguments(args)?;
-	authorized(&fields, &userinfo)?;
+	authorized(&fields, &user)?;
 
 	//this tests the alarm syntax
 	build_operator_tree(&expression).map_err(|e| Error::from(e))?;
 	
-	let tz_offset = userinfo.timezone_offset;
+	let tz_offset = user.timezone_offset;
 	let notify = NotifyVia {email: None, telegram: Some(chat_id),};
 	let inv_expr = if counter_expr {
 		Some(get_inverse_expression(&expression, 0.1))
@@ -256,7 +256,7 @@ async fn add(chat_id: ChatId, token: &str, args: &str,
 	dbg!(&fields);
 	let res = state.data_router_addr.send(AddAlarm {
 		alarm,
-		username: userinfo.username.clone(),
+		username: user.name.clone(),
 		sets: fields.keys().map(|id| *id).collect(),
 	}).await.unwrap();
 	dbg!(res);
@@ -265,7 +265,7 @@ async fn add(chat_id: ChatId, token: &str, args: &str,
 }
 
 pub async fn handle(chat_id: ChatId, token: &str, text: String, 
-	userinfo: BotUserInfo, state: &DataRouterState) -> Result<(), botError> {
+	user: User, state: &DataRouterState) -> Result<(), botError> {
 
 	dbg!(&text);
 	let mut text = text.trim_start().splitn(2, ' ');
@@ -275,8 +275,8 @@ pub async fn handle(chat_id: ChatId, token: &str, text: String,
 	dbg!(subcommand);
 	dbg!(args);
 	match subcommand {
-		"add" => add(chat_id, token, args, userinfo, state).await,
-		"list" => list(chat_id, token, userinfo, state).await,
+		"add" => add(chat_id, token, args, user, state).await,
+		"list" => list(chat_id, token, user, state).await,
 		_ => send_text_reply(chat_id, token, format!("Could not recognise the \
 			subcommand, see documentation: \n{}\n{}\n{}", 
 			HELP_LIST, HELP_ADD, HELP_REMOVE)).await,
@@ -293,12 +293,12 @@ pub async fn handle(chat_id: ChatId, token: &str, text: String,
 	pub notify: NotifyVia,
 }*/
 
-async fn list(chat_id: ChatId, token: &str, userinfo: BotUserInfo, state: &DataRouterState)
+async fn list(chat_id: ChatId, token: &str, user: User, state: &DataRouterState)
  -> Result<(), botError> {
 	dbg!("");
 	let alarms: Option<Vec<(DatasetId, AlarmId, Alarm)>> 
 	= state.data_router_addr.send(ListAlarms {
-		username: userinfo.username,
+		username: user.name,
 	}).await.unwrap();
 	dbg!();
 	let mut list = String::default();

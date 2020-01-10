@@ -3,7 +3,7 @@ pub const DESCRIPTION: &str = "this defines an new command that can be used to c
 
 use log::error;
 use telegram_bot::types::refs::{ChatId, UserId};
-use crate::databases::{BotUserInfo};
+use crate::databases::{User};
 use crate::data_store::data_router::DataRouterState;
 
 use super::super::send_text_reply;
@@ -29,7 +29,7 @@ impl Error {
 }
 
 pub async fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str,
-    args: String, mut userinfo: BotUserInfo)
+    args: String, mut user: User)
      -> Result<(), botError>{
 
 	let mut args = args.split_whitespace();
@@ -42,21 +42,21 @@ pub async fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, tok
 
 	let mut text = String::default();
 	if command.len() == 0 {
-		if let Some(old_command) = userinfo.aliases.remove(&alias_name){
-			state.bot_user_db.set_userdata(user_id, &userinfo).map_err(|e| Error::DbError(e))?;
+		if let Some(old_command) = user.aliases.remove(&alias_name){
+			state.user_db.set_user(user.clone()).await.map_err(|e| Error::DbError(e))?;
 			text.push_str(&format!("unset \"{}\" {}",alias_name, old_command));
 		} else {
 			text.push_str("did not unset alias as non was set");
 		}
 	} else {
-		if let Some(old_command) = userinfo.aliases.insert(alias_name, command){
+		if let Some(old_command) = user.aliases.insert(alias_name, command){
 			text.push_str(
 				&format!("new alias set, overwrote previous value: {}"
 				,old_command));	
 		} else {
 			text.push_str("new alias set");
 		}
-		state.bot_user_db.set_userdata(user_id, &userinfo).map_err(|e| Error::DbError(e))?;
+		state.user_db.set_user(user.clone()).await.map_err(|e| Error::DbError(e))?;
 	}
 
 	send_text_reply(chat_id, token, text).await?;

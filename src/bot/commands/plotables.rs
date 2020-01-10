@@ -6,14 +6,14 @@ use crate::data_store::{data_router::DataRouterState, FieldId};
 
 pub const USAGE: &str = "/plotables";
 pub const DESCRIPTION: &str = "shows all possible data input for the plot function";
-pub async fn send(chat_id: ChatId, userinfo: &User, state: &DataRouterState, token: &str)
+pub async fn send(chat_id: ChatId, user: &User, state: &DataRouterState, token: &str)
      -> Result<(), Error> {
 	
 		let mut text = String::default();
 	const HEADER: &str = "\n<plotable id> <plotable name>\n";
 
 	let data = state.data.read().unwrap();	
-    for (dataset_id, authorized_fields) in userinfo.timeseries_with_access.iter() {
+    for (dataset_id, authorized_fields) in user.timeseries_with_access.iter() {
         let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
 		text.push_str(&metadata.name);
 		text.push_str(HEADER);

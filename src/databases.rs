@@ -9,6 +9,7 @@ use ring::{digest, pbkdf2};
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::sync::{Arc, RwLock};
+use core::iter::DoubleEndedIterator;
 
 use chrono::{DateTime, Utc, FixedOffset};
 use telegram_bot::types::refs::UserId as TelegramUserId;
@@ -116,10 +117,11 @@ type UserId = u64;
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct User {
 	pub id: UserId,
+	pub name: String,
+	pub telegram_id: Option<TelegramUserId>,
+
 	pub timeseries_with_access: Access,  
 	pub last_login: DateTime<Utc>, 
-	pub username: String,
-	pub telegram_user_id: Option<TelegramUserId>,
 	pub aliases: HashMap<String, String>,
 	pub keyboard: Option<String>,
 	pub timezone_offset: i32, //hours to the east
@@ -166,7 +168,7 @@ impl UserDatabase {
 			Err(UserDbError::UserNotInDb)
 		}
 	}
-	
+
 	pub async fn set_user(&self, user: User) 
 	-> Result <(),UserDbError> {
 		let key = user.id.to_be_bytes();
@@ -190,8 +192,8 @@ impl UserDatabase {
 			id,
 			timeseries_with_access: HashMap::new(),  
 			last_login: Utc::now(), 
-			username: username,
-			telegram_user_id: None,
+			name: username,
+			telegram_id: None,
 			aliases: HashMap::new(),
 			keyboard: None,
 			timezone_offset: 0, //hours to the east			
@@ -219,6 +221,28 @@ impl UserLookup {
 		let id = self.bot_id_to_id.read().unwrap().get(telegram_id)
 			.ok_or(UserDbError::UserNotInDb)?;
 		Ok(*id)
+	}
+
+	pub fn from_user_db(db: &UserDatabase) -> Result<Self,UserDbError> {
+		let name_to_id = HashMap::new();
+		let bot_id_to_id = HashMap::new();
+		
+		for row in db.storage.iter().values(){
+			let user: User = bincode::deserialize(&row?)?;
+
+			let id = user.id;
+			let name = user.name;
+			name_to_id.insert(name, id);
+
+			if let Some(bot_id) = user.telegram_id {
+				bot_id_to_id.insert(bot_id, id);
+			}
+		}
+
+		Ok(Self {
+			name_to_id: Arc::new(RwLock::new(name_to_id)),
+			bot_id_to_id: Arc::new(RwLock::new(bot_id_to_id)),
+		})
 	}
 }
 

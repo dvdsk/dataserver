@@ -46,16 +46,16 @@ impl Error {
 	}
 }
 
-pub async fn show(chat_id: ChatId, token: &str, userinfo: User)
+pub async fn show(chat_id: ChatId, token: &str, user: User)
     -> Result<(), botError>{
     
-	reload(chat_id, token, userinfo, "showing the user keyboard").await
+	reload(chat_id, token, user, "showing the user keyboard").await
 }
 
-async fn reload(chat_id: ChatId, token: &str, userinfo: User, text: &str)
+async fn reload(chat_id: ChatId, token: &str, user: User, text: &str)
     -> Result<(), botError>{
     
-	let keyboard_json = userinfo.keyboard.ok_or(Error::NoKeyboardSet)?;
+	let keyboard_json = user.keyboard.ok_or(Error::NoKeyboardSet)?;
 	let reply_markup = format!("{{\"keyboard\":{},\"resize_keyboard\": true}}", 
 		keyboard_json);
 
@@ -81,11 +81,11 @@ async fn reload(chat_id: ChatId, token: &str, userinfo: User, text: &str)
 //replykeyboardmarkup
 type Keyboard = Vec<Vec<String>>;
 pub async fn add_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
-    args: String, mut userinfo: User)
+    args: String, mut user: User)
      -> Result<(), botError> {
 
 	let mut keyboard: Keyboard = //load or create keyboard
-	if let Some(keyboard_str) = userinfo.keyboard {
+	if let Some(keyboard_str) = user.keyboard {
 		serde_json::from_str(&keyboard_str).unwrap()
 	} else {
 		let mut new_kb = Vec::new();
@@ -113,24 +113,24 @@ pub async fn add_button(chat_id: ChatId, user_id: UserId, state: &DataRouterStat
 
 	//store new keyboard
     let keyboard_json = serde_json::to_string(&keyboard).unwrap();
-	userinfo.keyboard = Some(keyboard_json);
+	user.keyboard = Some(keyboard_json);
 
-	state.bot_user_db
-		.set_userdata(user_id, &userinfo)
+	state.user_db
+		.set_user(user.clone()).await
 		.map_err(|e| Error::DbError(e))?;
 
 	//update users keyboard
-	reload(chat_id, token, userinfo, "updated keyboard").await?;
+	reload(chat_id, token, user, "updated keyboard").await?;
     Ok(())
 }
 
 
 pub async fn remove_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
-    args: String, mut userinfo: User)
+    args: String, mut user: User)
      -> Result<(), botError> {
 
 	//load keyboard
-	let keyboard_str = userinfo.keyboard.ok_or(Error::NoKeyboardSet)?;
+	let keyboard_str = user.keyboard.ok_or(Error::NoKeyboardSet)?;
 	let keyboard: Keyboard = serde_json::from_str(&keyboard_str).unwrap();
 	
 	//flattern and recreate keyboard without the to be removed keys
@@ -146,13 +146,13 @@ pub async fn remove_button(chat_id: ChatId, user_id: UserId, state: &DataRouterS
 
 	//store new keyboard
     let keyboard_json = serde_json::to_string(&keyboard).unwrap();
-	userinfo.keyboard = Some(keyboard_json);
+	user.keyboard = Some(keyboard_json);
 
-	state.bot_user_db
-		.set_userdata(user_id, &userinfo)
+	state.user_db
+		.set_user(user.clone()).await
 		.map_err(|e| Error::DbError(e))?;
 
 	//update users keyboard
-	reload(chat_id, token, userinfo, "updated keyboard").await?;
+	reload(chat_id, token, user, "updated keyboard").await?;
     Ok(())
 }

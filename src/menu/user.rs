@@ -7,7 +7,7 @@ use chrono::Utc;
 use dialoguer::{Select, Input, PasswordInput, Checkboxes};
 use telegram_bot::types::refs::UserId as TelegramUserId;
 
-use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase, WebUserInfo, BotUserInfo, Access};
+use crate::databases::{PasswordDatabase, UserDatabase, UserLookup, Access};
 use crate::data_store::{Data, Authorisation, DatasetId, FieldId, MetaData};
 use crate::error::DataserverError as Error;
 

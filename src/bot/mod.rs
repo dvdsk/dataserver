@@ -11,7 +11,7 @@ use telegram_bot::types::message::MessageKind;
 use telegram_bot::types::refs::{ChatId, UserId};
 
 use crate::data_store::data_router::DataRouterState;
-use crate::databases::{BotUserInfo, UserDbError};
+use crate::databases::{User, UserDbError};
 use crate::config::TOKEN;
 
 mod commands;
@@ -99,16 +99,19 @@ fn to_string_and_ids(update: Update) -> Result<(String, ChatId, UserId),Error>{
 	}
 }
 
-fn resolve_alias(possible_alias: &str, userinfo: &BotUserInfo) -> Result<Option<String>, Error> {
-	if let Some(alias) = userinfo.aliases.get(possible_alias){
+fn resolve_alias(possible_alias: &str, user: &User) -> Result<Option<String>, Error> {
+	if let Some(alias) = user.aliases.get(possible_alias){
 		Ok(Some(alias.to_string()))
 	} else {
 		Ok(None)
 	}
 }
 
-async fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, state: &DataRouterState) -> Result<(), Error>{
-	let userinfo = state.bot_user_db.get_userdata(user_id)?;
+async fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, 
+	state: &DataRouterState) -> Result<(), Error>{
+	
+	let db_id = state.db_lookup.by_telegram_id(&user_id)?;
+	let user = state.user_db.get_user(db_id)?;
 
 	loop {
 		let split = text.find(char::is_whitespace);
@@ -122,44 +125,44 @@ async fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, stat
 			//TODO needs to use threadpool
 			#[cfg(feature = "plotting")]
 			"/plot" => {
-				plot::send(chat_id, state, TOKEN, args, &userinfo).await?; 
+				plot::send(chat_id, state, TOKEN, args, &user).await?; 
 				break;
 			}
 			"/help" => {
-				help::send(chat_id, &userinfo, TOKEN).await?; 
+				help::send(chat_id, &user, TOKEN).await?; 
 				break;
 			}
 			"/plotables" => {
-				plotables::send(chat_id, &userinfo, state, TOKEN).await?;
+				plotables::send(chat_id, &user, state, TOKEN).await?;
 				break;
 			}
 			"/show" => {
-				show::send(chat_id, state, TOKEN, args, &userinfo).await?;
+				show::send(chat_id, state, TOKEN, args, &user).await?;
 				break;
 			}
 			"/keyboard" => {
-				keyboard::show(chat_id, TOKEN, userinfo).await?;
+				keyboard::show(chat_id, TOKEN, user).await?;
 				break;
 			}
 			"/keyboard_add" => {
-				keyboard::add_button(chat_id, user_id, state, TOKEN, args, userinfo).await?;
+				keyboard::add_button(chat_id, state, TOKEN, args, user).await?;
 				break;
 			}
 			"/keyboard_remove" => {
-				keyboard::remove_button(chat_id, user_id, state, TOKEN, args, userinfo).await?;
+				keyboard::remove_button(chat_id, state, TOKEN, args, user).await?;
 				break;
 			}
 			"/alarm" => {
-				alarms::handle(chat_id, TOKEN, args, userinfo, state).await?;
+				alarms::handle(chat_id, TOKEN, args, user, state).await?;
 				break;
 			}	
 			"/alias" => {
-				alias::send(chat_id, user_id, state, TOKEN, args, userinfo).await?;
+				alias::send(chat_id, state, TOKEN, args, user).await?;
 				break;
 			}
 			&_ => {}
 		}
-		if let Some(alias_text) = resolve_alias(&command, &userinfo)?{
+		if let Some(alias_text) = resolve_alias(&command, &user)?{
 			text = alias_text; //FIXME //TODO allows loops in aliasses, thats fun right? (fix after fun)
 		} else {
 			warn!("no known command or alias: {:?}", &command);

@@ -6,7 +6,6 @@ use log::{debug, trace};
 use actix::prelude::*;
 use threadpool::ThreadPool;
 use evalexpr::{HashMapContext, Context as evalContext};
-use futures::executor;
 
 use std::collections::{HashMap, HashSet};
 
@@ -14,7 +13,7 @@ use super::DatasetId;
 use super::error_router;
 use super::{Data, Field};
 
-use crate::databases::{PasswordDatabase, WebUserDatabase, BotUserDatabase};
+use crate::databases::{PasswordDatabase, UserDatabase, UserLookup};
 use crate::httpserver::Session;
 
 mod alarms;
@@ -24,8 +23,8 @@ pub use alarms::Id as AlarmId;
 #[derive(Clone)]
 pub struct DataRouterState {
 	pub passw_db: PasswordDatabase,
-	pub web_user_db: WebUserDatabase,
-	pub bot_user_db: BotUserDatabase,
+	pub user_db: UserDatabase,
+	pub db_lookup: UserLookup,
 	pub bot_pool: ThreadPool,
 
 	pub data_router_addr: Addr<DataRouter>,
@@ -91,7 +90,6 @@ impl Handler<NewData> for DataRouter {
 	type Result = ();
 
 	fn handle(&mut self, msg: NewData, _: &mut Context<Self>) -> Self::Result {
-		dbg!();
 		let updated_dataset_id = msg.from_id;
 
 		//check all alarms that could go off

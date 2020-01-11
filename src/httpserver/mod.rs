@@ -13,14 +13,14 @@ use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_files as fs;
 
 use crate::config;
-use crate::databases::{WebUserInfo};
+use crate::databases::User;
 use crate::data_store::{data_router::DataRouterState};
 
 use crate::bot;
-use login_redirect::{CheckLogin};
+use login_redirect::CheckLogin;
 
 pub struct Session { 
-	db_entry: WebUserInfo,
+	db_entry: User,
     //add more temporary user specific data as needed
 }
 

@@ -29,12 +29,12 @@ use sensor_errors::RemoteError;
 pub type ErrorCode = u8;
 
 struct ReportedErrors {
-	tree: Arc<sled::Tree>,
+	tree: sled::Tree,
 }
 
 impl ReportedErrors {
 	fn load(db: &sled::Db) -> Result<Self, DataserverError> {
-		Ok(Self{ tree:db.open_tree("reported_errors")?})
+		Ok(Self{ tree: db.open_tree("reported_errors")?})
 	}
 
 	//return true if this error was reported within a day, if it was not remembers the 
@@ -51,20 +51,20 @@ impl ReportedErrors {
 		if let Some(last_reported) = self.tree.get(&key).unwrap(){
 			let last_reported: DateTime<Utc> = bincode::deserialize(&last_reported)?;
 			if last_reported.signed_duration_since(Utc::now()) > chrono::Duration::days(1) {
-				self.tree.set(&key, bincode::serialize(&Utc::now())?)?;
+				self.tree.insert(&key, bincode::serialize(&Utc::now())?)?;
 				Ok(true)
 			} else {
 				Ok(false)
 			}
 		} else {
-			self.tree.set(&key, bincode::serialize(&Utc::now())?)?;
+			self.tree.insert(&key, bincode::serialize(&Utc::now())?)?;
 			Ok(false)
 		}
 	}
 }
 
 struct NotifyChannels {
-	tree: Arc<sled::Tree>,
+	tree: sled::Tree,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -75,7 +75,7 @@ struct NotifyOptions {
 
 impl NotifyChannels {
 	fn load(db: &sled::Db) -> Result<Self, DataserverError> {
-		Ok(Self{ tree:db.open_tree("notify_channels")?})
+		Ok(Self{tree: db.open_tree("notify_channels")?})
 	}
 
 	//return true if this error was reported within a day, if it was not remembers the 
@@ -114,7 +114,7 @@ pub struct ErrorRouter {
 	
  	//TODO speed this up dramatically by using an in memory representation for reads and updating Db on write
 	clients_to_notify: NotifyChannels, //keys = dataset_id+field_id
-	client_undisplayed_errors: Arc<sled::Tree>, // display as soon as client loads/connects
+	client_undisplayed_errors: sled::Tree, // display as soon as client loads/connects
 	reported_errors: ReportedErrors,
 
 	data: Arc<RwLock<Data>>,

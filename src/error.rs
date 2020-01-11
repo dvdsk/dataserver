@@ -3,15 +3,13 @@ use sled;
 use bincode;
 use crate::databases;
 
-pub type DResult<T, E = DataserverError> = Result<T, E>;
-
 #[derive(Debug)]
 pub enum DataserverError {
     DatabaseError(sled::Error),
     DatabaseLoadError(databases::LoadDbError),
     UserDatabaseError(databases::UserDbError),
     SerializationError(bincode::Error),
-    TelegramBotError(telegram_bot::Error)
+    //TelegramBotError(telegram_bot::Error)
 }
 
 impl From<sled::Error> for DataserverError {

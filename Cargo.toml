@@ -5,6 +5,10 @@ authors = ["David Kleingeld <dskleingeld@gmail.com>"]
 edition = "2018"
 publish = false
 
+[profile.release]
+lto = true
+#panic = 'abort'
+
 [features]
 plotting = ["plotters", "image"]
 
@@ -27,7 +31,7 @@ yarte = { version ="0.5", features=["with-actix-web"] }
 #temporary override of indirect dependency as 69.2 is not semver compatible
 onig_sys= "=69.1.0" 
 
-sled = "0.24.1"
+sled = "0.30"
 
 rustls = "0.16.0"
 ring = "0.16.9"

@@ -6,8 +6,9 @@ use std::time::Duration;
 
 use dialoguer::{Select, Input};
 use log::{info, error};
+use futures::executor::block_on;
 
-use crate::databases::{WebUserDatabase, BotUserDatabase};
+use crate::databases::{UserDatabase};
 use crate::data_store::{Data, DatasetId};
 use crate::data_store;
 
@@ -57,7 +58,7 @@ pub fn add_set(data: &Arc<RwLock<Data>>) {
     thread::sleep(Duration::from_secs(2))
 }
 
-pub fn choose_dataset(user_db: &mut WebUserDatabase, bot_db: &mut BotUserDatabase, 
+pub fn choose_dataset(user_db: &mut UserDatabase, 
     data: &Arc<RwLock<Data>>) {
     
     let dataset_list: (Vec<String>, Vec<DatasetId>) = data.read()
@@ -78,11 +79,11 @@ pub fn choose_dataset(user_db: &mut WebUserDatabase, bot_db: &mut BotUserDatabas
 
     let index = list_numb-1;
     let set_id = dataset_list.1[index as usize];
-    modify_set(set_id, user_db, bot_db, data);
+    modify_set(set_id, user_db, data);
 }
 
-fn modify_set(set_id: DatasetId, user_db: &mut WebUserDatabase, 
-    bot_db: &mut BotUserDatabase, data: &Arc<RwLock<Data>>) {
+fn modify_set(set_id: DatasetId, user_db: &mut UserDatabase, 
+    data: &Arc<RwLock<Data>>) {
 
     let metadata = data.read()
         .unwrap().sets
@@ -112,7 +113,7 @@ fn modify_set(set_id: DatasetId, user_db: &mut WebUserDatabase,
         0 => return,
         1 => unimplemented!(),
         2 => unimplemented!(),
-        3 => archive(set_id, user_db, bot_db, data),
+        3 => archive(set_id, user_db, data),
         4 => export(set_id, data),
         _ => unreachable!(),
     }
@@ -125,25 +126,17 @@ fn export(set_id: DatasetId, data: &Arc<RwLock<Data>>){
     unimplemented!();
 }
 
-fn archive(set_id: DatasetId, user_db: &mut WebUserDatabase, 
-    bot_db: &mut BotUserDatabase, data: &Arc<RwLock<Data>> ) {
+fn archive(set_id: DatasetId, user_db: &mut UserDatabase, 
+    data: &Arc<RwLock<Data>> ) {
 
     //remove all mentions of set in all databases
-    for mut userinfo in user_db.storage.iter().keys()
-        .filter_map(Result::ok)
-        .map(|username_bytes| user_db.get_userdata(&username_bytes))
-        .filter_map(Result::ok){
+    for mut user in user_db.iter(){
 
-        //remove set from this users timeseries with access
-        if userinfo.timeseries_with_access.remove(&set_id).is_some(){
-            //if there is a telegram bot remove the set from the botdb too
-            if let Some(id) = userinfo.telegram_user_id{
-                let mut botuserinfo = bot_db.get_userdata(id).unwrap();
-                botuserinfo.timeseries_with_access.remove(&set_id);
-                bot_db.set_userdata(id, &botuserinfo).unwrap();
-            }
+        //remove access
+        if user.timeseries_with_access.remove(&set_id).is_some(){
+            //if user had access update userdata
+            block_on(user_db.set_user(user)).unwrap();
         }
-        user_db.set_userdata(userinfo).unwrap();
     }
 
     //remove from data HashMap
@@ -155,6 +148,7 @@ fn archive(set_id: DatasetId, user_db: &mut WebUserDatabase,
     archive_dir.push("archive");
 
     //we want to ignore errors here....
+    //TODO filter errors
     if fs::create_dir(&archive_dir).is_ok() {
         info!("Created archive directory: {:?}", archive_dir);
     };

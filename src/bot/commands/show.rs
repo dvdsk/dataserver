@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use telegram_bot::types::refs::{ChatId, UserId};
 
 use crate::data_store::{DatasetId, FieldId};
-use crate::databases::{BotUserInfo, UserDbError};
+use crate::databases::{User, UserDbError};
 use crate::data_store::data_router::DataRouterState;
 
 use super::super::send_text_reply;
@@ -44,7 +44,7 @@ impl From<UserDbError> for Error {
 	}
 }
 
-fn parse_args(args: String, userinfo: &BotUserInfo)
+fn parse_args(args: String, user: &User)
     -> Result<Vec<(DatasetId, Vec<FieldId>)>, Error> {
        //keep a list of fields for each dataset
     let mut dataset_fields: HashMap<DatasetId, Vec<FieldId>> = HashMap::new();
@@ -58,7 +58,7 @@ fn parse_args(args: String, userinfo: &BotUserInfo)
             .ok_or(Error::ArgumentSplitError(arg.to_owned()))?
             .parse().map_err(|e| Error::ArgumentParseError(arg.to_owned(), e))?;
 
-        let fields_with_access = userinfo
+        let fields_with_access = user
             .timeseries_with_access
             .get(&dataset_id)
             .ok_or(Error::NoAccessToDataSet(dataset_id))?;
@@ -92,11 +92,11 @@ fn parse_args(args: String, userinfo: &BotUserInfo)
 }
 
 pub async fn send(chat_id: ChatId, state: &DataRouterState, token: &str, 
-    args: String, userinfo: &BotUserInfo)
+    args: String, user: &User)
      -> Result<(), botError>{
 
     let mut text = String::default();
-    let dataset_fields = parse_args(args, userinfo)?;
+    let dataset_fields = parse_args(args, user)?;
     let datasets = &mut state.data.write().unwrap().sets;
     for (dataset_id, field_ids) in dataset_fields.iter(){
         let set = datasets.get_mut(&dataset_id).unwrap();

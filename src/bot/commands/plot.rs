@@ -7,7 +7,7 @@ use log::{warn, error};
 
 use crate::data_store::Data;
 use crate::data_store::{DatasetId, FieldId};
-use crate::databases::{BotUserInfo, UserDbError};
+use crate::databases::{User, UserDbError};
 use crate::data_store::data_router::DataRouterState;
 use crate::data_store::read_to_array::{prepare_read_processing, read_into_arrays};
 
@@ -83,12 +83,12 @@ impl From<UserDbError> for Error {
 }
 
 pub async fn send(chat_id: ChatId, state: &DataRouterState, token: &str, 
-    args: String, userinfo: &BotUserInfo) -> Result<(), botError>{
+    args: String, user: &User) -> Result<(), botError>{
 
     let args: Vec<String> =	args.split_whitespace()
         .map(|s| s.to_owned() )
         .collect();
-	let plot = plot(args, state, userinfo)?;
+	let plot = plot(args, state, user)?;
 
 	let photo_part = reqwest::multipart::Part::bytes(plot)
 		.mime_str("image/png").unwrap()
@@ -171,12 +171,12 @@ fn format_str_from_limits(from: &DateTime<Utc>, to: &DateTime<Utc>) -> &'static 
     }
 }
 
-fn plot(args: Vec<String>, state: &DataRouterState, userinfo: &BotUserInfo)
+fn plot(args: Vec<String>, state: &DataRouterState, user: &User)
     -> Result<Vec<u8>, Error> {
 
     const DIMENSIONS: (u32,u32) = (900u32, 900u32);
     let (timerange, set_id, field_id, scaling_args) = parse_plot_arguments(args)?;
-    let selected_datasets = select_data(set_id, vec!(field_id), userinfo)?;
+    let selected_datasets = select_data(set_id, vec!(field_id), user)?;
     
     //collect data for plotting
     let plot_data: Result<Vec<PlotData>,Error> = selected_datasets
@@ -278,7 +278,7 @@ fn parse_plot_arguments(args: Vec<String>)
     let timerange = (Utc::now() - duration, Utc::now());
 
     //optional argument
-    let mut scaling = if args.len() > 2 {
+    let scaling = if args.len() > 2 {
         let mut params = args[2].split(":");
         let y_min = params.nth(0)
             .ok_or(Error::IncorrectArgument(args[2].clone()))?
@@ -298,11 +298,11 @@ fn parse_plot_arguments(args: Vec<String>)
     Ok((timerange, set_id, field_id, scaling))
 }
 
-pub fn select_data(set_id: DatasetId, field_ids: Vec<FieldId>, userinfo: &BotUserInfo)
+pub fn select_data(set_id: DatasetId, field_ids: Vec<FieldId>, user: &User)
      -> Result<HashMap<DatasetId, Vec<FieldId>>,Error>{
 
     //get timeseries_with_access for this user
-    let timeseries_with_access = &userinfo.timeseries_with_access;
+    let timeseries_with_access = &user.timeseries_with_access;
 
     let mut selected_data = HashMap::new();
     //check if user has access to the requested dataset

@@ -60,6 +60,7 @@ pub enum Error{
 	ExpressionError(EvalexprError),
 	InvalidDay(String),
 	InvalidSubCommand(String),
+	TooManyAlarms,
 }
 
 impl From<std::num::ParseIntError> for Error {
@@ -87,6 +88,7 @@ impl Error {
 			Error::InvalidDay(day) => format!("I could not understand what day this is: {}", day),
 			Error::BotDatabaseError(db_error) => db_error.to_text(user_id),
 			Error::InvalidSubCommand(input) => format!("not a sub command for alarms: {}", input),
+			Error::TooManyAlarms => String::from("can not set more then 255 alarms"),//FIXME not true after readme
 		}
 	}
 }
@@ -258,8 +260,7 @@ async fn add(chat_id: ChatId, token: &str, args: &str,
 		alarm,
 		username: user.name.clone(),
 		sets: fields.keys().map(|id| *id).collect(),
-	}).await.unwrap();
-	dbg!(res);
+	}).await.unwrap().map_err(|_| Error::TooManyAlarms);
 	send_text_reply(chat_id, token, "alarm is set").await?;
 	Ok(())
 }

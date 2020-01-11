@@ -69,14 +69,20 @@ impl PasswordDatabase {
 		pbkdf2::derive(PBKDF2_ALG, self.pbkdf2_iterations, 
 			&salt, password, &mut credential);
 		
-		self.storage.set(username, &credential)?;
+		self.storage.insert(username, &credential)?;
 		self.storage.flush()?;
 		Ok(())
 	}
 
 	pub fn remove_user(&self, username: &[u8]) -> Result<(), DataserverError> {
-		self.storage.del(username)?;
+		self.storage.remove(username)?;
 		Ok(())
+	}
+
+	pub fn update(&self, old_name: &str, new_name: &str) {
+		if old_name == new_name {return; }
+		let credential = self.storage.get(old_name.as_bytes()).unwrap().unwrap();
+		self.storage.insert(new_name.as_bytes(), credential).unwrap();
 	}
 
 	pub fn verify_password(&self, username: &[u8], attempted_password: &[u8])
@@ -113,7 +119,7 @@ impl PasswordDatabase {
 /////////////////////////////////////////////////////////////////////////////////
 pub type Access = HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>;
 type RecieveErrors = bool;
-type UserId = u64;
+pub type UserId = u64;
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct User {
 	pub id: UserId,
@@ -159,6 +165,17 @@ impl UserDatabase {
 		})
 	}
 
+	pub fn iter(&self) -> impl Iterator<Item = User> {
+		let values = self.storage
+			.iter()
+			.values()
+			.filter_map(Result::ok)
+			.map(|user| bincode::deserialize(&user))
+			.filter_map(Result::ok);
+		
+		values
+	}
+
 	pub fn get_user(&self, id: UserId) -> Result<User, UserDbError> {
 		let key = id.to_be_bytes();
 		if let Some(user) = self.storage.get(key)? {
@@ -178,7 +195,7 @@ impl UserDatabase {
 		Ok(())
 	}
 
-	pub async fn remove_user<T: AsRef<[u8]>>(&self, id: UserId) -> Result<(), UserDbError> {
+	pub async fn remove_user(&self, id: UserId) -> Result<(), UserDbError> {
 		let key = id.to_be_bytes();
 		self.storage.remove(key)?;
 		self.storage.flush_async().await?;
@@ -206,26 +223,43 @@ impl UserDatabase {
 
 #[derive(Clone)]
 pub struct UserLookup {
-	name_to_id: Arc<RwLock<HashMap<String, UserId>>>,
+	pub name_to_id: Arc<RwLock<HashMap<String, UserId>>>,
 	bot_id_to_id: Arc<RwLock<HashMap<TelegramUserId, UserId>>>,
 }
 impl UserLookup {
 	pub fn by_name(&self, username: &String)
 	 -> Result<UserId, UserDbError> {
-		let id = self.name_to_id.read().unwrap().get(username)
+		let id = *self.name_to_id.read().unwrap().get(username)
 			.ok_or(UserDbError::UserNotInDb)?;
-		Ok(*id)
+		Ok(id)
 	}
 	pub fn by_telegram_id(&self, telegram_id: &TelegramUserId)
 	 -> Result<UserId, UserDbError> {
-		let id = self.bot_id_to_id.read().unwrap().get(telegram_id)
+		let id = *self.bot_id_to_id.read().unwrap().get(telegram_id)
 			.ok_or(UserDbError::UserNotInDb)?;
-		Ok(*id)
+		Ok(id)
+	}
+
+	pub fn update(&self, old_user: &User, new_user: &User){
+		if new_user.name != old_user.name {
+			let mut name_to_id = self.name_to_id.write().unwrap();
+			name_to_id.remove(&old_user.name);
+			name_to_id.insert(new_user.name.clone(), new_user.id);
+		}
+		if new_user.telegram_id != old_user.telegram_id {
+			let mut bot_id_to_id = self.bot_id_to_id.write().unwrap();
+			if let Some(bot_id) = old_user.telegram_id{
+				bot_id_to_id.remove(&bot_id);
+			}
+			if let Some(bot_id) = new_user.telegram_id{
+				bot_id_to_id.insert(bot_id, new_user.id);
+			}
+		}
 	}
 
 	pub fn from_user_db(db: &UserDatabase) -> Result<Self,UserDbError> {
-		let name_to_id = HashMap::new();
-		let bot_id_to_id = HashMap::new();
+		let mut name_to_id = HashMap::new();
+		let mut bot_id_to_id = HashMap::new();
 		
 		for row in db.storage.iter().values(){
 			let user: User = bincode::deserialize(&row?)?;

@@ -1,24 +1,22 @@
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
-use std::collections::{HashSet, HashMap};
-use chrono::Utc;
+use std::collections::{HashSet};
 
 use dialoguer::{Select, Input, PasswordInput, Checkboxes};
-use telegram_bot::types::refs::UserId as TelegramUserId;
+use futures::executor::block_on;
 
-use crate::databases::{PasswordDatabase, UserDatabase, UserLookup, Access};
+use crate::databases::{PasswordDatabase, UserDatabase, User, UserLookup, Access};
 use crate::data_store::{Data, Authorisation, DatasetId, FieldId, MetaData};
 use crate::error::DataserverError as Error;
 
-pub fn menu(user_db: &mut WebUserDatabase, bot_db: &mut BotUserDatabase, 
+pub fn menu(mut user_db: &mut UserDatabase, lookup: &UserLookup,
     passw_db: &mut PasswordDatabase, data: &Arc<RwLock<Data>>) {
     
-    let userlist: Vec<String> = user_db.storage.iter().keys()
-        .filter_map(Result::ok)
-        .map(|username_bytes| String::from_utf8(username_bytes))
-        .filter_map(Result::ok)
-        .collect();
+    let (userlist, user_ids): (Vec<String>,Vec<u64>) = lookup.name_to_id
+        .read().unwrap()
+        .iter().map(|(s,id)| (s.into(),id))
+        .unzip();
 
     let list_numb = Select::new()
         .paged(true)
@@ -28,18 +26,16 @@ pub fn menu(user_db: &mut WebUserDatabase, bot_db: &mut BotUserDatabase,
         .interact().unwrap();
     if list_numb == 0 {return;}
 
-    let username = userlist[list_numb - 1].as_str();
-    let mut userinfo = user_db.get_userdata(&username).unwrap();
-    let mut botuserinfo = userinfo.telegram_user_id.map(|id| bot_db.get_userdata(id).unwrap());
-    let org_userinfo = userinfo.clone();
-    let org_botuserinfo = botuserinfo.clone();
+    let user_id = user_ids[list_numb - 1];
+    let mut user = user_db.get_user(user_id).unwrap();
+    let org_user = user.clone();
     
     loop {
-        let numb_datasets = userinfo.timeseries_with_access.len();
+        let numb_datasets = user.timeseries_with_access.len();
         
-        println!("user: {}", userinfo.username);
-        println!("  last login: \t{}", userinfo.last_login);
-        println!("  telegram_id: \t{:?}\n", userinfo.telegram_user_id);
+        println!("user: {}", user.name);
+        println!("  last login: \t{}", user.last_login);
+        println!("  telegram_id: \t{:?}\n", user.telegram_id);
 
         let list_numb = Select::new()
             .paged(true)
@@ -54,105 +50,86 @@ pub fn menu(user_db: &mut WebUserDatabase, bot_db: &mut BotUserDatabase,
             .interact().unwrap();
         
         match list_numb {
-            0 => change_user_name(&mut userinfo, &mut botuserinfo, user_db),
-            1 => set_telegram_id(&mut userinfo, &mut botuserinfo),
-            2 => change_dataset_access(&mut userinfo, &mut botuserinfo, &data),
-            3 => change_password(username, passw_db).unwrap(),
-            4 => {remove_user(userinfo, user_db, bot_db, passw_db).unwrap(); break;}
+            0 => change_user_name(&mut user, &user_db),
+            1 => set_telegram_id(&mut user),
+            2 => change_dataset_access(&mut user, &data),
+            3 => change_password(&user.name, passw_db).unwrap(),
+            4 => { 
+                block_on(
+                    remove_user(user, user_db, passw_db)
+                ).unwrap();
+                break;
+            }
             5 => break,
-            6 => {save_changes(user_db, bot_db,
-                userinfo, org_userinfo, 
-                botuserinfo, org_botuserinfo).unwrap(); 
-                break;},
+            6 => { 
+                block_on(
+                    save_changes(&mut user_db, passw_db, user, org_user, 
+                    &lookup)
+                ).unwrap();
+                break;
+            },
             _ => panic!(),
         } 
     }
 }
 
-fn change_password(username: &str, passw_db: &mut PasswordDatabase) -> Result<(), Error> {
+fn change_password(name: &str, passw_db: &mut PasswordDatabase) -> Result<(), Error> {
     let new_password = PasswordInput::new().with_prompt("New Password")
         .with_confirmation("Confirm password", "Passwords mismatching")
         .interact().unwrap();
     
     println!("updating password please wait");
-    passw_db.set_password(username.as_bytes(), new_password.as_bytes())?;
+    passw_db.set_password(name.as_bytes(), new_password.as_bytes())?;
     Ok(())
 }
 
-pub fn add_user(user_db: &mut WebUserDatabase, passw_db: &mut PasswordDatabase){
-    let username = Input::<String>::new()
+pub fn add_user(user_db: &mut UserDatabase, passw_db: &mut PasswordDatabase){
+    let name = Input::<String>::new()
     .with_prompt("Enter username (leave empty to abort)")
     .interact()
     .unwrap();
 
-    if username.len() == 0 {
+    if name.len() == 0 {
         println!("name must be at least 1 character");
         thread::sleep(Duration::from_secs(2));
         return;
     } 
     
-    if user_db.storage.contains_key(&username).unwrap() {
-        println!("cant use \"{}\" as name, already in use", username);    
+    if user_db.storage.contains_key(&name).unwrap() {
+        println!("cant use \"{}\" as name, already in use", name);    
         thread::sleep(Duration::from_secs(1));
         return;  
     }
-
-	let user_data = WebUserInfo{
-		timeseries_with_access: HashMap::new(),
-		last_login: Utc::now(),
-		username: username.clone(),
-		telegram_user_id: None,
-	};
 
     if let Ok(password) = PasswordInput::new().with_prompt("Enter password")
         .with_confirmation("Confirm password", "Passwords mismatching")
         .interact(){
 
         println!("setting password please wait");
-        passw_db.set_password(username.as_bytes(), password.as_bytes()).unwrap();
-        user_db.set_userdata(user_data).unwrap();       
+        passw_db.set_password(name.as_bytes(), password.as_bytes()).unwrap();
+        let user = block_on(user_db.new_user(name)).unwrap();//TODO handle async + expand to passw db
     }
 }
 
-fn remove_user(userinfo: WebUserInfo, user_db: &WebUserDatabase, 
-    bot_db: &mut BotUserDatabase, passw_db: &PasswordDatabase)
+async fn remove_user(user: User, user_db: &mut UserDatabase, passw_db: &PasswordDatabase)
                -> Result<(), Error> {
 
-    if let Some(id) = userinfo.telegram_user_id{
-        bot_db.remove_user(id)?;
-    }
-
-    passw_db.remove_user(userinfo.username.as_str().as_bytes())?;
-    user_db.remove_user(userinfo.username.as_str().as_bytes())?;
+    passw_db.remove_user(user.name.as_str().as_bytes())?;
+    user_db.remove_user(user.id).await?;
     Ok(())
 }
 
-fn save_changes(user_db: &WebUserDatabase, bot_db: &mut BotUserDatabase,
-                userinfo: WebUserInfo, org_userinfo: WebUserInfo, 
-                botuser: Option<BotUserInfo>, _org_botuser: Option<BotUserInfo>)
-                 -> Result<(), Error> {
+async fn save_changes(user_db: &mut UserDatabase, passw_db: &mut PasswordDatabase, 
+    user: User, org_user: User,lookup: &UserLookup) -> Result<(), Error> {
 
-    //remove what should be removed
-    if org_userinfo.username != userinfo.username {
-        user_db.remove_user(org_userinfo.username).unwrap();
-    }
-    if org_userinfo.telegram_user_id != userinfo.telegram_user_id {
-        if let Some(telegram_user_id) = org_userinfo.telegram_user_id{
-            bot_db.remove_user(telegram_user_id).unwrap();
-        }
-    }
-
-    //insert everything what is not None
-    if let Some(botuser) = botuser {
-        let id = userinfo.telegram_user_id.unwrap();
-        bot_db.set_userdata(id, &botuser)?;
-    }
-
-    user_db.set_userdata(userinfo).unwrap();
+    lookup.update(&org_user, &user);
+    passw_db.update(&org_user.name, &user.name);
+    
+    user_db.set_user(user).await.unwrap();
     Ok(())
 }
 
-fn change_user_name(userinfo: &mut WebUserInfo, botuserinfo: &mut Option<BotUserInfo>, user_db: &WebUserDatabase) {
+fn change_user_name(user: &mut User, user_db: &UserDatabase) {
     let new_name = Input::<String>::new()
     .with_prompt("Enter new username")
     .interact()
@@ -160,8 +137,7 @@ fn change_user_name(userinfo: &mut WebUserInfo, botuserinfo: &mut Option<BotUser
 
     if new_name.len() > 0 {
         if !user_db.storage.contains_key(&new_name).unwrap() {
-            botuserinfo.as_mut().map(|mut u| u.username=new_name.clone()); 
-            userinfo.username = new_name;
+            user.name = new_name;
         } else {
             println!("cant use \"{}\" as name, already in use", new_name);    
             thread::sleep(Duration::from_secs(1));     
@@ -172,7 +148,7 @@ fn change_user_name(userinfo: &mut WebUserInfo, botuserinfo: &mut Option<BotUser
     }
 }
 
-fn set_telegram_id(userinfo: &mut WebUserInfo, botuser: &mut Option<BotUserInfo>) {
+fn set_telegram_id(user: &mut User) {
     let new_id = Input::<String>::new()
         .with_prompt("Enter new telegram id")
         .interact()
@@ -180,27 +156,21 @@ fn set_telegram_id(userinfo: &mut WebUserInfo, botuser: &mut Option<BotUserInfo>
     
     if new_id.len() > 0 {
         if let Ok(new_id) = new_id.parse::<i64>(){
-            if botuser.is_none(){
-                let access = userinfo.timeseries_with_access.clone();
-                *botuser = Some(BotUserInfo::from_access_and_name(access, userinfo.username.clone()));
-            }
-            userinfo.telegram_user_id = Some(TelegramUserId::new(new_id));
+            user.telegram_id.replace(new_id.into());
         } else {
             println!("Can not parse to integer, please try again");            
             thread::sleep(Duration::from_secs(1));   
         }
     } else {
+        user.telegram_id.take();
         println!("unset telegram id");
-        *botuser = None;
-        userinfo.telegram_user_id = None;
         thread::sleep(Duration::from_secs(1));
     }
 }
 
-fn change_dataset_access(userinfo: &mut WebUserInfo, botuser: &mut Option<BotUserInfo>, 
-    data: &Arc<RwLock<Data>>) {
+fn change_dataset_access(user: &mut User, data: &Arc<RwLock<Data>>) {
     
-    let access = &mut userinfo.timeseries_with_access;
+    let access = &mut user.timeseries_with_access;
     let data_unlocked = data.read().unwrap();
     let dataset_list: (Vec<String>, Vec<DatasetId>) 
     = access.iter()
@@ -225,8 +195,6 @@ fn change_dataset_access(userinfo: &mut WebUserInfo, botuser: &mut Option<BotUse
             modify_dataset_fields(set_id, access, data);
         }
     }
-
-    botuser.as_mut().map(|mut b| b.timeseries_with_access = access.clone());
 }
 
 fn add_dataset(data: &Arc<RwLock<Data>>, access: &mut Access){

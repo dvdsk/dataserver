@@ -6,7 +6,6 @@ use log::{debug, trace};
 use actix::prelude::*;
 use threadpool::ThreadPool;
 use evalexpr::{HashMapContext, Context as evalContext};
-use futures::executor;
 
 use std::collections::{HashMap, HashSet};
 
@@ -91,7 +90,6 @@ impl Handler<NewData> for DataRouter {
 	type Result = ();
 
 	fn handle(&mut self, msg: NewData, _: &mut Context<Self>) -> Self::Result {
-		dbg!();
 		let updated_dataset_id = msg.from_id;
 
 		//check all alarms that could go off

@@ -9,9 +9,8 @@ use ring::{digest, pbkdf2};
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::sync::{Arc, RwLock};
-use core::iter::DoubleEndedIterator;
 
-use chrono::{DateTime, Utc, FixedOffset};
+use chrono::{DateTime, Utc};
 use telegram_bot::types::refs::UserId as TelegramUserId;
 
 use crate::error::DataserverError;

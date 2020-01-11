@@ -256,7 +256,7 @@ async fn add(chat_id: ChatId, token: &str, args: &str,
 	};
 
 	dbg!(&fields);
-	let res = state.data_router_addr.send(AddAlarm {
+	state.data_router_addr.send(AddAlarm {
 		alarm,
 		username: user.name.clone(),
 		sets: fields.keys().map(|id| *id).collect(),

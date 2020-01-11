@@ -278,7 +278,7 @@ fn parse_plot_arguments(args: Vec<String>)
     let timerange = (Utc::now() - duration, Utc::now());
 
     //optional argument
-    let mut scaling = if args.len() > 2 {
+    let scaling = if args.len() > 2 {
         let mut params = args[2].split(":");
         let y_min = params.nth(0)
             .ok_or(Error::IncorrectArgument(args[2].clone()))?

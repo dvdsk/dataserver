@@ -51,13 +51,13 @@ impl ReportedErrors {
 		if let Some(last_reported) = self.tree.get(&key).unwrap(){
 			let last_reported: DateTime<Utc> = bincode::deserialize(&last_reported)?;
 			if last_reported.signed_duration_since(Utc::now()) > chrono::Duration::days(1) {
-				self.tree.set(&key, bincode::serialize(&Utc::now())?)?;
+				self.tree.insert(&key, bincode::serialize(&Utc::now())?)?;
 				Ok(true)
 			} else {
 				Ok(false)
 			}
 		} else {
-			self.tree.set(&key, bincode::serialize(&Utc::now())?)?;
+			self.tree.insert(&key, bincode::serialize(&Utc::now())?)?;
 			Ok(false)
 		}
 	}

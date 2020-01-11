@@ -11,7 +11,6 @@ use actix::prelude::*;
 use threadpool::ThreadPool;
 use std::time::{Duration, Instant};
 use std::collections::{HashSet, HashMap};
-use regex::Regex;
 
 use crate::bot;
 use crate::config::TOKEN;

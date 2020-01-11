@@ -28,7 +28,7 @@ impl Error {
 	}
 }
 
-pub async fn send(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str,
+pub async fn send(chat_id: ChatId, state: &DataRouterState, token: &str,
     args: String, mut user: User)
      -> Result<(), botError>{
 

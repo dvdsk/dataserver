@@ -145,11 +145,11 @@ async fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId,
 				break;
 			}
 			"/keyboard_add" => {
-				keyboard::add_button(chat_id, user_id, state, TOKEN, args, user).await?;
+				keyboard::add_button(chat_id, state, TOKEN, args, user).await?;
 				break;
 			}
 			"/keyboard_remove" => {
-				keyboard::remove_button(chat_id, user_id, state, TOKEN, args, user).await?;
+				keyboard::remove_button(chat_id, state, TOKEN, args, user).await?;
 				break;
 			}
 			"/alarm" => {
@@ -157,7 +157,7 @@ async fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId,
 				break;
 			}	
 			"/alias" => {
-				alias::send(chat_id, user_id, state, TOKEN, args, user).await?;
+				alias::send(chat_id, state, TOKEN, args, user).await?;
 				break;
 			}
 			&_ => {}

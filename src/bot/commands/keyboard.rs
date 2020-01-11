@@ -80,7 +80,7 @@ async fn reload(chat_id: ChatId, token: &str, user: User, text: &str)
 
 //replykeyboardmarkup
 type Keyboard = Vec<Vec<String>>;
-pub async fn add_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
+pub async fn add_button(chat_id: ChatId, state: &DataRouterState, token: &str, 
     args: String, mut user: User)
      -> Result<(), botError> {
 
@@ -125,7 +125,7 @@ pub async fn add_button(chat_id: ChatId, user_id: UserId, state: &DataRouterStat
 }
 
 
-pub async fn remove_button(chat_id: ChatId, user_id: UserId, state: &DataRouterState, token: &str, 
+pub async fn remove_button(chat_id: ChatId, state: &DataRouterState, token: &str, 
     args: String, mut user: User)
      -> Result<(), botError> {
 

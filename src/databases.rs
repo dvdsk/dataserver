@@ -75,8 +75,9 @@ impl PasswordDatabase {
 		Ok(())
 	}
 
-	pub fn remove_user(&self, username: &[u8]) -> Result<(), DataserverError> {
+	pub async fn remove_user(&self, username: &[u8]) -> Result<(), DataserverError> {
 		self.storage.remove(username)?;
+		self.storage.flush_async().await;
 		Ok(())
 	}
 
@@ -203,7 +204,7 @@ impl UserDatabase {
 		Ok(())
 	}
 
-	pub async fn new_user(&self, username: String) -> Result<(), UserDbError>{
+	pub async fn new_user(&self, username: String) -> Result<UserId, UserDbError>{
 		let id = self.db.generate_id()?;
 
 		let user = User {
@@ -218,7 +219,7 @@ impl UserDatabase {
 		};
 
 		self.set_user(user).await?;
-		Ok(())
+		Ok(id)
 	}
 }
 
@@ -258,13 +259,23 @@ impl UserLookup {
 		}
 	}
 
+	pub fn add(&self, name: String, id: UserId){
+		let mut name_to_id = self.name_to_id.write().unwrap();
+		name_to_id.insert(name.clone(), id);
+	}
+
+	pub fn remove_by_name(&self, name: &String){
+		let mut name_to_id = self.name_to_id.write().unwrap();
+		name_to_id.remove(name);
+	}
+
 	pub fn from_user_db(db: &UserDatabase) -> Result<Self,UserDbError> {
 		let mut name_to_id = HashMap::new();
 		let mut bot_id_to_id = HashMap::new();
 		
 		for row in db.storage.iter().values(){
 			let user: User = bincode::deserialize(&row?)?;
-
+			//dbg!(&user);
 			let id = user.id;
 			let name = user.name;
 			name_to_id.insert(name, id);
@@ -310,7 +321,7 @@ impl AlarmDatabase {
 		})
 	}
 
-	pub fn remove_users_alarms(&self, user_id: UserId) {
+	pub async fn remove_user(&self, user_id: UserId) -> Result<(),sled::Error> {
 		let mut key_begin = [std::u8::MIN; 16];
 		let mut key_end = [std::u8::MAX; 16];
 
@@ -320,8 +331,10 @@ impl AlarmDatabase {
 		for key in self.storage.range(key_begin..key_end)
 			.keys().filter_map(Result::ok){
 			
-			self.storage.remove(&key);
+			self.storage.remove(&key)?;
 		}
+		self.storage.flush_async().await?;
+		Ok(())
 	}
 
 	pub fn list_users_alarms(&self, user_id: UserId) -> AlarmList {
@@ -354,20 +367,20 @@ impl AlarmDatabase {
 			.keys().filter_map(Result::ok)
 			.nth(counter).ok_or(AlarmDbError::AlreadyRemoved)?;
 		
-		let entry = self.storage.remove(key)?
+		let entry = self.storage.remove(&key)?
 			.ok_or(AlarmDbError::AlreadyRemoved)?;
 		let alarm = bincode::deserialize::<Alarm>(&entry).unwrap();
 		let alarm_id = BigEndian::read_u64(&key[8..]);
 		Ok((alarm, alarm_id))
 	}
 
-	pub fn add(&self, alarm: Alarm, user_id: UserId) -> Result<AlarmId, AlarmDbError> {
+	pub fn add(&self, alarm: &Alarm, user_id: UserId) -> Result<AlarmId, AlarmDbError> {
 		let id = self.db.generate_id()?;
 		let mut key = [0;16];
 		
 		BigEndian::write_u64(&mut key[0..], user_id);
 		BigEndian::write_u64(&mut key[8..], id);
-		let data = bincode::serialize(&alarm).unwrap();
+		let data = bincode::serialize(alarm).unwrap();
 
 		self.storage.insert(key, data)?;
 		Ok(id)

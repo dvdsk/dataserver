@@ -40,12 +40,11 @@ use chrono::{Weekday, self};
 use regex::{Regex, Captures};
 use telegram_bot::types::refs::ChatId;
 use telegram_bot::types::refs::UserId as TelegramUserId;
-use crate::databases::{User, UserId, AlarmId, AlarmDbError};
+use crate::databases::{User, AlarmDbError};
 use crate::data_store::data_router::{DataRouterState, Alarm, NotifyVia};
 use crate::data_store::data_router::{AddAlarm, RemoveAlarm};
 use crate::data_store::{DatasetId, FieldId};
 
-use log::error;
 use super::super::send_text_reply;
 use super::super::Error as botError;
 
@@ -101,6 +100,7 @@ impl Error {
 			Error::InvalidSubCommand(input) => format!("not a sub command for alarms: {}", input),
 			Error::TooManyAlarms => String::from("can not set more then 255 alarms"),//FIXME not true after readme
 			Error::DbError(db_err) => db_err.to_text(),
+			Error::NotAnAlarmNumber(input) => format!("Could not recognise an alarm number in: {}", input),
 		}
 	}
 }
@@ -266,13 +266,13 @@ async fn add(chat_id: ChatId, token: &str, args: &str,
 		notify,
 	};
 
-	let alarm_id = state.alarm_db.add(alarm, user.id)?;
+	let alarm_id = state.alarm_db.add(&alarm, user.id).map_err(|e| Error::from(e))?;
 	state.data_router_addr.send(AddAlarm {
 		alarm,
 		user_id: user.id,
 		alarm_id,
 		sets: fields.keys().map(|id| *id).collect(),
-	}).await.unwrap().map_err(|_| Error::TooManyAlarms);
+	}).await.unwrap().map_err(|_| Error::TooManyAlarms)?;
 	send_text_reply(chat_id, token, "alarm is set").await?;
 	Ok(())
 }
@@ -312,7 +312,7 @@ async fn list(chat_id: ChatId, token: &str, user: User, state: &DataRouterState)
 	
 	let entries = state.alarm_db.list_users_alarms(user.id);
 	if entries.is_empty() {
-		send_text_reply(chat_id, token, "I have no alarms for you");
+		send_text_reply(chat_id, token, "I have no alarms for you").await?;
 	}
 
 	let mut list = String::default();
@@ -346,9 +346,9 @@ async fn remove(chat_id: ChatId, token: &str, args: &str, user: User,
 
 	for string in args.split_whitespace(){
 		let numb = string.parse()
-			.map_err(|e| Error::NotAnAlarmNumber(string.to_owned()) )?;
+			.map_err(|_| Error::NotAnAlarmNumber(string.to_owned()) )?;
 		
-		let (alarm, alarm_id) = state.alarm_db.remove(user.id, numb)?;
+		let (alarm, alarm_id) = state.alarm_db.remove(user.id, numb).map_err(|e| Error::from(e))?;
 		let sets = sets_from_valid_expression(&alarm.expression);
 
 		state.data_router_addr.send(RemoveAlarm {

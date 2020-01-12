@@ -95,7 +95,7 @@ async fn main() {
     bot::set_webhook(config::DOMAIN, config::TOKEN, config::PORT).await.unwrap();
 	
 	let menu_future = if !opt.no_menu {
-		Menu::gui(data, passw_db, user_db, db_lookup)
+		Menu::gui(data, passw_db, user_db, alarm_db, db_lookup)
 	} else {
 		Menu::simple()
 	};

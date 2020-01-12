@@ -219,10 +219,10 @@ impl Handler<NewError> for ErrorRouter {
 		//fetch the list of notification channels from
 		if let Some(to_notify) = self.clients_to_notify.should_notify(&msg).unwrap(){
 			for notify_option in to_notify{
-				if let Some(mail_adress) = notify_option.email {
+				if let Some(_mail_adress) = notify_option.email {
 					unimplemented!();
 				} 
-				if let Some(telegram) = notify_option.telegram {
+				if let Some(_telegram) = notify_option.telegram {
 					unimplemented!();
 				}
 			}

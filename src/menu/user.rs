@@ -4,14 +4,15 @@ use std::time::Duration;
 use std::collections::{HashSet};
 
 use dialoguer::{Select, Input, PasswordInput, Checkboxes};
-use futures::executor::block_on;
+use futures::{executor::block_on, future};
 
-use crate::databases::{PasswordDatabase, UserDatabase, User, UserLookup, Access};
+use crate::databases::{PasswordDatabase, UserDatabase, User, 
+    UserLookup, AlarmDatabase, Access};
 use crate::data_store::{Data, Authorisation, DatasetId, FieldId, MetaData};
 use crate::error::DataserverError as Error;
 
 pub fn menu(mut user_db: &mut UserDatabase, lookup: &UserLookup,
-    passw_db: &mut PasswordDatabase, data: &Arc<RwLock<Data>>) {
+    passw_db: &mut PasswordDatabase, alarm_db: &AlarmDatabase, data: &Arc<RwLock<Data>>) {
     
     let (userlist, user_ids): (Vec<String>,Vec<u64>) = lookup.name_to_id
         .read().unwrap()
@@ -56,7 +57,7 @@ pub fn menu(mut user_db: &mut UserDatabase, lookup: &UserLookup,
             3 => change_password(&user.name, passw_db).unwrap(),
             4 => { 
                 block_on(
-                    remove_user(user, user_db, passw_db)
+                    remove_user(user, user_db, passw_db, alarm_db, lookup)
                 ).unwrap();
                 break;
             }
@@ -83,7 +84,9 @@ fn change_password(name: &str, passw_db: &mut PasswordDatabase) -> Result<(), Er
     Ok(())
 }
 
-pub fn add_user(user_db: &mut UserDatabase, passw_db: &mut PasswordDatabase){
+pub fn add_user(user_db: &mut UserDatabase, passw_db: &mut PasswordDatabase, 
+    lookup: &UserLookup){
+    
     let name = Input::<String>::new()
     .with_prompt("Enter username (leave empty to abort)")
     .interact()
@@ -107,15 +110,23 @@ pub fn add_user(user_db: &mut UserDatabase, passw_db: &mut PasswordDatabase){
 
         println!("setting password please wait");
         passw_db.set_password(name.as_bytes(), password.as_bytes()).unwrap();
-        let user = block_on(user_db.new_user(name)).unwrap();//TODO handle async + expand to passw db
+        let id = block_on(user_db.new_user(name.clone())).unwrap();
+        lookup.add(name, id);
     }
 }
 
-async fn remove_user(user: User, user_db: &mut UserDatabase, passw_db: &PasswordDatabase)
-               -> Result<(), Error> {
+async fn remove_user(user: User, user_db: &mut UserDatabase, 
+    passw_db: &PasswordDatabase, alarm_db: &AlarmDatabase, lookup: &UserLookup)
+    -> Result<(), Error> {
 
-    passw_db.remove_user(user.name.as_str().as_bytes())?;
-    user_db.remove_user(user.id).await?;
+    lookup.remove_by_name(&user.name);
+    let res = future::join3( 
+        passw_db.remove_user(user.name.as_str().as_bytes()),
+        alarm_db.remove_user(user.id),
+        user_db.remove_user(user.id)
+    ).await;
+
+    res.2?; res.1?; res.0?;
     Ok(())
 }
 

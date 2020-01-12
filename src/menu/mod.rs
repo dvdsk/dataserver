@@ -8,7 +8,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use dialoguer::{Select};
-use crate::databases::{PasswordDatabase, UserDatabase, UserLookup};
+use crate::databases::{PasswordDatabase, UserDatabase, UserLookup, AlarmDatabase};
 use crate::data_store::{Data};
 
 mod user;
@@ -29,14 +29,15 @@ fn main_menu() -> usize {
 fn command_line_interface(data: Arc<RwLock<Data>>, 
                           mut passw_db: PasswordDatabase, 
 						  mut user_db: UserDatabase,
+						  alarm_db: AlarmDatabase,
 						  lookup: UserLookup){
 
     loop {
         match main_menu(){
             0 => break,
-            1 => user::menu(&mut user_db, &lookup, &mut passw_db, &data),
+            1 => user::menu(&mut user_db, &lookup, &mut passw_db, &alarm_db, &data),
             2 => data::choose_dataset(&mut user_db, &data),
-            3 => user::add_user(&mut user_db, &mut passw_db),
+            3 => user::add_user(&mut user_db, &mut passw_db, &lookup),
             4 => data::add_set(&data),
             _ => panic!(),
 
@@ -52,7 +53,8 @@ pub struct Menu {
 
 impl Menu {
 	pub fn gui(data: Arc<RwLock<Data>>, passw_db: PasswordDatabase, 
-		web_user_db: UserDatabase, lookup: UserLookup) -> Self {
+		user_db: UserDatabase, alarm_db: AlarmDatabase, lookup: UserLookup)
+		 -> Self {
 		
 		let waker = Arc::new(Mutex::new(None));
 		let done = Arc::new(AtomicBool::new(false));
@@ -63,7 +65,8 @@ impl Menu {
 				command_line_interface(
 					data, 
 					passw_db, 
-					web_user_db, 
+					user_db, 
+					alarm_db,
 					lookup);
 				done.store(true, Ordering::SeqCst);
 				if let Some(waker) = waker.lock().unwrap().take(){

@@ -163,9 +163,11 @@ fn sound_alarm(notify: NotifyVia, message: Option<String>,
 		todo!();
 	}
 	if let Some(chat_id) = &notify.telegram {
-		bot::send_text_reply_blocking(*chat_id, TOKEN, to_send);
+		if let Err(err) = bot::send_text_reply_blocking(*chat_id, TOKEN, to_send){
+			error!("could not notify client via telegram: {:?}", err);
+		}
 
-		if let Some(command) = &command {
+		if let Some(_command) = &command {
 			todo!();
 			//let user_id = ;
 			//let state = ;
@@ -204,9 +206,9 @@ impl Handler<AddAlarm> for DataRouter {
 #[derive(Message)]
 #[rtype(result = "")]
 pub struct RemoveAlarm {
-	sets: Vec<DatasetId>,
-	user_id: UserId,
-	alarm_id: AlarmId, 
+	pub sets: Vec<DatasetId>,
+	pub user_id: UserId,
+	pub alarm_id: AlarmId, 
 }
 
 impl Handler<RemoveAlarm> for DataRouter {

@@ -8,7 +8,7 @@ pub enum DataserverError {
     DatabaseError(sled::Error),
     DatabaseLoadError(databases::LoadDbError),
     UserDatabaseError(databases::UserDbError),
-    SerializationError(bincode::Error),
+	SerializationError(bincode::Error),
     //TelegramBotError(telegram_bot::Error)
 }
 
@@ -32,7 +32,6 @@ impl From<bincode::Error> for DataserverError {
         DataserverError::SerializationError(error)
     }
 }
-
 
 pub fn setup_logging(verbosity: u8) -> Result<(), fern::InitError> {
 	let mut base_config = fern::Dispatch::new();

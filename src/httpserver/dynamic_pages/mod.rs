@@ -39,7 +39,7 @@ struct SettingsPage<'a> {
     telegram_id: &'a str,
 }
 
-pub async fn settings_page(id: Identity, state: Data<DataRouterState>) -> impl Responder {
+pub async fn settings_page(_id: Identity, _state: Data<DataRouterState>) -> impl Responder {
     SettingsPage  {
         telegram_id: "test",
     }

@@ -13,17 +13,20 @@ use super::DatasetId;
 use super::error_router;
 use super::{Data, Field};
 
-use crate::databases::{PasswordDatabase, UserDatabase, UserLookup};
 use crate::httpserver::Session;
+use crate::databases::{PasswordDatabase, UserDatabase, 
+	UserLookup, 
+	AlarmDatabase,
+	UserId, AlarmId};
 
 mod alarms;
-pub use alarms::{Alarm, CompiledAlarm, NotifyVia, AddAlarm, ListAlarms};
-pub use alarms::Id as AlarmId;
+pub use alarms::{Alarm, CompiledAlarm, NotifyVia, AddAlarm, RemoveAlarm};
 
 #[derive(Clone)]
 pub struct DataRouterState {
 	pub passw_db: PasswordDatabase,
 	pub user_db: UserDatabase,
+	pub alarm_db: AlarmDatabase,
 	pub db_lookup: UserLookup,
 	pub bot_pool: ThreadPool,
 
@@ -37,14 +40,12 @@ pub struct DataRouterState {
 	pub free_ws_session_ids: Arc<AtomicUsize>,
 }
 
-type UserName = String;
 type ClientSessionId = u16;
 pub struct DataRouter {
 	sessions: HashMap<ClientSessionId, Clientinfo>,
 	subs: HashMap<DatasetId, HashSet<ClientSessionId>>,
 	meta: HashMap<DatasetId, Vec<Field<f32>>>,
-	alarms_by_set: HashMap<DatasetId, HashMap<alarms::Id, (CompiledAlarm, UserName)>>,
-	alarms_by_username: HashMap<UserName, Vec<(DatasetId, alarms::Id, Alarm)>>,
+	alarms_by_set: HashMap<DatasetId, HashMap<(UserId,AlarmId), CompiledAlarm>>,
 	alarm_context: HashMapContext,
 	async_pool: ThreadPool,
 }
@@ -69,9 +70,9 @@ impl DataRouter {
 		DataRouter {
 			sessions: HashMap::new(),
 			subs: HashMap::new(),
-			meta,//TODO load the next two from db
+			meta,
+			//TODO load from db
 			alarms_by_set: HashMap::new(),
-			alarms_by_username: HashMap::new(),
 			alarm_context: HashMapContext::new(),
 			async_pool: ThreadPool::new(2),
 		}
@@ -97,7 +98,7 @@ impl Handler<NewData> for DataRouter {
 			let now = Utc::now();
 			self.update_context(&msg.line, &updated_dataset_id); //Opt: 
 			if let Some(alarms) = self.alarms_by_set.get_mut(&updated_dataset_id){
-				for (alarm, _) in alarms.values_mut() {
+				for alarm in alarms.values_mut() {
 					alarm.evalute(&mut self.alarm_context, &now, &self.async_pool);
 				}
 			}

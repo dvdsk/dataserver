@@ -28,8 +28,9 @@ pub const HELP_LIST: &'static str =
 	shows for all set alarms their: id, condition, timezone and action\
 	performed when the condition is satisfied.\n";
 pub const HELP_REMOVE: &'static str = 
-	"remove [alarm_id]\n\
-	removes an active alarm";
+	"remove list_numb_1 list_numb_2....list_numb_n\n\
+	removes one or multiple active alarms, space seperate list \
+	of the numbers in front of the expressions of the alarm list.";
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -37,12 +38,14 @@ use std::time::Duration;
 use evalexpr::{build_operator_tree, EvalexprError};
 use chrono::{Weekday, self};
 use regex::{Regex, Captures};
-use telegram_bot::types::refs::{ChatId, UserId};
-use crate::databases::User;
+use telegram_bot::types::refs::ChatId;
+use telegram_bot::types::refs::UserId as TelegramUserId;
+use crate::databases::{User, UserId, AlarmId, AlarmDbError};
 use crate::data_store::data_router::{DataRouterState, Alarm, NotifyVia};
-use crate::data_store::data_router::{AddAlarm, ListAlarms, AlarmId};
+use crate::data_store::data_router::{AddAlarm, RemoveAlarm};
 use crate::data_store::{DatasetId, FieldId};
 
+use log::error;
 use super::super::send_text_reply;
 use super::super::Error as botError;
 
@@ -61,6 +64,14 @@ pub enum Error{
 	InvalidDay(String),
 	InvalidSubCommand(String),
 	TooManyAlarms,
+	NotAnAlarmNumber(String),
+	DbError(AlarmDbError),
+}
+
+impl From<AlarmDbError> for Error {
+	fn from(err: AlarmDbError) -> Self {
+		Error::DbError(err)
+	}
 }
 
 impl From<std::num::ParseIntError> for Error {
@@ -75,7 +86,7 @@ impl From<EvalexprError> for Error {
 }
 
 impl Error {
-	pub fn to_text(self, user_id: UserId) -> String {
+	pub fn to_text(self, user_id: TelegramUserId) -> String {
 		match self {
 			Error::NotEnoughArguments => format!("Not enough arguments, usage: {}", HELP_ADD),
             Error::ArgumentParseError(_) => format!("One of the arguments could not be converted to a number\nuse: {}", HELP_ADD),
@@ -86,9 +97,10 @@ impl Error {
 			Error::IncorrectTimeUnit(unit) => format!("This \"{}\" is not a valid duration unit, options are s, m, h, d, w", unit),
 			Error::ExpressionError(err) => format!("I could not understand the alarms condition. Cause: {}", err),
 			Error::InvalidDay(day) => format!("I could not understand what day this is: {}", day),
-			Error::BotDatabaseError(db_error) => db_error.to_text(user_id),
+			Error::BotDatabaseError(db_err) => db_err.to_text(user_id),
 			Error::InvalidSubCommand(input) => format!("not a sub command for alarms: {}", input),
 			Error::TooManyAlarms => String::from("can not set more then 255 alarms"),//FIXME not true after readme
+			Error::DbError(db_err) => db_err.to_text(),
 		}
 	}
 }
@@ -176,7 +188,6 @@ fn parse_arguments(args: &str) -> Result<Arguments, Error>{
 
 	let mut fields: HashMap<DatasetId, Vec<FieldId>> = HashMap::new();
 	let re = Regex::new(r#"\d+_\d+"#).unwrap();
-	dbg!(&expression);
 	for ids_str in re.find_iter(&expression)
 		.map(|s| s.as_str()){
 		dbg!(&ids_str);
@@ -255,10 +266,11 @@ async fn add(chat_id: ChatId, token: &str, args: &str,
 		notify,
 	};
 
-	dbg!(&fields);
+	let alarm_id = state.alarm_db.add(alarm, user.id)?;
 	state.data_router_addr.send(AddAlarm {
 		alarm,
-		username: user.name.clone(),
+		user_id: user.id,
+		alarm_id,
 		sets: fields.keys().map(|id| *id).collect(),
 	}).await.unwrap().map_err(|_| Error::TooManyAlarms);
 	send_text_reply(chat_id, token, "alarm is set").await?;
@@ -278,6 +290,7 @@ pub async fn handle(chat_id: ChatId, token: &str, text: String,
 	match subcommand {
 		"add" => add(chat_id, token, args, user, state).await,
 		"list" => list(chat_id, token, user, state).await,
+		"remove" => remove(chat_id, token, args, user, state).await,
 		_ => send_text_reply(chat_id, token, format!("Could not recognise the \
 			subcommand, see documentation: \n{}\n{}\n{}", 
 			HELP_LIST, HELP_ADD, HELP_REMOVE)).await,
@@ -296,44 +309,68 @@ pub async fn handle(chat_id: ChatId, token: &str, text: String,
 
 async fn list(chat_id: ChatId, token: &str, user: User, state: &DataRouterState)
  -> Result<(), botError> {
-	dbg!("");
-	let alarms: Option<Vec<(DatasetId, AlarmId, Alarm)>> 
-	= state.data_router_addr.send(ListAlarms {
-		username: user.name,
-	}).await.unwrap();
-	dbg!();
+	
+	let entries = state.alarm_db.list_users_alarms(user.id);
+	if entries.is_empty() {
+		send_text_reply(chat_id, token, "I have no alarms for you");
+	}
+
 	let mut list = String::default();
-	if let Some(alarms) = alarms {
-		dbg!(&alarms);
-		for (set_id, alarm_id, alarm) in alarms {
-			dbg!(&alarm_id);
-			list.push_str(&format!("{}_{}\n\texpr: {}", 
-				set_id, alarm_id, 
-				alarm.expression));
+	for (counter, alarm) in entries {
+		list.push_str(&format!("{}\texpr: {}", 
+			counter, 
+			alarm.expression));
 			
-			if let Some(days) = alarm.weekday {
-				let valid_days: String = days.iter()
-					.map(|d| format!("{:?},", d)) //FIXME debug should move to display
-					.collect();
-				list.push_str(&format!("valid on: [{}]\n", valid_days));
-			}
-
-			if let Some(period) = alarm.period {
-				list.push_str(&format!("cooldown: {:?}\n", period)); //FIXME custom format funct
-			}
-
-			if let Some(message) = alarm.message {
-				list.push_str(&format!("message: {}\n", message));
-			}
+		if let Some(days) = alarm.weekday {
+			let valid_days: String = days.iter()
+				.map(|d| format!("{:?},", d)) //FIXME debug should move to display
+				.collect();
+			list.push_str(&format!("valid on: [{}]\n", valid_days));
 		}
-	} else {
-		list.push_str("I have no alarms");
+
+		if let Some(period) = alarm.period {
+			list.push_str(&format!("cooldown: {:?}\n", period)); //FIXME custom format funct
+		}
+
+		if let Some(message) = alarm.message {
+			list.push_str(&format!("message: {}\n", message));
+		}
 	}
 	dbg!(&list);
 	send_text_reply(chat_id, token, list).await?;
 	Ok(())
 }
 
+async fn remove(chat_id: ChatId, token: &str, args: &str, user: User, 
+	state: &DataRouterState) -> Result<(), botError> {
+
+	for string in args.split_whitespace(){
+		let numb = string.parse()
+			.map_err(|e| Error::NotAnAlarmNumber(string.to_owned()) )?;
+		
+		let (alarm, alarm_id) = state.alarm_db.remove(user.id, numb)?;
+		let sets = sets_from_valid_expression(&alarm.expression);
+
+		state.data_router_addr.send(RemoveAlarm {
+			sets,
+			user_id: user.id,
+			alarm_id,
+		}).await.unwrap();
+	}
+	send_text_reply(chat_id, token, "alarms removed").await?;
+	Ok(())
+}
+
+///expression needs to be valid or this will panic
+fn sets_from_valid_expression(expression: &str) -> Vec<DatasetId> {
+	let re = Regex::new(r#"(\d+)_\d+"#).unwrap();
+	let sets = re.captures_iter(&expression)
+		.map(|caps| caps[0].parse().unwrap())
+		.collect();
+	sets
+}
+
+//TODO invert all AND and OR operators
 fn get_inverse_expression(expression: &str, percentage: f32) -> String {
 	let var_vs_numb = Regex::new(
 		r#"(\d+_\d+)\s((?:<=)|(?:>=)|(?:==)|(?:!=)|>|<)\s(\d+\.?\d+*)"#)

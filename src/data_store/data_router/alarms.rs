@@ -16,7 +16,7 @@ use serde::{Serialize, Deserialize};
 use crate::bot;
 use crate::config::TOKEN;
 use crate::data_store::DatasetId;
-use super::{DataRouter};
+use super::{DataRouter, UserId, AlarmId};
 
 #[derive(Debug)]
 pub enum AlarmError {
@@ -33,7 +33,6 @@ impl From<bot::Error> for AlarmError {
 	}
 }
 
-pub type Id = u8;
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct NotifyVia {
 	pub email: Option<String>,
@@ -179,7 +178,8 @@ fn sound_alarm(notify: NotifyVia, message: Option<String>,
 #[rtype(result = "Result<(),AlarmError>")]
 pub struct AddAlarm {
     pub alarm: Alarm,
-    pub username: String,
+	pub user_id: UserId,
+	pub alarm_id: AlarmId,
     pub sets: Vec<DatasetId>,
 }
 
@@ -187,8 +187,6 @@ impl Handler<AddAlarm> for DataRouter {
 	type Result = Result<(),AlarmError>;
 
 	fn handle(&mut self, msg: AddAlarm, _: &mut Context<Self>) -> Self::Result {
-		let mut set_id_alarm = Vec::with_capacity(msg.sets.len()); 
-		dbg!(&msg.sets);
 		for set_id in msg.sets {
 			let list = if let Some(list) = self.alarms_by_set.get_mut(&set_id){
 				list
@@ -196,53 +194,29 @@ impl Handler<AddAlarm> for DataRouter {
 				self.alarms_by_set.insert(set_id, HashMap::new());
 				self.alarms_by_set.get_mut(&set_id).unwrap()
 			};
-            
-            let free_id = (std::u8::MIN..std::u8::MAX)
-                .skip_while(|x| list.contains_key(x))
-                .next().ok_or(AlarmError::TooManyAlarms)?;
-			
 			let alarm: CompiledAlarm = msg.alarm.clone().into();
-			list.insert(free_id, (alarm, msg.username.clone()));
-			set_id_alarm.push((set_id, free_id, msg.alarm.clone()));
-			dbg!(&set_id_alarm);
+			list.insert((msg.user_id, msg.alarm_id), alarm);
         }
-		self.alarms_by_username.insert(msg.username, set_id_alarm);
-		dbg!("inserted into alarms_by_username");
-		//TODO sync changes to disk
 		Ok(())
 	}
 }
 
 #[derive(Message)]
-#[rtype(result = "Option<Vec<(DatasetId, Id, Alarm)>>")]
-pub struct ListAlarms {
-    pub username: String,
-}
-
-impl Handler<ListAlarms> for DataRouter {
-	type Result = Option<Vec<(DatasetId, Id, Alarm)>>;
-
-	fn handle(&mut self, msg: ListAlarms, _: &mut Context<Self>) -> Self::Result {
-		dbg!(&self.alarms_by_username);
-		let list = self.alarms_by_username
-			.get(&msg.username).map(|set| set.iter()
-					.map(|(set_id, alarm_id, alarm)| 
-						(*set_id, *alarm_id, alarm.clone())
-				).collect());
-		dbg!(&list);
-		list
-	}
-}
-/*
-#[derive(Message)]
-struct RemoveAlarm {
-	
+#[rtype(result = "")]
+pub struct RemoveAlarm {
+	sets: Vec<DatasetId>,
+	user_id: UserId,
+	alarm_id: AlarmId, 
 }
 
 impl Handler<RemoveAlarm> for DataRouter {
 	type Result = ();
 
 	fn handle(&mut self, msg: RemoveAlarm, _: &mut Context<Self>) -> Self::Result {
-
+		for set in msg.sets {
+			if let Some(alarms) = self.alarms_by_set.get_mut(&set){
+				alarms.remove(&(msg.user_id,msg.alarm_id));
+			}
+		}
 	}
-}*/
+}

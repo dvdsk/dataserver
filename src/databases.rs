@@ -12,7 +12,7 @@ use std::sync::{Arc, RwLock};
 
 use chrono::{DateTime, Utc};
 use telegram_bot::types::refs::UserId as TelegramUserId;
-use byteorder::{BigEndian, WriteBytesExt};
+use byteorder::{ByteOrder, BigEndian};
 
 use crate::data_store::data_router::Alarm;
 use crate::error::DataserverError;
@@ -284,12 +284,24 @@ impl UserLookup {
 #[derive(Debug, Clone)]
 pub struct AlarmDatabase {
 	pub db: Db,
-	pub storage: Arc<Tree>,
+	pub storage: Tree,
+}
+
+#[derive(Debug)]
+pub enum AlarmDbError {
+	DatabaseError(sled::Error),
+	AlreadyRemoved,
+}
+
+impl From<sled::Error> for AlarmDbError {
+	fn from(error: sled::Error) -> Self {
+		AlarmDbError::DatabaseError(error)
+	}
 }
 
 //#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub type AlarmList = Vec<Alarm>;
-
+pub type AlarmList = Vec<(usize,Alarm)>;
+pub type AlarmId = u64;
 impl AlarmDatabase {
 	pub fn from_db(db: &Db) ->Result<Self, sled::Error> {
 		Ok(Self { 
@@ -298,41 +310,81 @@ impl AlarmDatabase {
 		})
 	}
 
-	pub fn get_alarms<T: AsRef<[u8]>>(&self, username: T) -> Result<AlarmList, UserDbError> {
-		let username = username.as_ref();
+	pub fn remove_users_alarms(&self, user_id: UserId) {
+		let mut key_begin = [std::u8::MIN; 16];
+		let mut key_end = [std::u8::MAX; 16];
 
-		
-		
-		if let Some(alarm_list) = self.storage.get(username)? {
-			let alarm_list = bincode::deserialize(&alarm_list)?;
-			Ok(alarm_list)
-		} else {
-			Err(UserDbError::UserNotInDb)
+		BigEndian::write_u64(&mut key_begin[0..], user_id);
+		BigEndian::write_u64(&mut key_end[0..], user_id);
+
+		for key in self.storage.range(key_begin..key_end)
+			.keys().filter_map(Result::ok){
+			
+			self.storage.remove(&key);
 		}
 	}
 
-	pub fn add_alarms<T: AsRef<[u8]>>(&self, username: T) -> Result<(), sled::Error> {
-		let id = self.storage.generate_id()?
-		let mut key = username.as_ref().to_vec();
-		key.write_u64::<BigEndian>(id).unwrap();
+	pub fn list_users_alarms(&self, user_id: UserId) -> AlarmList {
+		let mut key_begin = [std::u8::MIN; 16];
+		let mut key_end = [std::u8::MAX; 16];
 
+		BigEndian::write_u64(&mut key_begin[0..], user_id);
+		BigEndian::write_u64(&mut key_end[0..], user_id);
 
-		user_end.push(0); user_end.push(0);
+		let alarm_list: AlarmList = self.storage
+			.range(key_begin..key_end).values()
+			.filter_map(Result::ok)
+			.map(|entry| bincode::deserialize::<Alarm>(&entry))
+			.filter_map(Result::ok)
+			.enumerate()
+			.collect();
+		alarm_list
+	}
 
+	pub fn remove(&self, user_id: UserId, counter: usize)
+	 -> Result<(Alarm,AlarmId), AlarmDbError> {
+	
+		let mut key_begin = [std::u8::MIN; 16];
+		let mut key_end = [std::u8::MAX; 16];
 
-		if let Some(last_entry) = self.storage
-			.range(user_start..user_end.as_ref())
-			.keys()
-			.next_back(){
+		BigEndian::write_u64(&mut key_begin[0..], user_id);
+		BigEndian::write_u64(&mut key_end[0..], user_id);
 
-			let counter = last_entry[0] + last_entry[1]
-		}
+		let key = self.storage.range(key_begin..key_end)
+			.keys().filter_map(Result::ok)
+			.nth(counter).ok_or(AlarmDbError::AlreadyRemoved)?;
+		
+		let entry = self.storage.remove(key)?
+			.ok_or(AlarmDbError::AlreadyRemoved)?;
+		let alarm = bincode::deserialize::<Alarm>(&entry).unwrap();
+		let alarm_id = BigEndian::read_u64(&key[8..]);
+		Ok((alarm, alarm_id))
+	}
 
+	pub fn add(&self, alarm: Alarm, user_id: UserId) -> Result<AlarmId, AlarmDbError> {
+		let id = self.db.generate_id()?;
+		let mut key = [0;16];
+		
+		BigEndian::write_u64(&mut key[0..], user_id);
+		BigEndian::write_u64(&mut key[8..], id);
+		let data = bincode::serialize(&alarm).unwrap();
 
-		Ok(())
+		self.storage.insert(key, data)?;
+		Ok(id)
 	}
 }
 
+impl AlarmDbError {
+	pub fn to_text(self) -> String {
+		match self {
+			AlarmDbError::AlreadyRemoved => String::from("alarm was already removed"),
+			AlarmDbError::DatabaseError(e) => {
+				error!("error during alarm db access: {}", e);
+				String::from("internal error in database")
+			},
+		}
+	}
+}
 
 impl UserDbError {
 	pub fn to_text(self, user_id: TelegramUserId) -> String {

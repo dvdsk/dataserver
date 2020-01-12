@@ -17,7 +17,7 @@ use threadpool::ThreadPool;
 use std::sync::atomic::{AtomicUsize};
 use data_store::{error_router, data_router, data_router::DataRouterState};
 
-use databases::{PasswordDatabase, UserDatabase, UserLookup};
+use databases::{PasswordDatabase, UserDatabase, UserLookup, AlarmDatabase};
 
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
@@ -58,6 +58,7 @@ async fn main() {
 	//TODO can a tree be opened multiple times?
 	let passw_db = PasswordDatabase::from_db(&db).unwrap();
 	let user_db = UserDatabase::from_db(&db).unwrap();
+	let alarm_db = AlarmDatabase::from_db(&db).unwrap();
 	let db_lookup = UserLookup::from_user_db(&user_db).unwrap();
 	
 	let data = Arc::new(RwLock::new(data_store::init("data").unwrap()));
@@ -72,7 +73,8 @@ async fn main() {
 
     let data_router_state = DataRouterState {
         passw_db: passw_db.clone(),
-        user_db: user_db.clone(),
+		user_db: user_db.clone(),
+		alarm_db: alarm_db.clone(),
 		db_lookup: db_lookup.clone(),
 		bot_pool,
         data_router_addr: data_router_addr.clone(),

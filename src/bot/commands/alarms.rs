@@ -1,11 +1,11 @@
-pub const USAGE: &str = "/alarms";
+pub const USAGE: &str = "/alarm";
 pub const DESCRIPTION: &str = "list, add and remove sensor notifications";
 
 pub const HELP_ADD: &'static str = 
-	"add [options] \"condition\"\n\
-	example: add \"3_0> 3_1 & t>9:30 & t<12:00\" -d [Sunday,Saturday] -p 5h -c \\plotables\
+	"/alarm add [options] \"condition\"\n\
+	example: add \"3_0> 3_1 & t>9:30 & t<12:00\" -d [Sunday,Saturday] -p 5h -c /plotables\
 	\ncondition; a boolean statement that may use these binairy operators: \
-	^ * / % + - < > == != && || on sensor fields (see \\plotables for options) \
+	^ * / % + - < > == != && || on sensor fields (see /plotables for options) \
 	or time (use the symbole \"t\")\
 	\npossible options:\n\
 	-d [Weekday, .... , Weekday]\n\
@@ -24,11 +24,11 @@ pub const HELP_ADD: &'static str =
 	alarm that will re-enable it once one of the values \
 	it watches deviates 10% from the alarm activation value\n";
 pub const HELP_LIST: &'static str = 
-	"list\n\
+	"/alarm list\n\
 	shows for all set alarms their: id, condition, timezone and action\
 	performed when the condition is satisfied.\n";
 pub const HELP_REMOVE: &'static str = 
-	"remove list_numb_1 list_numb_2....list_numb_n\n\
+	"/alarm remove list_numb_1 list_numb_2....list_numb_n\n\
 	removes one or multiple active alarms, space seperate list \
 	of the numbers in front of the expressions of the alarm list.";
 
@@ -252,7 +252,7 @@ async fn add(chat_id: ChatId, token: &str, args: &str,
 	let tz_offset = user.timezone_offset;
 	let notify = NotifyVia {email: None, telegram: Some(chat_id),};
 	let inv_expr = if counter_expr {
-		Some(get_inverse_expression(&expression, 0.1))
+		Some(get_inverse_expression(&expression, 0.05))
 	} else { None };
 
 	let alarm = Alarm {
@@ -280,13 +280,10 @@ async fn add(chat_id: ChatId, token: &str, args: &str,
 pub async fn handle(chat_id: ChatId, token: &str, text: String, 
 	user: User, state: &DataRouterState) -> Result<(), botError> {
 
-	dbg!(&text);
 	let mut text = text.trim_start().splitn(2, ' ');
-	dbg!(&text);
 	let subcommand = text.next().unwrap_or_default();
 	let args = text.next().unwrap_or_default();
-	dbg!(subcommand);
-	dbg!(args);
+
 	match subcommand {
 		"add" => add(chat_id, token, args, user, state).await,
 		"list" => list(chat_id, token, user, state).await,
@@ -297,22 +294,13 @@ pub async fn handle(chat_id: ChatId, token: &str, text: String,
 	}
 }
 
-/*pub struct Alarm {
-	pub expression: String,
-	pub weekday: Option<HashSet<Weekday>>,
-	pub period: Option<Duration>,
-	pub message: Option<String>,
-	pub command: Option<String>,
-	pub tz_offset: i32, //in hours to the east
-	pub notify: NotifyVia,
-}*/
-
 async fn list(chat_id: ChatId, token: &str, user: User, state: &DataRouterState)
  -> Result<(), botError> {
 	
 	let entries = state.alarm_db.list_users_alarms(user.id);
 	if entries.is_empty() {
 		send_text_reply(chat_id, token, "I have no alarms for you").await?;
+		return Ok(())
 	}
 
 	let mut list = String::default();
@@ -349,7 +337,7 @@ async fn remove(chat_id: ChatId, token: &str, args: &str, user: User,
 			.map_err(|_| Error::NotAnAlarmNumber(string.to_owned()) )?;
 		
 		let (alarm, alarm_id) = state.alarm_db.remove(user.id, numb).map_err(|e| Error::from(e))?;
-		let sets = sets_from_valid_expression(&alarm.expression);
+		let sets = alarm.watched_sets();
 
 		state.data_router_addr.send(RemoveAlarm {
 			sets,
@@ -359,15 +347,6 @@ async fn remove(chat_id: ChatId, token: &str, args: &str, user: User,
 	}
 	send_text_reply(chat_id, token, "alarms removed").await?;
 	Ok(())
-}
-
-///expression needs to be valid or this will panic
-fn sets_from_valid_expression(expression: &str) -> Vec<DatasetId> {
-	let re = Regex::new(r#"(\d+)_\d+"#).unwrap();
-	let sets = re.captures_iter(&expression)
-		.map(|caps| caps[0].parse().unwrap())
-		.collect();
-	sets
 }
 
 //TODO invert all AND and OR operators

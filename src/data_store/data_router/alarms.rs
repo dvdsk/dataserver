@@ -1,4 +1,4 @@
-use log::error;
+use log::{error, warn};
 use evalexpr::{self, 
 	Context as evalContext,
 	build_operator_tree,
@@ -12,6 +12,7 @@ use threadpool::ThreadPool;
 use std::time::{Duration, Instant};
 use std::collections::{HashSet, HashMap};
 use serde::{Serialize, Deserialize};
+use regex::Regex;
 
 use crate::bot;
 use crate::config::TOKEN;
@@ -20,7 +21,6 @@ use super::{DataRouter, UserId, AlarmId};
 
 #[derive(Debug)]
 pub enum AlarmError {
-	TooManyAlarms,
 	CouldNotNotify(reqwest::Response),
 }
 
@@ -49,6 +49,17 @@ pub struct Alarm {
 	pub command: Option<String>,
 	pub tz_offset: i32, //in hours to the east
 	pub notify: NotifyVia,
+}
+
+impl Alarm {
+	///expression needs to be valid or this will panic
+	pub fn watched_sets(&self) -> Vec<DatasetId> {
+		let re: regex::Regex = Regex::new(r#"(\d+)_\d+"#).unwrap();
+		let sets = re.captures_iter(&self.expression)
+			.map(|caps| caps[1].parse().unwrap())
+			.collect();
+		sets
+	}
 }
 
 pub struct CompiledAlarm {
@@ -96,7 +107,6 @@ impl CompiledAlarm {
 	pub fn evalute(&mut self, context: &mut evalexpr::HashMapContext, 
 		now: &DateTime::<Utc>, pool: &ThreadPool) -> Result<(), AlarmError> {
 		
-		dbg!();
 		if let Some((period, last)) = self.period {
 			if last.elapsed() < period {return Ok(());}
 		}
@@ -116,9 +126,6 @@ impl CompiledAlarm {
 			&self.expression
 		};
 
-		dbg!(&to_evaluate);
-		dbg!(&context);
-
 		match to_evaluate.eval_boolean_with_context(context){
 			Ok(alarm_condition) => if alarm_condition {
 				let notify = self.notify.clone();
@@ -134,7 +141,7 @@ impl CompiledAlarm {
 			},
 			Err(error) => match error {
 					VariableIdentifierNotFound(_) => {
-						dbg!();
+						warn!("variable not found, normal shortly after startup");
 						//TODO if happens for long time warn user
 					}
 					_ => {error!("{:?}", error); dbg!();},
@@ -158,7 +165,6 @@ fn sound_alarm(notify: NotifyVia, message: Option<String>,
 		}
 	};
 
-	dbg!();
 	if let Some(_email) = &notify.email {
 		todo!();
 	}

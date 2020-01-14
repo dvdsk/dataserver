@@ -116,7 +116,7 @@ async fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId,
 	loop {
 		let split = text.find(char::is_whitespace);
 		let mut command = text;
-		let args = command.split_off(split.unwrap_or(0));
+		let args = command.split_off(split.unwrap_or(command.len()));
 		match command.as_str() {
 			"/test" => {
 				send_text_reply(chat_id, TOKEN, "hi").await?; 
@@ -172,6 +172,8 @@ async fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId,
 	Ok(())
 }
 
+const INT_ERR_TEXT: &str = "apologies, an internal error happend this has been reported and will be fixed as soon as possible";
+const UNHANDLED: &str = "sorry I can not understand your input";
 async fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 	let error_message = match error {
 		#[cfg(feature = "plotting")]
@@ -182,11 +184,19 @@ async fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 		Error::KeyBoardError(error) => error.to_text(user_id),
 		Error::AlarmError(error) => error.to_text(user_id),
 		Error::UnknownAlias(alias_text) => 
-			format!("your input: \"{}\", is not a possible command or a configured alias. Use /help to get a list of possible commands and configured aliasses", alias_text),		
-		_ => {
-			error!("Internal error during handling of commands: {:?}", error);
-			format!("apologies, an internal error happend this has been reported and will be fixed as soon as possible")
-		}	
+			format!("your input: \"{}\", is not a possible command or a configured alias. Use /help to get a list of possible commands and configured aliasses", alias_text),
+		Error::HttpClientError(err) => {
+			error!("Internal error in http client: {}", err);
+			String::from(INT_ERR_TEXT)},
+		Error::InvalidServerResponse(resp) => {
+			error!("Incorrect bot api response {:?}", resp);
+			String::from(INT_ERR_TEXT)},
+		Error::UnhandledMessageKind => {
+			String::from(UNHANDLED)}
+		Error::UnhandledUpdateKind => {
+			String::from(UNHANDLED)}
+		Error::CouldNotSetWebhook => unreachable!(),
+		Error::InvalidServerResponseBlocking(_) => unreachable!(),
 	};
 	if let Err(error) = send_text_reply(chat_id, TOKEN, error_message).await{
 		error!("Could not send text reply to user: {:?}", error);

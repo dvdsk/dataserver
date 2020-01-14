@@ -77,7 +77,7 @@ impl PasswordDatabase {
 
 	pub async fn remove_user(&self, username: &[u8]) -> Result<(), DataserverError> {
 		self.storage.remove(username)?;
-		self.storage.flush_async().await;
+		self.storage.flush_async().await?;
 		Ok(())
 	}
 
@@ -99,9 +99,9 @@ impl PasswordDatabase {
 		} else { Err(PasswDbError::Internal )}
 	}
 
-	pub fn is_user_in_database(&self, username: &[u8]) -> Result<bool,sled::Error> {
-		self.storage.contains_key(username)
-	}
+	//pub fn is_user_in_database(&self, username: &[u8]) -> Result<bool,sled::Error> {
+	//	self.storage.contains_key(username)
+	//}
 
 	// The salt should have a user-specific component so that an attacker
 	// cannot crack one password for multiple users in the database. It
@@ -120,7 +120,6 @@ impl PasswordDatabase {
 
 /////////////////////////////////////////////////////////////////////////////////
 pub type Access = HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>;
-type RecieveErrors = bool;
 pub type UserId = u64;
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -314,7 +313,7 @@ impl From<sled::Error> for AlarmDbError {
 pub type AlarmList = Vec<(usize,Alarm)>;
 pub type AlarmId = u64;
 impl AlarmDatabase {
-	pub fn from_db(db: &Db) ->Result<Self, sled::Error> {
+	pub fn from_db(db: &Db) -> Result<Self, sled::Error> {
 		Ok(Self { 
 			db: db.clone(),
 			storage: db.open_tree("alarms")?, //created it not exist
@@ -335,6 +334,21 @@ impl AlarmDatabase {
 		}
 		self.storage.flush_async().await?;
 		Ok(())
+	}
+
+	pub fn iter(&self) -> impl Iterator<Item = (UserId, AlarmId, Alarm)> {
+		let values = self.storage
+			.iter()
+			.filter_map(Result::ok)
+			.map(|(id,alarm)| (
+				bincode::deserialize(&alarm).map(|alarm|(
+					BigEndian::read_u64(&id[0..]), 
+				 	BigEndian::read_u64(&id[8..]), 
+					alarm
+				))
+			))
+			.filter_map(Result::ok);
+		values
 	}
 
 	pub fn list_users_alarms(&self, user_id: UserId) -> AlarmList {

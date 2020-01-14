@@ -12,16 +12,17 @@ mod data_store;
 mod menu;
 
 use menu::Menu;
-use actix::prelude::*;
-use threadpool::ThreadPool;
-use std::sync::atomic::{AtomicUsize};
-use data_store::{error_router, data_router, data_router::DataRouterState};
-
+use data_store::{ 
+	data_router::DataRouterState, data_router::DataRouter,
+	error_router::ErrorRouter};
 use databases::{PasswordDatabase, UserDatabase, UserLookup, AlarmDatabase};
 
+use std::sync::atomic::{AtomicUsize};
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
 
+use actix::prelude::*;
+use threadpool::ThreadPool;
 use structopt::StructOpt;
 
 /// A basic example
@@ -66,9 +67,9 @@ async fn main() {
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 	let bot_pool = ThreadPool::new(2);
 	
-    let data_router_addr = data_router::DataRouter::new(&data).start();
+    let data_router_addr = DataRouter::new(&data, alarm_db.clone()).start();
 	
-	let error_router_addr = error_router::ErrorRouter::load(&db, data.clone())
+	let error_router_addr = ErrorRouter::load(&db, data.clone())
 	.unwrap().start();
 
     let data_router_state = DataRouterState {

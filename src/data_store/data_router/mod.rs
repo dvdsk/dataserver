@@ -60,19 +60,36 @@ impl DataRouter {
 		}
 	}
 
-	pub fn new(data: &Arc<RwLock<Data>>) -> DataRouter {
-		dbg!();
-		let meta = data.read().unwrap().sets
-			.iter()
+	//TODO get full alarm Id from iter method
+	//finish insertion
+	pub fn new(data: &Arc<RwLock<Data>>, alarm_db: AlarmDatabase) -> DataRouter {
+		type AlarmList = HashMap<(UserId,AlarmId), CompiledAlarm>;
+		
+		//collect metadata on all datasets
+		let meta = data.read().unwrap().sets.iter()
 			.map(|(id,set)| (*id, set.metadata.fields.clone() ))
 			.collect();
+		
+		//read alarms from the database into lookup hashmap
+		let mut alarms_by_set: HashMap<DatasetId, AlarmList> = HashMap::new();
+		for (owner_id, alarm_id, alarm) in alarm_db.iter(){
+			for set in alarm.watched_sets() {
+				let compiled_alarm = CompiledAlarm::from(alarm.clone());
+				if let Some(list) = alarms_by_set.get_mut(&set) {
+					list.insert((owner_id, alarm_id), compiled_alarm);
+				} else {
+					let mut list: AlarmList = HashMap::new();
+					list.insert((owner_id, alarm_id), compiled_alarm);
+					alarms_by_set.insert(set, list);
+				}
+			}
+		}
 
 		DataRouter {
 			sessions: HashMap::new(),
 			subs: HashMap::new(),
 			meta,
-			//TODO load from db
-			alarms_by_set: HashMap::new(),
+			alarms_by_set,
 			alarm_context: HashMapContext::new(),
 			async_pool: ThreadPool::new(2),
 		}

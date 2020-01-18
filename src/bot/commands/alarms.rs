@@ -148,17 +148,22 @@ fn parse_arguments(args: &str) -> Result<Arguments, Error>{
 
 	let day_re = Regex::new(r#"-d \[(.+)\]"#).unwrap();
 	let day: Option<Result<HashSet<Weekday>,Error>> = day_re
-		.find(&args)
-		.map(|m| m
+		.captures(&args)
+		//.map(|f| f.get(1))
+		//.ok_or(Error::InvalidDay(args.to_owned()))?
+		.map(|m| m.get(1).unwrap()
 			.as_str()
 			.split(|c| c==',' || c==' ')
-			.map(|day| day.parse::<Weekday>().map_err(|_| 
-				Error::InvalidDay(day.to_owned())))
+			.filter(|s| s.len()>5)
+			.map(|day| {dbg!(&day); day
+				.parse::<Weekday>()
+				.map_err(|_| Error::InvalidDay(day.to_owned()))}
+			)
 			.collect()
 		);
 	let day = day.transpose()?;
 
-	let period_re = Regex::new(r#"-p \d[smhdw]"#).unwrap();
+	let period_re = Regex::new(r#"-p (\d+)([smhdw])"#).unwrap();
 	let period = if let Some(caps) = period_re.captures(&args){
 		let numb = caps.get(1).unwrap().as_str().parse::<u64>()?;
 		let unit = caps.get(2).unwrap().as_str();
@@ -305,7 +310,7 @@ async fn list(chat_id: ChatId, token: &str, user: User, state: &DataRouterState)
 
 	let mut list = String::default();
 	for (counter, alarm) in entries {
-		list.push_str(&format!("{}\texpr: {}", 
+		list.push_str(&format!("{}\texpr: {}\n", 
 			counter, 
 			alarm.expression));
 			
@@ -323,6 +328,10 @@ async fn list(chat_id: ChatId, token: &str, user: User, state: &DataRouterState)
 		if let Some(message) = alarm.message {
 			list.push_str(&format!("message: {}\n", message));
 		}
+
+		if let Some(inv) = alarm.inv_expr {
+			list.push_str(&format!("reactivating if: {}\n", inv));
+		}
 	}
 	dbg!(&list);
 	send_text_reply(chat_id, token, list).await?;
@@ -332,11 +341,18 @@ async fn list(chat_id: ChatId, token: &str, user: User, state: &DataRouterState)
 async fn remove(chat_id: ChatId, token: &str, args: &str, user: User, 
 	state: &DataRouterState) -> Result<(), botError> {
 
-	for string in args.split_whitespace(){
-		let numb = string.parse()
-			.map_err(|_| Error::NotAnAlarmNumber(string.to_owned()) )?;
-		
-		let (alarm, alarm_id) = state.alarm_db.remove(user.id, numb).map_err(|e| Error::from(e))?;
+	let numbs: Result<Vec<usize>,_> = args.split_whitespace()
+		.map(|s| s
+			.parse()
+			.map_err(|_| Error::NotAnAlarmNumber(s.to_owned()))
+		).collect();
+	let mut numbs = numbs?;
+	numbs.sort_unstable();
+
+	for numb in numbs.iter().rev() {
+		let (alarm, alarm_id) = state.alarm_db
+			.remove(user.id, *numb)
+			.map_err(|e| Error::from(e))?;
 		let sets = alarm.watched_sets();
 
 		state.data_router_addr.send(RemoveAlarm {
@@ -345,7 +361,12 @@ async fn remove(chat_id: ChatId, token: &str, args: &str, user: User,
 			alarm_id,
 		}).await.unwrap();
 	}
-	send_text_reply(chat_id, token, "alarms removed").await?;
+
+	if numbs.len() > 1 {
+		send_text_reply(chat_id, token, "alarms removed").await?;
+	} else {
+		send_text_reply(chat_id, token, "alarm removed").await?;
+	}
 	Ok(())
 }
 

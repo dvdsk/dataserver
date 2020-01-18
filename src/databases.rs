@@ -228,6 +228,15 @@ pub struct UserLookup {
 	bot_id_to_id: Arc<RwLock<HashMap<TelegramUserId, UserId>>>,
 }
 impl UserLookup {
+
+	pub fn is_unique_telegram_id(&self, id: &TelegramUserId) -> bool {
+		!self.bot_id_to_id.read().unwrap().contains_key(id)
+	}
+
+	pub fn is_unique_name(&self, name: &str) -> bool {
+		!self.name_to_id.read().unwrap().contains_key(name)
+	}
+
 	pub fn by_name(&self, username: &String)
 	 -> Result<UserId, UserDbError> {
 		let id = *self.name_to_id.read().unwrap().get(username)
@@ -377,9 +386,14 @@ impl AlarmDatabase {
 		BigEndian::write_u64(&mut key_begin[0..], user_id);
 		BigEndian::write_u64(&mut key_end[0..], user_id);
 
-		let key = self.storage.range(key_begin..key_end)
-			.keys().filter_map(Result::ok)
-			.nth(counter).ok_or(AlarmDbError::AlreadyRemoved)?;
+		let keys: Result<Vec<sled::IVec>, sled::Error> = self
+			.storage
+			.range(key_begin..key_end)
+			.keys().collect();
+		let keys = keys?;
+
+		let key = keys.get(counter)
+			.ok_or(AlarmDbError::AlreadyRemoved)?;
 		
 		let entry = self.storage.remove(&key)?
 			.ok_or(AlarmDbError::AlreadyRemoved)?;

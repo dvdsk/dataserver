@@ -51,8 +51,8 @@ pub fn menu(mut user_db: &mut UserDatabase, lookup: &UserLookup,
             .interact().unwrap();
         
         match list_numb {
-            0 => change_user_name(&mut user, &user_db),
-            1 => set_telegram_id(&mut user),
+            0 => change_user_name(&mut user, &lookup),
+            1 => set_telegram_id(&mut user, &lookup),
             2 => change_dataset_access(&mut user, &data),
             3 => change_password(&user.name, passw_db).unwrap(),
             4 => { 
@@ -140,14 +140,15 @@ async fn save_changes(user_db: &mut UserDatabase, passw_db: &mut PasswordDatabas
     Ok(())
 }
 
-fn change_user_name(user: &mut User, user_db: &UserDatabase) {
+fn change_user_name(user: &mut User, lookup: &UserLookup) {
     let new_name = Input::<String>::new()
     .with_prompt("Enter new username")
+    .allow_empty(true)
     .interact()
     .unwrap();
 
     if new_name.len() > 0 {
-        if !user_db.storage.contains_key(&new_name).unwrap() {
+        if lookup.is_unique_name(&new_name) {
             user.name = new_name;
         } else {
             println!("cant use \"{}\" as name, already in use", new_name);    
@@ -159,15 +160,21 @@ fn change_user_name(user: &mut User, user_db: &UserDatabase) {
     }
 }
 
-fn set_telegram_id(user: &mut User) {
+fn set_telegram_id(user: &mut User, lookup: &UserLookup) {
     let new_id = Input::<String>::new()
-        .with_prompt("Enter new telegram id")
+        .with_prompt("Enter new telegram id, leave empty to cancel")
+        .allow_empty(true)
         .interact()
         .unwrap();
     
     if new_id.len() > 0 {
         if let Ok(new_id) = new_id.parse::<i64>(){
-            user.telegram_id.replace(new_id.into());
+            if lookup.is_unique_telegram_id(&new_id.into()){
+                user.telegram_id.replace(new_id.into());
+            } else {
+                println!("TelegramId already in use!");            
+                thread::sleep(Duration::from_secs(1));                   
+            }
         } else {
             println!("Can not parse to integer, please try again");            
             thread::sleep(Duration::from_secs(1));   

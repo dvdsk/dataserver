@@ -6,11 +6,18 @@ edition = "2018"
 publish = false
 
 [profile.release]
+opt-level = 3
+codegen-units = 1
 lto = true
-#panic = 'abort'
+
+panic = 'unwind'
+debug = true
+debug-assertions = true
+overflow-checks = true
 
 [features]
 plotting = ["plotters", "image"]
+stable = []
 
 [dependencies]
 structopt = "0.3"

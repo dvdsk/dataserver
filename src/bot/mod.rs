@@ -12,7 +12,6 @@ use telegram_bot::types::refs::{ChatId, UserId};
 
 use crate::data_store::data_router::DataRouterState;
 use crate::databases::{User, UserDbError};
-use crate::config::TOKEN;
 
 mod commands;
 pub use commands::alarms;
@@ -110,6 +109,7 @@ fn resolve_alias(possible_alias: &str, user: &User) -> Result<Option<String>, Er
 async fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId, 
 	state: &DataRouterState) -> Result<(), Error>{
 	
+	let token = &state.bot_token;
 	let db_id = state.db_lookup.by_telegram_id(&user_id)?;
 	let user = state.user_db.get_user(db_id)?;
 
@@ -119,45 +119,45 @@ async fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId,
 		let args = command.split_off(split.unwrap_or(command.len()));
 		match command.as_str() {
 			"/test" => {
-				send_text_reply(chat_id, TOKEN, "hi").await?; 
+				send_text_reply(chat_id, token, "hi").await?; 
 				break;
 			}
 			//TODO needs to use threadpool
 			#[cfg(feature = "plotting")]
 			"/plot" => {
-				plot::send(chat_id, state, TOKEN, args, &user).await?; 
+				plot::send(chat_id, state, token, args, &user).await?; 
 				break;
 			}
 			"/help" => {
-				help::send(chat_id, &user, TOKEN).await?; 
+				help::send(chat_id, &user, token).await?; 
 				break;
 			}
 			"/plotables" => {
-				plotables::send(chat_id, &user, state, TOKEN).await?;
+				plotables::send(chat_id, &user, state, token).await?;
 				break;
 			}
 			"/show" => {
-				show::send(chat_id, state, TOKEN, args, &user).await?;
+				show::send(chat_id, state, token, args, &user).await?;
 				break;
 			}
 			"/keyboard" => {
-				keyboard::show(chat_id, TOKEN, user).await?;
+				keyboard::show(chat_id, token, user).await?;
 				break;
 			}
 			"/keyboard_add" => {
-				keyboard::add_button(chat_id, state, TOKEN, args, user).await?;
+				keyboard::add_button(chat_id, state, token, args, user).await?;
 				break;
 			}
 			"/keyboard_remove" => {
-				keyboard::remove_button(chat_id, state, TOKEN, args, user).await?;
+				keyboard::remove_button(chat_id, state, token, args, user).await?;
 				break;
 			}
 			"/alarm" => {
-				alarms::handle(chat_id, TOKEN, args, user, state).await?;
+				alarms::handle(chat_id, token, args, user, state).await?;
 				break;
 			}	
 			"/alias" => {
-				alias::send(chat_id, state, TOKEN, args, user).await?;
+				alias::send(chat_id, state, token, args, user).await?;
 				break;
 			}
 			&_ => {}
@@ -174,7 +174,7 @@ async fn handle_command(mut text: String, chat_id: ChatId, user_id: UserId,
 
 const INT_ERR_TEXT: &str = "apologies, an internal error happend this has been reported and will be fixed as soon as possible";
 const UNHANDLED: &str = "sorry I can not understand your input";
-async fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
+async fn handle_error(error: Error, chat_id: ChatId, user_id: UserId, token: &str) {
 	let error_message = match error {
 		#[cfg(feature = "plotting")]
 		Error::PlotError(error) => error.to_text(user_id),
@@ -184,7 +184,9 @@ async fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 		Error::KeyBoardError(error) => error.to_text(user_id),
 		Error::AlarmError(error) => error.to_text(user_id),
 		Error::UnknownAlias(alias_text) => 
-			format!("your input: \"{}\", is not a possible command or a configured alias. Use /help to get a list of possible commands and configured aliasses", alias_text),
+			format!("your input: \"{}\", is not a possible command or \
+			a configured alias. Use /help to get a list of possible \
+			commands and configured aliasses", alias_text),
 		Error::HttpClientError(err) => {
 			error!("Internal error in http client: {}", err);
 			String::from(INT_ERR_TEXT)},
@@ -198,15 +200,16 @@ async fn handle_error(error: Error, chat_id: ChatId, user_id: UserId) {
 		Error::CouldNotSetWebhook => unreachable!(),
 		Error::InvalidServerResponseBlocking(_) => unreachable!(),
 	};
-	if let Err(error) = send_text_reply(chat_id, TOKEN, error_message).await{
+	if let Err(error) = send_text_reply(chat_id, token, error_message).await{
 		error!("Could not send text reply to user: {:?}", error);
 	}
 }
 
 async fn handle(update: Update, state: DataRouterState){
+	let token = &state.bot_token;
 	if let Ok((text, chat_id, user_id)) = to_string_and_ids(update){
 		if let Err(error) = handle_command(text, chat_id, user_id, &state).await{
-			handle_error(error, chat_id, user_id).await;
+			handle_error(error, chat_id, user_id, token).await;
 		}
 	}
 }

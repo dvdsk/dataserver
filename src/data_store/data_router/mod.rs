@@ -29,6 +29,7 @@ pub struct DataRouterState {
 	pub alarm_db: AlarmDatabase,
 	pub db_lookup: UserLookup,
 	pub bot_pool: ThreadPool,
+	pub bot_token: String,
 
 	pub data_router_addr: Addr<DataRouter>,
 	pub error_router_addr: Addr<error_router::ErrorRouter>,
@@ -48,6 +49,7 @@ pub struct DataRouter {
 	alarms_by_set: HashMap<DatasetId, HashMap<(UserId,AlarmId), CompiledAlarm>>,
 	alarm_context: HashMapContext,
 	async_pool: ThreadPool,
+	bot_token: String,
 }
 
 impl DataRouter {
@@ -62,7 +64,9 @@ impl DataRouter {
 
 	//TODO get full alarm Id from iter method
 	//finish insertion
-	pub fn new(data: &Arc<RwLock<Data>>, alarm_db: AlarmDatabase) -> DataRouter {
+	pub fn new(data: &Arc<RwLock<Data>>, alarm_db: AlarmDatabase, 
+		bot_token: String) -> DataRouter {
+		
 		type AlarmList = HashMap<(UserId,AlarmId), CompiledAlarm>;
 		
 		//collect metadata on all datasets
@@ -88,6 +92,7 @@ impl DataRouter {
 		DataRouter {
 			sessions: HashMap::new(),
 			subs: HashMap::new(),
+			bot_token, 
 			meta,
 			alarms_by_set,
 			alarm_context: HashMapContext::new(),
@@ -116,7 +121,9 @@ impl Handler<NewData> for DataRouter {
 			self.update_context(&msg.line, &updated_dataset_id); //Opt: 
 			if let Some(alarms) = self.alarms_by_set.get_mut(&updated_dataset_id){
 				for alarm in alarms.values_mut() {
-					alarm.evalute(&mut self.alarm_context, &now, &self.async_pool);
+					let token = 
+					alarm.evalute(&mut self.alarm_context, 
+						&now, &self.async_pool, self.bot_token.clone());
 				}
 			}
 		}

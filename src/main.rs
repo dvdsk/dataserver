@@ -33,6 +33,20 @@ struct Opt {
 	create_new_certificate: bool,
 	#[structopt(short, long)]
 	no_menu: bool,
+
+	#[cfg(stable)]
+    #[structopt(short = "p", long = "port", default_value = "443")]
+	port_dev: u16,
+	
+	#[cfg(not(stable))]
+    #[structopt(short = "p", long = "port", default_value = "8443")]
+	port: u16,
+	
+    #[structopt(short = "t", long = "token")]
+	token: String,
+	
+    #[structopt(short = "d", long = "domain")]
+    domain: String,
 }
 
 #[actix_rt::main]
@@ -67,7 +81,8 @@ async fn main() {
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 	let bot_pool = ThreadPool::new(2);
 	
-    let data_router_addr = DataRouter::new(&data, alarm_db.clone()).start();
+	let data_router_addr = DataRouter::new(&data, alarm_db.clone(), 
+		opt.token.clone()).start();
 	
 	let error_router_addr = ErrorRouter::load(&db, data.clone())
 	.unwrap().start();
@@ -78,6 +93,8 @@ async fn main() {
 		alarm_db: alarm_db.clone(),
 		db_lookup: db_lookup.clone(),
 		bot_pool,
+		bot_token: opt.token.clone(),
+
         data_router_addr: data_router_addr.clone(),
         error_router_addr: error_router_addr.clone(),
         data: data.clone(),
@@ -91,9 +108,10 @@ async fn main() {
         "keys/cert.key", 
         "keys/cert.cert", 
         "keys/intermediate.cert", 
-        data_router_state.clone(),
+		data_router_state.clone(),
+		opt.port
 	);
-    bot::set_webhook(config::DOMAIN, config::TOKEN, config::PORT).await.unwrap();
+    bot::set_webhook(&opt.domain, &opt.token, opt.port).await.unwrap();
 	
 	let menu_future = if !opt.no_menu {
 		Menu::gui(data, passw_db, user_db, alarm_db, db_lookup)

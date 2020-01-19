@@ -15,7 +15,6 @@ use serde::{Serialize, Deserialize};
 use regex::Regex;
 
 use crate::bot;
-use crate::config::TOKEN;
 use crate::data_store::DatasetId;
 use super::{DataRouter, UserId, AlarmId};
 
@@ -105,7 +104,8 @@ impl From<Alarm> for CompiledAlarm {
 
 impl CompiledAlarm {
 	pub fn evalute(&mut self, context: &mut evalexpr::HashMapContext, 
-		now: &DateTime::<Utc>, pool: &ThreadPool) -> Result<(), AlarmError> {
+		now: &DateTime::<Utc>, pool: &ThreadPool, token: String)
+		 -> Result<(), AlarmError> {
 		
 		if let Some((period, last)) = self.period {
 			if last.elapsed() < period {return Ok(());}
@@ -134,8 +134,8 @@ impl CompiledAlarm {
 				let expr_string = self.expr_string.clone();
 				let inverted = self.inverted;
 				pool.execute(move || {
-					sound_alarm(notify, message, 
-						expr_string, command, inverted);
+					sound_alarm(notify, message, expr_string, 
+						command, inverted, token);
 				});
 				if self.inv_expr.is_some() {self.inverted = !self.inverted;}
 			},
@@ -153,7 +153,8 @@ impl CompiledAlarm {
 
 //TODO //FIXME has to handle error without returning
 fn sound_alarm(notify: NotifyVia, message: Option<String>,
-	expression: String, command: Option<String>, inverted: bool){
+	expression: String, command: Option<String>, inverted: bool,
+	token: String){
 
 	let to_send = if let Some(message) = &message {
 		message.to_owned()
@@ -169,7 +170,7 @@ fn sound_alarm(notify: NotifyVia, message: Option<String>,
 		todo!();
 	}
 	if let Some(chat_id) = &notify.telegram {
-		if let Err(err) = bot::send_text_reply_blocking(*chat_id, TOKEN, to_send){
+		if let Err(err) = bot::send_text_reply_blocking(*chat_id, &token, to_send){
 			error!("could not notify client via telegram: {:?}", err);
 		}
 

@@ -25,11 +25,12 @@ pub struct Session {
 }
 
 pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
-             data_router_state: DataRouterState)
+             data_router_state: DataRouterState, port: u16)
      -> actix_web::dev::Server {
 
    let tls_config = utility::make_tls_config(signed_cert, public_key, intermediate_cert);
    let cookie_key = utility::make_random_cookie_key();
+   let token = data_router_state.bot_token.clone();
 
    let (tx, rx) = mpsc::channel();
 
@@ -58,7 +59,7 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
                ))
                .service(web::resource("/post_data").to(handlers::new_data_post))
                .service(web::resource("/post_error").to(handlers::new_error_post))
-               .service(web::resource(&format!("/{}", config::TOKEN)).to(bot::handle_webhook))
+               .service(web::resource(&format!("/{}", &token)).to(bot::handle_webhook))
 
                .service(
                    web::scope("/")
@@ -79,9 +80,7 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
                )
            })
        // WARNING TLS IS NEEDED FOR THE LOGIN SYSTEM TO FUNCTION
-       .bind_rustls(&format!("0.0.0.0:{}", config::PORT), tls_config).unwrap()
-       //.bind_rustls("0.0.0.0:8080", tls_config).unwrap()
-       //.bind("0.0.0.0:8080").unwrap() //without tcp use with debugging (note: https -> http, wss -> ws)
+       .bind_rustls(&format!("0.0.0.0:{}", port), tls_config).unwrap()
        .shutdown_timeout(5)    // shut down 5 seconds after getting the signal to shut down
        .run(); // end of App::new()
 

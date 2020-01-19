@@ -57,7 +57,7 @@ async fn main() {
 	if opt.create_new_certificate {
 		//generate_and_sign_keys
 		if let Err(error) = certificate_manager::generate_and_sign_keys(
-			config::DOMAIN, "keys/cert.key", "keys/cert.cert", "keys/user.key",
+			&opt.domain, "keys/cert.key", "keys/cert.cert", "keys/user.key",
 		).await {
 			println!("could not auto generate certificate, error: {:?}", error)
 		}

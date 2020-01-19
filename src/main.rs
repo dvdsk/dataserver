@@ -34,11 +34,11 @@ struct Opt {
 	#[structopt(short, long)]
 	no_menu: bool,
 
-	#[cfg(stable)]
+	#[cfg(feature = "stable")]
     #[structopt(short = "p", long = "port", default_value = "443")]
-	port_dev: u16,
+	port: u16,
 	
-	#[cfg(not(stable))]
+	#[cfg(not(feature = "stable"))]
     #[structopt(short = "p", long = "port", default_value = "8443")]
 	port: u16,
 	

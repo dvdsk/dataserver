@@ -12,7 +12,6 @@ use actix_web::{HttpServer,App, web};
 use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_files as fs;
 
-use crate::config;
 use crate::databases::User;
 use crate::data_store::{data_router::DataRouterState};
 
@@ -25,7 +24,7 @@ pub struct Session {
 }
 
 pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
-             data_router_state: DataRouterState, port: u16)
+             data_router_state: DataRouterState, port: u16, domain: String)
      -> actix_web::dev::Server {
 
    let tls_config = utility::make_tls_config(signed_cert, public_key, intermediate_cert);
@@ -45,7 +44,7 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
                .app_data(data)
                .wrap(IdentityService::new(
                    CookieIdentityPolicy::new(&cookie_key[..])
-                   .domain(config::DOMAIN)
+                   .domain(&domain)
                    .name("auth-cookie")
                    .path("/")
                    .secure(true), 

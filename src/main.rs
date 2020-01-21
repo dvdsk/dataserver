@@ -2,7 +2,6 @@
 //mod test;
 
 mod certificate_manager;
-mod config;
 mod debug_middleware;
 mod error;
 mod bot;
@@ -109,7 +108,8 @@ async fn main() {
         "keys/cert.cert", 
         "keys/intermediate.cert", 
 		data_router_state.clone(),
-		opt.port
+		opt.port,
+		opt.domain.clone(),
 	);
     bot::set_webhook(&opt.domain, &opt.token, opt.port).await.unwrap();
 	

@@ -10,7 +10,9 @@ jobs:
     name: build and deploy to home server
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@stable
+    - uses: actions/checkout@v2
+      with:
+        ref: stable
     - uses: actions-rs/cargo@v1.0.1
       with:
         command: build

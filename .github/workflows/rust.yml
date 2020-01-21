@@ -1,0 +1,31 @@
+name: Rust
+
+on:
+  push:
+    branches:
+    - stable
+
+jobs:
+  build_and_deploy:
+    name: build and deploy to home server
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@stable
+    - uses: actions-rs/cargo@v1.0.1
+      with:
+        command: build
+        use-cross: true
+        args: --target armv7-unknown-linux-gnueabihf --release --features "plotting stable"
+    - uses: Pendect/action-rsyncer@v1.1.0
+      env:
+        DEPLOY_KEY: ${{secrets.DEPLOY_KEY}}
+      with:
+        flags: -vh
+        secrets: ${{secrets.KEY}}
+        src: 'dataserver'
+        dest: 'dataserver@${{ secrets.HOST }}:/home/dataserver/server'
+    - uses: appleboy/ssh-action@master
+      with: 
+        host: ${{ secrets.HOST }}
+        key: ${{secrets.DEPLOY_KEY}}
+        script: systemctl restart dataserver

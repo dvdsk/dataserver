@@ -31,6 +31,7 @@ pub enum Error{
     EncodingError(std::io::Error),
 	BotDatabaseError(UserDbError),
     NotEnoughArguments,
+    DataLimitsAlarm,
 }
 
 pub const USAGE: &str = "/plot <plotable_id> <number><s|m|h|d|w|monthes|years>";
@@ -60,6 +61,7 @@ impl Error {
             },
             Error::BotDatabaseError(db_error) => db_error.to_text(user_id),
             Error::NotEnoughArguments => format!("Not enough arguments\nuse: {}", USAGE),            
+            Error::DataLimitsAlarm => String::from("Apologies an internal error occured, I have reported it"),
         }
     }
 }
@@ -112,7 +114,9 @@ pub async fn send(chat_id: ChatId, state: &DataRouterState, token: &str,
 }
 
 type PlotData = (Vec<i64>, Vec<Vec<f32>>, Vec<(FieldId, String)>);
-fn xlimits_from_data(data: &Vec<PlotData>) -> (DateTime<Utc>, DateTime<Utc>) {
+fn xlimits_from_data(data: &Vec<PlotData>)
+ -> Result<(DateTime<Utc>, DateTime<Utc>),Error> {
+
     let mut min_ts = data.iter()
         .map(|d| *d.0.first().unwrap())
         .min().unwrap();
@@ -120,15 +124,21 @@ fn xlimits_from_data(data: &Vec<PlotData>) -> (DateTime<Utc>, DateTime<Utc>) {
         .map(|d| *d.0.last().unwrap())
         .max().unwrap();
 
-    assert!(min_ts < max_ts);
+    if min_ts < max_ts {
+        dbg!(min_ts);
+        dbg!(max_ts);
+        return Err(Error::DataLimitsAlarm);
+    }
+
     if min_ts==max_ts { 
         min_ts -= 1;
         max_ts += 1;
     }
     let min = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(min_ts, 0), Utc);
     let max = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(max_ts, 0), Utc);
-    (min,max)
+    Ok((min,max))
 }
+
 fn ylimits_from_data(data: &Vec<PlotData>) -> (f32,f32) {
     let mut min = *data.iter()
         .map(|data_set| data_set.1.iter()
@@ -185,7 +195,7 @@ fn plot(args: Vec<String>, state: &DataRouterState, user: &User)
         .collect();
     let plot_data = plot_data?;
 
-    let (from_date,to_date) = xlimits_from_data(&plot_data);
+    let (from_date,to_date) = xlimits_from_data(&plot_data)?;
     dbg!(&from_date, &to_date);
     let x_label_formatstr = format_str_from_limits(&from_date, &to_date);
     let (y_min, y_max) = if let Some(manual) = scaling_args {

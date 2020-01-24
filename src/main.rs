@@ -40,7 +40,10 @@ struct Opt {
 	#[cfg(not(feature = "stable"))]
     #[structopt(short = "p", long = "port", default_value = "8443")]
 	port: u16,
-	
+
+	#[structopt(short = "e", long = "external-port")]
+	external_port: Option<u16>,
+
     #[structopt(short = "t", long = "token")]
 	token: String,
 	
@@ -111,8 +114,13 @@ async fn main() {
 		opt.port,
 		opt.domain.clone(),
 	);
-    bot::set_webhook(&opt.domain, &opt.token, opt.port).await.unwrap();
-	
+
+	if let Some(port) = opt.external_port {
+    	bot::set_webhook(&opt.domain, &opt.token, port).await.unwrap();
+	} else {
+    	bot::set_webhook(&opt.domain, &opt.token, opt.port).await.unwrap();
+	}
+
 	let menu_future = if !opt.no_menu {
 		Menu::gui(data, passw_db, user_db, alarm_db, db_lookup)
 	} else {

@@ -124,7 +124,7 @@ fn xlimits_from_data(data: &Vec<PlotData>)
         .map(|d| *d.0.last().unwrap())
         .max().unwrap();
 
-    if min_ts < max_ts {
+    if min_ts > max_ts {
         dbg!(min_ts);
         dbg!(max_ts);
         return Err(Error::DataLimitsAlarm);
@@ -134,6 +134,7 @@ fn xlimits_from_data(data: &Vec<PlotData>)
         min_ts -= 1;
         max_ts += 1;
     }
+    
     let min = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(min_ts, 0), Utc);
     let max = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(max_ts, 0), Utc);
     Ok((min,max))

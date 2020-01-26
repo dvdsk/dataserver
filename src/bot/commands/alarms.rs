@@ -12,17 +12,19 @@ pub const HELP_ADD: &'static str =
 	days on which the condition should be evaluated \
 	example: -d [Saturday, Sunday]\n\
 	-p <number><unit>\n\
-	minimal time between activation of alarm here \
-	unit can be s,m,h,d or w\n\
+	override the default minimal time between \
+	activation of alarm. The time unit can be \
+	s,m,h,d or w\n\
 	-c <command>\n\
 	here command should be a valid telegram command \
 	for this bot. If the command is more then one word \
 	long it should be enclosed in quotes\n\
-	-bc\n\
+	-i <percentage>\n\
 	prevent alarm from being triggerd continuesly, once \
-	an alarm is triggerd disarm and set a counter \
+	an alarm is triggerd disarm and set an inverse \
 	alarm that will re-enable it once one of the values \
-	it watches deviates 10% from the alarm activation value\n";
+	it watches deviates the given percentage from the alarm \
+	activation value\n";
 pub const HELP_LIST: &'static str = 
 	"/alarm list\n\
 	shows for all set alarms their: id, condition, timezone and action\
@@ -38,6 +40,7 @@ use std::time::Duration;
 use evalexpr::{build_operator_tree, EvalexprError};
 use chrono::{Weekday, self};
 use regex::{Regex, Captures};
+use log::error;
 use telegram_bot::types::refs::ChatId;
 use telegram_bot::types::refs::UserId as TelegramUserId;
 use crate::databases::{User, AlarmDbError};
@@ -123,16 +126,46 @@ struct Arguments {
 
 /// replaces any occurence of dd:dd (for example 22:15) 
 /// to the number of seconds since 00:00
-fn rewrite_time(expression: String) -> String {
+fn format_time_to_seconds(expression: String) -> String {
 	let time_re = Regex::new(r#"(\d{1,2}):(\d\d)"#).unwrap();
 	time_re.replacen(&expression, 0, |caps: &Captures| {
-			let minutes: u32 = caps
+			let hours: u32 = caps
 				.get(1).unwrap()
 				.as_str().parse().unwrap();
-			let hours: u32 = caps
+			let minutes: u32 = caps
 				.get(2).unwrap()
 				.as_str().parse().unwrap();
 			format!("{}",minutes*60+hours*3600)
+	}).to_string()
+}
+
+/// replaces any occurence of t < numb (or larger or equal) 
+/// by the human readable format hh:mm since midnight
+fn format_time_human_readable(expression: String) -> String {
+	let time_re = Regex::new(r#"t\s?(<|>|>=|<=)\s?(\d+)"#).unwrap();
+	time_re.replacen(&expression, 0, |caps: &Captures| {
+			let equality = caps
+				.get(1).unwrap().as_str();
+			let seconds: u32 = caps
+				.get(2).unwrap()
+				.as_str().parse().unwrap();
+			let hours = seconds/3600;
+			let minutes = (seconds/60) % 60;
+			dbg!(seconds); dbg!(hours); dbg!(minutes);
+
+			if minutes < 10 {
+				if hours < 10 {
+					format!("t {} 0{}:0{}", equality, hours, minutes)
+				} else {
+					format!("t {} {}:0{}", equality, hours, minutes)
+				}
+			} else {
+				if hours < 10 {
+					format!("t {} 0{}:{}", equality, hours, minutes)
+				} else {
+					format!("t {} {}:{}", equality, hours, minutes)
+				}
+			}
 	}).to_string()
 }
 
@@ -144,7 +177,7 @@ fn parse_arguments(args: &str) -> Result<Arguments, Error>{
 	let expression = expression.get(1..expression.len()-1).unwrap().to_owned();
 	dbg!("exp");
 	dbg!(&expression);
-	let expression = rewrite_time(expression);
+	let expression = format_time_to_seconds(expression);
 
 	let day_re = Regex::new(r#"-d \[(.+)\]"#).unwrap();
 	let day: Option<Result<HashSet<Weekday>,Error>> = day_re
@@ -167,16 +200,20 @@ fn parse_arguments(args: &str) -> Result<Arguments, Error>{
 	let period = if let Some(caps) = period_re.captures(&args){
 		let numb = caps.get(1).unwrap().as_str().parse::<u64>()?;
 		let unit = caps.get(2).unwrap().as_str();
-		Some(match unit {
-			"s" => Duration::from_secs(numb),
-			"m" => Duration::from_secs(numb*60),
-			"h" => Duration::from_secs(numb*60*60),
-			"d" => Duration::from_secs(numb*60*60*24),
-			"w" => Duration::from_secs(numb*60*60*24*7),
-			_ => {return Err(Error::IncorrectTimeUnit(unit.to_owned()));},
-		})
+		if numb == 0 {
+			None 
+		} else {
+			Some(match unit {
+				"s" => Duration::from_secs(numb),
+				"m" => Duration::from_secs(numb*60),
+				"h" => Duration::from_secs(numb*60*60),
+				"d" => Duration::from_secs(numb*60*60*24),
+				"w" => Duration::from_secs(numb*60*60*24*7),
+				_ => {return Err(Error::IncorrectTimeUnit(unit.to_owned()));},
+			})
+		}
 	} else {
-		None
+		Some(Duration::from_secs(1*60*60))
 	};
 
 	let message_re = Regex::new(r#"-m "(.+)""#).unwrap();
@@ -250,16 +287,20 @@ async fn add(chat_id: ChatId, token: &str, args: &str,
 		day, period, message, command, 
 		fields} = parse_arguments(args)?;
 	authorized(&fields, &user)?;
+	dbg!();
 
 	//this tests the alarm syntax
-	build_operator_tree(&expression).map_err(|e| Error::from(e))?;
-	
+	build_operator_tree(&expression).map_err(|e| {
+		error!("could not build operator tree: {}", e);
+		Error::from(e)
+	})?;
+	dbg!();
 	let tz_offset = user.timezone_offset;
 	let notify = NotifyVia {email: None, telegram: Some(chat_id),};
 	let inv_expr = if counter_expr {
 		Some(get_inverse_expression(&expression, 0.05))
 	} else { None };
-
+	dbg!();
 	let alarm = Alarm {
 		expression,
 		inv_expr,
@@ -270,7 +311,7 @@ async fn add(chat_id: ChatId, token: &str, args: &str,
 		tz_offset,
 		notify,
 	};
-
+	dbg!();
 	let alarm_id = state.alarm_db.add(&alarm, user.id).map_err(|e| Error::from(e))?;
 	state.data_router_addr.send(AddAlarm {
 		alarm,
@@ -278,6 +319,7 @@ async fn add(chat_id: ChatId, token: &str, args: &str,
 		alarm_id,
 		sets: fields.keys().map(|id| *id).collect(),
 	}).await.unwrap().map_err(|_| Error::TooManyAlarms)?;
+	dbg!();
 	send_text_reply(chat_id, token, "alarm is set").await?;
 	Ok(())
 }
@@ -312,7 +354,8 @@ async fn list(chat_id: ChatId, token: &str, user: User, state: &DataRouterState)
 	for (counter, alarm) in entries {
 		list.push_str(&format!("{}\texpr: {}\n", 
 			counter, 
-			alarm.expression));
+			format_time_to_seconds(alarm.expression))
+		);
 			
 		if let Some(days) = alarm.weekday {
 			let valid_days: String = days.iter()
@@ -330,7 +373,8 @@ async fn list(chat_id: ChatId, token: &str, user: User, state: &DataRouterState)
 		}
 
 		if let Some(inv) = alarm.inv_expr {
-			list.push_str(&format!("reactivating if: {}\n", inv));
+			list.push_str(&format!("reactivating if: {}\n", 
+				format_time_to_seconds(inv)));
 		}
 	}
 	dbg!(&list);
@@ -436,5 +480,29 @@ mod tests {
 		let inverse = get_inverse_expression("5 != 1_2", 0.1);
 		let correct_inv = "5 == 1_2";
 		assert_eq!(inverse, correct_inv);
+	}
+
+	#[test]
+	fn test_rewrite_time() {
+		let tests = vec!(
+			"3_1 < 5.3 && t<09:34",
+			"3_1 < 5.3 && t < 09:34",
+			"3_1 < 5.3 && t< 23:00",
+			"3_1 < 5.3 && t< 10:05",
+			"3_1 < 5.3 && t< 01:09",
+			"3_1 < 5.3 && t< 19:51",
+			"3_1 < 5.3 && t< 10:03",
+		);
+
+		for test_expr in tests{
+			let rewritten = format_time_to_seconds(test_expr.to_owned());
+			let mut formatted = format_time_human_readable(rewritten);
+
+			let mut test_expr = test_expr.to_owned();
+			test_expr.retain(|c| c != ' ');
+			formatted.retain(|c| c != ' ');
+			
+			assert_eq!(test_expr, formatted);
+		}
 	}
 }

@@ -16,6 +16,47 @@ ssh-keygen
 copy its content from /home/dataserver/.ssh/id_rsa
 5. add host info to git
 set the github secret HOST to the ip or domain name that points to the server
+6. deploy files
+move splitter and server executable to new users home dir
+7. set startup service
+create a service for starting the splitter and one for starting the server 
+(in directory /etc/systemd/system (assuming debian based systemd))
+
+######example unit file for server:
+```
+[Unit]
+Description=Data server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/home/dataserver/
+ExecStart=/home/dataserver/server --external-port 443 --port 38973 --domain <domain> --token <token> --no-menu
+User=dataserver
+Group=dataserver
+
+[Install]
+WantedBy=multi-user.target
+```
+
+######example unit file for splitter:
+```
+[Unit]
+Description=Data splitter
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/home/dataserver/
+ExecStart=/home/dataserver/splitter
+User=dataserver
+Group=dataserver
+
+[Install]
+WantedBy=multi-user.target
+RequiredBy=data_server
+```
+___
 
 TODO:
 -systemd as non root

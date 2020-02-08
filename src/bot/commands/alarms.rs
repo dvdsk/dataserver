@@ -141,7 +141,7 @@ fn format_time_to_seconds(expression: String) -> String {
 
 /// replaces any occurence of t < numb (or larger or equal) 
 /// by the human readable format hh:mm since midnight
-fn format_time_human_readable(expression: String) -> String {
+pub fn format_time_human_readable(expression: String) -> String {
 	let time_re = Regex::new(r#"t\s?(<|>|>=|<=)\s?(\d+)"#).unwrap();
 	time_re.replacen(&expression, 0, |caps: &Captures| {
 			let equality = caps
@@ -354,7 +354,7 @@ async fn list(chat_id: ChatId, token: &str, user: User, state: &DataRouterState)
 	for (counter, alarm) in entries {
 		list.push_str(&format!("{}\texpr: {}\n", 
 			counter, 
-			format_time_to_seconds(alarm.expression))
+			format_time_human_readable(alarm.expression))
 		);
 			
 		if let Some(days) = alarm.weekday {
@@ -374,7 +374,7 @@ async fn list(chat_id: ChatId, token: &str, user: User, state: &DataRouterState)
 
 		if let Some(inv) = alarm.inv_expr {
 			list.push_str(&format!("reactivating if: {}\n", 
-				format_time_to_seconds(inv)));
+			format_time_human_readable(inv)));
 		}
 	}
 	dbg!(&list);

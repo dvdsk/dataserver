@@ -160,9 +160,9 @@ fn sound_alarm(notify: NotifyVia, message: Option<String>,
 		message.to_owned()
 	} else {
 		if inverted {
-			format!("alarm re-enabled: {}", expression)
+			format!("alarm re-enabled: {}", bot::alarms::format_time_human_readable(expression))
 		} else {
-			format!("alarm fired: {}", expression)
+			format!("alarm fired: {}", bot::alarms::format_time_human_readable(expression))
 		}
 	};
 

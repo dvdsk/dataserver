@@ -48,8 +48,7 @@ walkdir = "2.2.5"
 num = "0.2.0"
 threadpool = "1.7.1"
 
-#acme-client = "0.5.3" replaced with patched version that fixes openssl issues
-acme-client = { git = "https://github.com/janderholm/acme-client"}
+acme-lib = "0.6.0"
 
 webpki = "0.21"
 webpki-roots = "0.18.0"

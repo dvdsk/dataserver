@@ -19,7 +19,9 @@ use databases::{PasswordDatabase, UserDatabase, UserLookup, AlarmDatabase};
 use std::sync::atomic::{AtomicUsize};
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
+use log::error;
 use actix::prelude::*;
 use threadpool::ThreadPool;
 use structopt::StructOpt;
@@ -30,25 +32,34 @@ use structopt::StructOpt;
 struct Opt {
     #[structopt(short, long)]
 	create_new_certificate: bool,
+	
 	#[structopt(short, long)]
 	no_menu: bool,
 
+	/// Port for incomming trafic
 	#[cfg(feature = "stable")]
     #[structopt(short = "p", long = "port", default_value = "443")]
 	port: u16,
-	
+	 
 	#[cfg(not(feature = "stable"))]
     #[structopt(short = "p", long = "port", default_value = "8443")]
 	port: u16,
 
+	/// Advertise this port to clients. By default the port
+	/// for clients is the same as is listend on
 	#[structopt(short = "e", long = "external-port")]
 	external_port: Option<u16>,
 
     #[structopt(short = "t", long = "token")]
 	token: String,
 	
+	/// domain without used subdomain fox example "example.com". 
+	/// a variant with www attached will be added automatically
     #[structopt(short = "d", long = "domain")]
-    domain: String,
+	domain: String,
+	
+    #[structopt(short = "k", long = "key dir", default_value = "keys")]
+	key_dir: PathBuf,
 }
 
 #[actix_rt::main]
@@ -59,18 +70,17 @@ async fn main() {
 	if opt.create_new_certificate {
 		//generate_and_sign_keys
 		if let Err(error) = certificate_manager::generate_and_sign_keys(
-			&opt.domain, "keys/cert.key", "keys/cert.cert", "keys/user.key",
-		).await {
-			println!("could not auto generate certificate, error: {:?}", error)
+			&opt.domain, &opt.key_dir).await {
+			error!("could not auto generate certificate, error: {:?}", error)
 		}
 	}
 
 	error::setup_logging(1).expect("could not set up debugging");
 	let db = sled::Config::default() //651ms
-			.path("database")
-			.flush_every_ms(None) //do not flush to disk unless explicitly asked
-			.cache_capacity(1024 * 1024 * 32) //32 mb cache 
-			.open().unwrap();
+		.path("database")
+		.flush_every_ms(None) //do not flush to disk unless explicitly asked
+		.cache_capacity(1024 * 1024 * 32) //32 mb cache 
+		.open().unwrap();
 
 	//TODO can a tree be opened multiple times?
 	let passw_db = PasswordDatabase::from_db(&db).unwrap();
@@ -107,19 +117,18 @@ async fn main() {
 
 	//runs in its own thread
 	let web_handle = httpserver::start(
-        "keys/cert.key", 
-        "keys/cert.cert", 
-        "keys/intermediate.cert", 
 		data_router_state.clone(),
+		&opt.key_dir,
 		opt.port,
 		opt.domain.clone(),
-	);
+	).unwrap();
 
-	if let Some(port) = opt.external_port {
-    	bot::set_webhook(&opt.domain, &opt.token, port).await.unwrap();
+	let res = if let Some(port) = opt.external_port {
+    	bot::set_webhook(&opt.domain, &opt.token, port).await
 	} else {
-    	bot::set_webhook(&opt.domain, &opt.token, opt.port).await.unwrap();
-	}
+    	bot::set_webhook(&opt.domain, &opt.token, opt.port).await
+	};
+	if let Err(e) = res {error!("could not start telegram bot: {:?}", e);}
 
 	let menu_future = if !opt.no_menu {
 		Menu::gui(data, passw_db, user_db, alarm_db, db_lookup)

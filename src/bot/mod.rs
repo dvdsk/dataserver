@@ -273,7 +273,6 @@ pub fn send_text_reply_blocking<T: Into<String>>(chat_id: ChatId, token: &str, t
 pub async fn set_webhook(domain: &str, token: &str, port: u16) -> Result<(), Error> {
 	let url = format!("https://api.telegram.org/bot{}/setWebhook", token);
 	let webhook_url = format!("{}:{}/{}",domain, port, token);
-	dbg!(&webhook_url);
 
 	let params = [("url", &webhook_url)];
 	let client = reqwest::Client::new();

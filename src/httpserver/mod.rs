@@ -3,15 +3,17 @@ mod dynamic_pages;
 pub mod data_router_ws_client;
 mod error_router_ws_client;
 mod handlers;
-mod utility;
+pub mod utility;
 
 use std::thread;
 use std::sync::{mpsc};
+use std::path::Path;
 
 use actix_web::{HttpServer,App, web};
 use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_files as fs;
 
+use crate::error::DataserverError as Error;
 use crate::databases::User;
 use crate::data_store::{data_router::DataRouterState};
 
@@ -23,11 +25,11 @@ pub struct Session {
     //add more temporary user specific data as needed
 }
 
-pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
-             data_router_state: DataRouterState, port: u16, domain: String)
-     -> actix_web::dev::Server {
+pub fn start(data_router_state: DataRouterState, key_dir: &Path,
+    port: u16, domain: String)
+     -> Result<actix_web::dev::Server,Error> {
 
-   let tls_config = utility::make_tls_config(signed_cert, public_key, intermediate_cert);
+   let tls_config = utility::make_tls_config(&domain, key_dir)?;
    let cookie_key = utility::make_random_cookie_key();
    let token = data_router_state.bot_token.clone();
 
@@ -89,5 +91,5 @@ pub fn start(signed_cert: &str, public_key: &str, intermediate_cert: &str,
    }); //httpserver closure
 
    let web_handle = rx.recv().unwrap();
-   web_handle
+   Ok(web_handle)
 }

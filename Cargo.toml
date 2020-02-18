@@ -48,7 +48,7 @@ walkdir = "2.2.5"
 num = "0.2.0"
 threadpool = "1.7.1"
 
-acme-lib = "0.6.0"
+cert_tools = { git = "https://github.com/dskleingeld/cert_manager" }
 
 webpki = "0.21"
 webpki-roots = "0.18.0"

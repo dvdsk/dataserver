@@ -1,7 +1,5 @@
 //#[cfg(test)] //TODO: adapt tests and re-enable
 //mod test;
-
-mod certificate_manager;
 mod debug_middleware;
 mod error;
 mod bot;
@@ -21,6 +19,7 @@ use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use cert_manager;
 use log::error;
 use actix::prelude::*;
 use threadpool::ThreadPool;
@@ -58,7 +57,8 @@ struct Opt {
     #[structopt(short = "d", long = "domain")]
 	domain: String,
 	
-    #[structopt(short = "k", long = "key dir", default_value = "keys")]
+	/// directory to look in for certificate and pirvate key
+    #[structopt(short = "k", long = "keys", default_value = "keys")]
 	key_dir: PathBuf,
 }
 
@@ -69,8 +69,8 @@ async fn main() {
 	//only do if certs need update
 	if opt.create_new_certificate {
 		//generate_and_sign_keys
-		if let Err(error) = certificate_manager::generate_and_sign_keys(
-			&opt.domain, &opt.key_dir).await {
+		if let Err(error) = cert_manager::generate_and_sign_keys_guided(
+			"dataserver", &opt.domain, &opt.key_dir, true) {//TODO change to false
 			error!("could not auto generate certificate, error: {:?}", error)
 		}
 	}

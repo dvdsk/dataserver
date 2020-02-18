@@ -1,8 +1,8 @@
 use fern::colors::{Color, ColoredLevelConfig};
 use sled;
 use bincode;
+use cert_manager;
 use crate::databases;
-use crate::certificate_manager;
 use crate::httpserver::utility;
 
 #[derive(Debug)]
@@ -11,7 +11,7 @@ pub enum DataserverError {
     DatabaseLoadError(databases::LoadDbError),
     UserDatabaseError(databases::UserDbError),
 	SerializationError(bincode::Error),
-	CertGenerationError(certificate_manager::Error),
+	CertGenerationError(cert_manager::Error),
 	CertLoadError(utility::Error),
     //TelegramBotError(telegram_bot::Error)
 }
@@ -21,8 +21,8 @@ impl From<utility::Error> for DataserverError {
 		DataserverError::CertLoadError(error)
 	}
 }
-impl From<certificate_manager::Error> for DataserverError {
-	fn from(err: certificate_manager::Error) -> Self {
+impl From<cert_manager::Error> for DataserverError {
+	fn from(err: cert_manager::Error) -> Self {
 		DataserverError::CertGenerationError(err)
 	}
 }

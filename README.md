@@ -15,7 +15,7 @@ ssh-keygen
 move server executable to new users home dir
 5. set startup service
 create a service for starting the server and enable it, see the example below:
-(in directory `/etc/systemd/system` (assuming debian based systemd))
+(in directory `/etc/systemd/system` (assuming debian based systemd)). Note the keys argument in the example is the path that should be used it certmanager is configured which is optional (see below).
 
 ###### example unit file for server:
 ```
@@ -26,7 +26,14 @@ Wants=network-online.target
 
 [Service]
 WorkingDirectory=/home/dataserver/
-ExecStart=/home/dataserver/server --external-port 443 --port 38973 --domain <domain> --token <token> --no-menu
+ExecStart=/home/dataserver/server \
+        --external-port 443 \
+        --port 38973 \
+        --domain <domain> \
+        --token <token> \
+        --keys /home/certmanager/keys
+        --no-menu
+ExecStop=/bin/kill -s SIGKILL $MAINPID
 User=dataserver
 Group=dataserver
 
@@ -52,7 +59,10 @@ Wants=network-online.target
 
 [Service]
 WorkingDirectory=/home/dataserver/
-ExecStart=/home/dataserver/splitter
+ExecStart=/home/dataserver/splitter \
+        --domain "deviousd.duckdns.org" \
+        --keys "/home/certmanager/keys"
+ExecStop=/bin/kill -s SIGKILL $MAINPID
 User=dataserver
 Group=dataserver
 
@@ -80,7 +90,7 @@ create a group called cert
 change the group of the keys dir to cert
 `sudo chown certmanager:cert keys` 
 allow read access for the cert group
-`sudo chmod 740 keys` 
+`sudo chmod 750 keys` 
 set the setgid bit on the keys dir so files in keys get the right permissions
 `sudo chmod g+s keys`
 7. add servers to group cert
@@ -107,7 +117,7 @@ Wants=network-online.target
 [Service]
 WorkingDirectory=/home/certmanager/
 ExecStart=/home/certmanager/updater --log warn --port 38313
-KillSignal=SIGILL
+ExecStop=/bin/kill -s SIGKILL $MAINPID
 User=certmanager
 Group=certmanager
 

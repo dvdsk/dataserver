@@ -144,11 +144,9 @@ fn decode_into_array(reader: &mut ReaderInfo, shared_x: &mut Vec<i64>, y_datas: 
 			for (field, decoded_field) in read_state.fields.iter().zip(&mut decoded_field_sums) {
 				let decoded: f32 = field.decode::<f32>(&line);
 				*decoded_field += decoded;
-				dbg!(decoded);
 			}
 		}
 		for (decoded_sum,y) in decoded_field_sums.drain(..).zip(y_datas.iter_mut()){
-			dbg!(decoded_sum);
 			y.push(decoded_sum/lines_per_sample as f32);
 		}
 	}//for every sample

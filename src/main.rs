@@ -35,6 +35,9 @@ struct Opt {
 	#[structopt(short, long)]
 	no_menu: bool,
 
+	#[structopt(short, long)]
+	service: bool,
+
 	/// Port for incomming trafic
 	#[cfg(feature = "stable")]
     #[structopt(short = "p", long = "port", default_value = "443")]
@@ -64,6 +67,7 @@ struct Opt {
 
 #[actix_rt::main]
 async fn main() {
+	
 	let opt = Opt::from_args();
 	
 	//only do if certs need update
@@ -130,12 +134,16 @@ async fn main() {
 	};
 	if let Err(e) = res {error!("could not start telegram bot: {:?}", e);}
 
-	let menu_future = if !opt.no_menu {
-		Menu::gui(data, passw_db, user_db, alarm_db, db_lookup)
+	if opt.service {
+		loop {} //TODO replace with something nice
 	} else {
-		Menu::simple()
-	};
+		let menu_future = if !opt.no_menu {
+			Menu::gui(data, passw_db, user_db, alarm_db, db_lookup)
+		} else {
+			Menu::simple()
+		};
+		menu_future.await;
+	}
 
-	menu_future.await;
 	web_handle.stop(false).await;
 }

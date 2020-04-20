@@ -102,6 +102,7 @@ pub async fn add_button(chat_id: ChatId, state: &DataRouterState, token: &str,
 	}
 
 	//add buttons to the end of the keyboard
+	if keyboard.len() > 0 { keyboard.push(Vec::new()); }
 	let mut row = keyboard.last_mut().unwrap();
 	for button in to_add {
 		if row.len() == MAX_COLUMN {

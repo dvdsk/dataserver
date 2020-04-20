@@ -138,7 +138,7 @@ pub async fn remove_button(chat_id: ChatId, state: &DataRouterState, token: &str
 	let keyboard: Keyboard = keyboard
 		.into_iter()
 		.flatten()
-		.filter(|button| to_remove.contains(button))
+		.filter(|button| !to_remove.contains(button))
 		.chunks(MAX_COLUMN)
 			.into_iter()
 			.map(|chunk| chunk.collect())

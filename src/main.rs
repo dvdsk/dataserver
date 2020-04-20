@@ -18,6 +18,8 @@ use std::sync::atomic::{AtomicUsize};
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::thread;
+use std::time::Duration;
 
 use cert_manager;
 use log::error;
@@ -135,7 +137,9 @@ async fn main() {
 	if let Err(e) = res {error!("could not start telegram bot: {:?}", e);}
 
 	if opt.service {
-		loop {} //TODO replace with something nice
+		loop {
+			thread::sleep(Duration::from_secs(60*60*24));
+		} //TODO replace with something nice
 	} else {
 		let menu_future = if !opt.no_menu {
 			Menu::gui(data, passw_db, user_db, alarm_db, db_lookup)

@@ -114,7 +114,7 @@ pub async fn list_data(id: Identity, state: Data<DataRouterState>) -> impl Respo
 }	
 
 struct PlotInfo {
-	set_id: u16,
+	set_id: usize,
 	field_id: usize,
 	name: String,
 }
@@ -146,7 +146,7 @@ pub async fn plot_data(id: Identity, state: Data<DataRouterState>) -> impl Respo
 		for field_id in authorized_fields{
 			let id = *field_id.as_ref() as usize;
 			infos.push(PlotInfo { 
-				set_id: *dataset_id,
+				set_id: *dataset_id as usize,
 				field_id: id,
 				name: metadata.fields[id].name.clone(),
 			});

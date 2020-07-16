@@ -28,50 +28,6 @@ pub fn index() -> HttpResponse {
 		.body(index_page)
 }
 
-pub fn plot_data(id: Identity, state: Data<DataRouterState>) -> HttpResponse {
-	let session_id = id.identity().unwrap().parse::<data_store::DatasetId>().unwrap();
-	let sessions = state.sessions.read().unwrap();
-	let session = sessions.get(&session_id).unwrap();
-
-	let before_form =include_str!("static_webpages/plot_A.html");
-	let after_form = include_str!("static_webpages/plot_B.html");
-
-	let mut page = String::from(before_form);
-	let data = state.data.read().unwrap();
-	for (dataset_id, authorized_fields) in session.lock().unwrap().db_entry.timeseries_with_access.iter() {
-		let metadata = &data.sets.get(&dataset_id).expect("user has access to a database that does no longer exist").metadata;
-		for field_id in authorized_fields{
-			let id = *field_id.as_ref() as usize;
-			page.push_str(&format!("<input type=\"checkbox\" value={},{} > {}<br>\n", dataset_id, id, metadata.fields[id].name));
-		}
-	}
-	page.push_str(after_form);
-	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
-}
-
-/*
-fn plot_data_debugD(id: Identity, state: Data<DataRouterState>, req: &HttpRequest) -> HttpResponse {
-	let session_id = id.identity().unwrap().parse::<data_store::DatasetId>().unwrap();
-	let sessions = state.sessions.read().unwrap();
-	let session = sessions.get(&session_id).unwrap();
-
-	let before_form =include_str!("static_webpages/plot_A_debug.html");
-	let after_form = include_str!("static_webpages/plot_B.html");
-
-	let mut page = String::from(before_form);
-	let data = state.data.read().unwrap();
-	for (dataset_id, authorized_fields) in session.timeseries_with_access.read().unwrap().iter() {
-		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
-		for field_id in authorized_fields{
-			let id = *field_id.as_ref() as usize;
-			page.push_str(&format!("<input type=\"checkbox\" value={},{} > {}<br>\n", dataset_id, id, metadata.fields[id].name));
-		}
-	}
-	page.push_str(after_form);
-	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(page)
-}
-*/
-
 pub fn logout(id: Identity) -> HttpResponse {
 	id.forget();
 	HttpResponse::Found().finish()

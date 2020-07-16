@@ -47,7 +47,7 @@ pub async fn settings_page(_id: Identity, _state: Data<DataRouterState>) -> impl
 }
 
 #[derive(Default)]
-struct SetInfo {
+struct ListSetInfo {
 	name: String,
 	last_updated: String,
 	field_names: Vec<String>,
@@ -55,12 +55,12 @@ struct SetInfo {
 	owner: Vec<&'static str>,
 }
 
-impl SetInfo {
+impl ListSetInfo {
 	fn from_name_and_last_update(name: &str, updated: String) -> Self {
-		SetInfo {
+		ListSetInfo {
 			name: name.to_owned(),
 			last_updated: updated,
-			..SetInfo::default()
+			..ListSetInfo::default()
 		}
 	}
 }
@@ -68,7 +68,7 @@ impl SetInfo {
 #[derive(Template)]
 #[template(path = "list_data.hbs")]
 struct ListPage {
-    datasets: Vec<SetInfo>,
+    datasets: Vec<ListSetInfo>,
 }
 
 pub async fn list_data(id: Identity, state: Data<DataRouterState>) -> impl Responder {
@@ -91,7 +91,7 @@ pub async fn list_data(id: Identity, state: Data<DataRouterState>) -> impl Respo
 		};
 		
 		let fields = &set.metadata.fields;
-		let mut info = SetInfo::from_name_and_last_update(&set.metadata.name, time_since);
+		let mut info = ListSetInfo::from_name_and_last_update(&set.metadata.name, time_since);
 		
 		for field in authorized_fields{
 			let id = match field {
@@ -113,57 +113,52 @@ pub async fn list_data(id: Identity, state: Data<DataRouterState>) -> impl Respo
 	}
 }	
 
-/*
+struct PlotInfo {
+	set_id: u16,
+	field_id: usize,
+	name: String,
+}
+
+struct PlotSetsInfo {
+	dataset_name: String,
+	infos: Vec<PlotInfo>,
+}
+
 #[derive(Template)]
-#[template(path = "list_data.hbs")]
-struct ListPage {
-    rows: String,
+#[template(path = "plot.hbs")]
+struct PlotPage {
+    datasets: Vec<PlotSetsInfo>,
 }
 
-pub async fn list_data(id: Identity, state: Data<DataRouterState>) -> impl Responder {
+
+pub async fn plot_data(id: Identity, state: Data<DataRouterState>) -> impl Responder {
+
 	let session_id = id.identity().unwrap().parse::<data_store::DatasetId>().unwrap();
 	let sessions = state.sessions.read().unwrap();
 	let session = sessions.get(&session_id).unwrap();
 
-	let data = state.data.read().unwrap();
-	let mut table_html = String::new();
-	for (dataset_id, authorized_fields) in session.lock().unwrap().db_entry.timeseries_with_access.iter() {
-		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
-		table_html.push_str(&format!("<th>{}</th>", &metadata.name)); //start table entry
 
-		for field in authorized_fields{
-			match field{
-				Authorisation::Owner(id) => table_html.push_str(&format!("<th>yes</th> <th>{}</th>", metadata.fields[*id as usize].name)),
-				Authorisation::Reader(id) => table_html.push_str(&format!("<th>no</th> <th>{}</th>", metadata.fields[*id as usize].name)),
-			};
+	let mut all_info = Vec::new();
+	let data = state.data.read().unwrap();
+	for (dataset_id, authorized_fields) in session.lock().unwrap().db_entry.timeseries_with_access.iter() {
+		let mut infos = Vec::new();
+		let metadata = &data.sets.get(&dataset_id).expect("user has access to a database that does no longer exist").metadata;
+		for field_id in authorized_fields{
+			let id = *field_id.as_ref() as usize;
+			infos.push(PlotInfo { 
+				set_id: *dataset_id,
+				field_id: id,
+				name: metadata.fields[id].name.clone(),
+			});
 		}
+
+		all_info.push(PlotSetsInfo {
+			dataset_name: metadata.name.clone(),
+			infos,
+		});
 	}
-	ListPage {
-		rows: table_html,
+
+	PlotPage {
+		datasets: all_info
 	}
 }
-
-//TODO rewrite using template
-pub fn list_data_old(id: Identity, state: Data<DataRouterState>) -> HttpResponse {
-	let mut accessible_fields = String::from("<html><body><table>");
-	
-	let session_id = id.identity().unwrap().parse::<data_store::DatasetId>().unwrap();
-	let sessions = state.sessions.read().unwrap();
-	let session = sessions.get(&session_id).unwrap();
-
-	let data = state.data.read().unwrap();
-	for (dataset_id, authorized_fields) in session.lock().unwrap().db_entry.timeseries_with_access.iter() {
-		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
-		let mut dataset_fields = format!("<th>{}</th>", &metadata.name);
-		
-		for field in authorized_fields{
-			match field{
-				Authorisation::Owner(id) => dataset_fields.push_str(&format!("<td><p><i>{}</i></p></td>", metadata.fields[*id as usize].name)),
-				Authorisation::Reader(id) => dataset_fields.push_str(&format!("<td>{}</td>",metadata.fields[*id as usize].name)),
-			};
-		}
-		accessible_fields.push_str(&format!("<tr>{}</tr>",&dataset_fields));
-	}
-	accessible_fields.push_str("</table></body></html>");
-	HttpResponse::Ok().header(http::header::CONTENT_TYPE, "text/html; charset=utf-8").body(accessible_fields)
-}*/

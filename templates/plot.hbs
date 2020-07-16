@@ -1,0 +1,40 @@
+ <!DOCTYPE html>
+<html>
+
+<head>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="plot.js"></script>
+</head>
+
+
+<meta charset="utf-8" />
+<title>WebSocket Test</title>
+
+<body>
+
+  <p>What would you like to plot?</p>
+
+  <form name ="what to plot?">
+    {{#each datasets}}
+      {{dataset_name}} <br>
+      {{#each infos}}
+        <input type="radio" id={{index}} name ="plotable" value={{set_id}}, {{field_id}}> 
+        <label for={{index}}> {{name}} </label><br>
+      {{~/each}}
+    {{~/each}}
+  <br>
+  <input type="button" onclick="init()" value="create plot">
+  </form>
+
+<input type="time" id="start-time"  name="start" value="00:00:00">
+<input type="date" id="start-date" name="start" value="2018-07-22">
+
+<input type="time" id="stop-time"  name="stop">
+<input type="date" id="stop-date" name="stop">
+
+<h2>WebSocket Test</h2>
+<div id="plot"></div>
+<div id="output"></div>
+
+</body>
+</html>

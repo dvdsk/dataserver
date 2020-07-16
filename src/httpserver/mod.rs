@@ -54,10 +54,15 @@ pub fn start(data_router_state: DataRouterState, key_dir: &Path,
                //.wrap(debug_middleware::SayHi) //prints all requested URLs
                .service(
                    web::scope("/login")
-                       .service(web::resource(r"/{path}")
+                       .service(web::resource(r"{path}")
                            .route(web::post().to(handlers::login_get_and_check))
                            .route(web::get().to(handlers::login_page))
-               ))
+                        )
+                       .service(web::resource("/")
+                           .route(web::post().to(handlers::login_get_and_check))
+                           .route(web::get().to(handlers::login_page))
+                        )
+               )
                .service(web::resource("/post_data").to(handlers::new_data_post))
                .service(web::resource("/post_error").to(handlers::new_error_post))
                .service(web::resource(&format!("/{}", &token)).to(bot::handle_webhook))

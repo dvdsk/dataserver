@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+table {
+  font-family: arial, sans-serif;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+td, th {
+  border: 1px solid #dddddd;
+  text-align: left;
+  padding: 8px;
+}
+
+tr:nth-child(even) {
+  background-color: #dddddd;
+}
+</style>
+</head>
+<body>
+
+{{#each datasets}}
+last updated: {{last_updated}}
+<h2>{{name}}</h2>
+<table border="1">
+  <tr>
+  <th>Field Name</th>
+	{{#each field_names}}
+    <td>{{this}}</td>
+  {{~/each}}
+  </tr>
+  <tr>
+  <th>last value</th>
+	{{#each values}}
+    <td>{{this}}</td>
+  {{~/each}}
+  </tr>
+  <tr>
+  <th>owner</th>
+	{{#each owner}}
+    <td>{{this}}</td>
+  {{~/each}}
+  </tr>
+</table>
+{{~/each}}
+
+</body>
+</html>

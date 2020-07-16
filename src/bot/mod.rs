@@ -13,7 +13,7 @@ use telegram_bot::types::refs::{ChatId, UserId};
 use crate::data_store::data_router::DataRouterState;
 use crate::databases::{User, UserDbError};
 
-mod commands;
+pub mod commands;
 pub use commands::alarms;
 use commands::{help, plotables, show, alias, keyboard};
 #[cfg(feature = "plotting")]

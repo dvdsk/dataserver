@@ -146,8 +146,12 @@ pub async fn remove_button(chat_id: ChatId, state: &DataRouterState, token: &str
 		.collect();
 
 	//store new keyboard
-    let keyboard_json = serde_json::to_string(&keyboard).unwrap();
-	user.keyboard = Some(keyboard_json);
+	if keyboard.len() > 0 {
+	let keyboard_json = serde_json::to_string(&keyboard).unwrap();
+		user.keyboard = Some(keyboard_json);
+	} else {
+		user.keyboard = None;
+	}
 
 	state.user_db
 		.set_user(user.clone()).await

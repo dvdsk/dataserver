@@ -119,7 +119,7 @@ pub async fn send(chat_id: ChatId, state: &DataRouterState, token: &str,
     Ok(())
 }
 
-fn format_to_duration(time: DateTime<Utc>) -> String {
+pub fn format_to_duration(time: DateTime<Utc>) -> String {
     
     let now = Utc::now();
     let duration = now.signed_duration_since(time);

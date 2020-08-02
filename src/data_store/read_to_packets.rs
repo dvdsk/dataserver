@@ -21,7 +21,7 @@ impl DataSet {
 			BoundResult::Ok((start_byte, stop_byte, decode_params)) => {
 				if stop_byte-start_byte == 0 {return None; }
 
-				let fields: Vec<Field<f32>> = requested_fields.into_iter()
+				let fields: Vec<MetaField<f32>> = requested_fields.into_iter()
 				.map(|id| self.metadata.fields[*id as usize].clone() ).collect();
 
 				let numb_lines = (stop_byte-start_byte)/(self.timeseries.full_line_size as u64) - 1;

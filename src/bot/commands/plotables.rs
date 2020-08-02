@@ -2,7 +2,8 @@ use crate::databases::User;
 use crate::bot::{Error, send_text_reply};
 use telegram_bot::types::refs::ChatId;
 
-use crate::data_store::{data_router::DataRouterState, FieldId};
+use bitspec::FieldId;
+use crate::data_store::{data_router::DataRouterState};
 
 pub const USAGE: &str = "/plotables";
 pub const DESCRIPTION: &str = "shows all possible data input for the plot function";

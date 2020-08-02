@@ -17,8 +17,9 @@ use chrono::prelude::*;
 use minimal_timeseries::{Timeseries, BoundResult, DecodeParams};
 use std::collections::HashMap;
 use crate::httpserver::data_router_ws_client::SetSliceDecodeInfo;
+use bitspec::{MetaField, FieldId, MetaData, MetaDataSpec};
 
-pub mod specifications;
+//pub mod specifications;
 pub mod compression;
 pub mod read_to_array;
 pub mod read_to_packets;
@@ -26,85 +27,6 @@ pub mod data_router;
 pub mod error_router;
 
 use std::f64;
-trait FloatIterExt {
-	  fn float_min(&mut self) -> f64;
-	  fn float_max(&mut self) -> f64;
-}
-
-impl<T> FloatIterExt for T where T: Iterator<Item=f64> {
-	  fn float_max(&mut self) -> f64 {
-	      self.fold(f64::NAN, f64::max)
-	  }
-	  fn float_min(&mut self) -> f64 {
-	     self.fold(f64::NAN, f64::min)
-	  }
-}
-
-pub type FieldId = u8;
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub struct Field<T> {
-	pub id: FieldId,//check if we can remove this
-	pub name: String,
-	
-	pub offset: u8, //bits
-	pub length: u8, //bits (max 32 bit variables)
-	
-	pub decode_scale: T,
-	pub decode_add: T,
-}
-
-//TODO do away with generics in favor for speeeeed
-impl<T> Field<T>
-where T: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::ops::MulAssign+std::marker::Copy {
-	pub fn decode<D>(&self, line: &[u8]) -> D
-	where D: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::MulAssign+std::ops::AddAssign{
-	//where D: From<T>+From<u32>+From<u16>+std::ops::Add+std::ops::SubAssign+std::ops::DivAssign+std::ops::AddAssign{
-		let int_repr: u32 = compression::decode(line, self.offset, self.length);
-		//println!("int regr: {}", int_repr);
-		let mut decoded: D = num::cast(int_repr).unwrap();
-		
-		//println!("add: {}", self.decode_add);
-		//println!("scale: {}", self.decode_scale);
-
-		decoded *= num::cast(self.decode_scale).unwrap();//FIXME flip decode scale / and *
-		decoded += num::cast(self.decode_add).unwrap();
-	
-		decoded
-	}
-	#[allow(dead_code)]
-	pub fn encode<D>(&self, mut numb: T, line: &mut [u8])
-	where D: num::cast::NumCast+std::fmt::Display+std::ops::Add+std::ops::SubAssign+std::ops::AddAssign+std::ops::DivAssign{
-
-		//println!("org: {}",numb);
-		numb -= num::cast(self.decode_add).unwrap();
-		numb /= num::cast(self.decode_scale).unwrap();
-		//println!("scale: {}, add: {}, numb: {}", self.decode_scale, self.decode_add, numb);
-
-		let to_encode: u32 = num::cast(numb).unwrap();
-
-		compression::encode(to_encode, line, self.offset, self.length);
-	}
-}
-
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub struct MetaData {
-	pub name: String,
-	pub description: String,
-	pub key: u64,
-	pub fields: Vec<Field<f32>>,//must be sorted lowest id to highest
-}
-
-#[inline] fn devide_up(t: u16, n: u16) -> u16 {
-	(t + (n-1))/n
-}
-
-impl MetaData {
-	pub fn fieldsum(&self) -> u16 {
-		let field = self.fields.last().unwrap();
-		let bits = field.offset as u16 + field.length as u16;
-		devide_up(bits, 8)
-	}
-}
 
 pub type DatasetId = u16;
 pub struct DataSet {
@@ -114,7 +36,7 @@ pub struct DataSet {
 
 #[derive(Debug)]
 pub struct ReadState {
-	fields: Vec<Field<f32>>,
+	fields: Vec<MetaField<f32>>,
 	start_byte: u64,
 	stop_byte: u64,
 	decode_params: DecodeParams,
@@ -123,7 +45,6 @@ pub struct ReadState {
 }
 
 impl DataSet {
-
 	pub fn get_decode_info(&self, allowed_fields: &Vec<FieldId>) -> SetSliceDecodeInfo {
 		let mut offset_in_dataset = SmallVec::<[u8; 8]>::new();
 		let mut lengths = SmallVec::<[u8; 8]>::new();
@@ -308,7 +229,7 @@ impl Data {
 	pub fn add_set<T: AsRef<Path>>(&mut self, spec_path: T) -> io::Result<DatasetId>{	
 
 		let f = fs::OpenOptions::new().read(true).write(false).create(false).open(spec_path)?;
-		if let Ok(metadata) = serde_yaml::from_reader::<File, specifications::MetaDataSpec>(f) {
+		if let Ok(metadata) = serde_yaml::from_reader::<File, MetaDataSpec>(f) {
 			let metadata: MetaData = metadata.into();
 			let line_size: u16 = metadata.fieldsum();
 			let dataset_id = self.free_dataset_id;
@@ -331,28 +252,6 @@ impl Data {
 			warn!("could not parse specification");
 			Err(io::Error::new(io::ErrorKind::InvalidData, "could not parse specification"))
 		}
-	}
-
-	pub fn add_specific_set(&mut self, spec: specifications::MetaDataSpec) -> io::Result<DatasetId>{
-		let metadata: MetaData = spec.into();
-		let name = metadata.name.clone();
-		let line_size: u16 = metadata.fieldsum();
-		let dataset_id = self.free_dataset_id;
-		self.free_dataset_id += 1;
-		let mut datafile_path = self.dir.clone();
-		datafile_path.push(dataset_id.to_string());
-
-		let set = DataSet {
-			timeseries: Timeseries::open(&datafile_path, line_size as usize)?,
-			metadata: metadata,
-		};
-		datafile_path.set_extension("yaml");
-		let f = fs::File::create(datafile_path).unwrap();
-		serde_yaml::to_writer(f, &set.metadata).unwrap();
-
-		self.sets.insert(dataset_id, set);
-		info!("added timeseries: {} under id: {}",name, dataset_id);
-		Ok(dataset_id)
 	}
 }
 

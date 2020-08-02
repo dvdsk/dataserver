@@ -10,16 +10,15 @@ use futures::executor::block_on;
 
 use crate::databases::{UserDatabase};
 use crate::data_store::{Data, DatasetId};
-use crate::data_store;
 
 pub fn add_set(data: &Arc<RwLock<Data>>) {
     
 	if !Path::new("specs/template.yaml").exists() {
-		data_store::specifications::write_template().unwrap();
+		bitspec::write_template().unwrap();
 	}
-	if !Path::new("specs/template_for_test.yaml").exists() {
-		data_store::specifications::write_template_for_test().unwrap();
-	}
+	/*if !Path::new("specs/template_for_test.yaml").exists() {
+		bitspec::write_template_for_test().unwrap();
+	}*/
 
     let file_name = loop {
         let mut paths: Vec<String> = fs::read_dir("specs").unwrap()
@@ -121,7 +120,7 @@ fn modify_set(set_id: DatasetId, user_db: &mut UserDatabase,
 
 
 
-fn export(set_id: DatasetId, data: &Arc<RwLock<Data>>){
+fn export(_set_id: DatasetId, _data: &Arc<RwLock<Data>>){
     //let (x_shared, y_datas) = read_into_arrays(data, reader_info);
     unimplemented!();
 }

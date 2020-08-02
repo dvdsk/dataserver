@@ -8,7 +8,8 @@ use futures::{executor::block_on, future};
 
 use crate::databases::{PasswordDatabase, UserDatabase, User, 
     UserLookup, AlarmDatabase, Access};
-use crate::data_store::{Data, Authorisation, DatasetId, FieldId, MetaData};
+use crate::data_store::{Data, Authorisation, DatasetId};
+use bitspec::{FieldId, MetaData};
 use crate::error::DataserverError as Error;
 
 pub fn menu(mut user_db: &mut UserDatabase, lookup: &UserLookup,

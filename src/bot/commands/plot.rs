@@ -5,8 +5,9 @@ use plotters::style::colors::{WHITE, BLACK, RED};
 use image::{png::PNGEncoder, RGB};
 use log::{warn, error};
 
+use bitspec::FieldId;
 use crate::data_store::Data;
-use crate::data_store::{DatasetId, FieldId};
+use crate::data_store::DatasetId;
 use crate::databases::{User, UserDbError};
 use crate::data_store::data_router::DataRouterState;
 use crate::data_store::read_to_array::{prepare_read_processing, read_into_arrays};

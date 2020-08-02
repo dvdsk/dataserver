@@ -46,7 +46,8 @@ use telegram_bot::types::refs::UserId as TelegramUserId;
 use crate::databases::{User, AlarmDbError};
 use crate::data_store::data_router::{DataRouterState, Alarm, NotifyVia};
 use crate::data_store::data_router::{AddAlarm, RemoveAlarm};
-use crate::data_store::{DatasetId, FieldId};
+use crate::data_store::{DatasetId};
+use bitspec::FieldId;
 
 use super::super::send_text_reply;
 use super::super::Error as botError;

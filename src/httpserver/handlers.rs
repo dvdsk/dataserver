@@ -17,7 +17,6 @@ use std::collections::HashMap;
 use chrono::{Utc};
 
 use crate::data_store::{data_router, data_router::DataRouterState, error_router};
-use crate::data_store;
 
 use super::{Session, data_router_ws_client, error_router_ws_client};
 
@@ -92,17 +91,18 @@ pub async fn login_get_and_check(
 
 #[derive(Deserialize)]
 pub struct TelegramId {
-	id: String,
+	_id: String,
 }
 
 pub async fn set_telegram_id_post(
-		id: Identity,
-		state: Data<DataRouterState>,
-		params: Form<TelegramId>) -> wResult<HttpResponse> {
+		_id: Identity,
+		_state: Data<DataRouterState>,
+		_params: Form<TelegramId>) -> wResult<HttpResponse> {
 	
 	//needs reimplementation, look at implementation in menu
-	
-	Ok(HttpResponse::Ok().finish())
+	unimplemented!();
+
+	//Ok(HttpResponse::Ok().finish())
 }
 
 pub fn new_data_post(state: Data<DataRouterState>, body: Bytes)

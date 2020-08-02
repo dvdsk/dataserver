@@ -18,6 +18,7 @@ use bytes::Bytes;
 
 use crate::data_store;
 use crate::data_store::data_router;
+use bitspec::FieldId;
 use super::Session;
 
 use data_store::read_to_packets::{ReaderInfo, prepare_read_processing, read_into_packages};
@@ -45,7 +46,7 @@ pub struct WsSession {
 	pub compression_enabled: bool,
 	pub timerange: TimesRange,
 
-	pub selected_data: HashMap<data_store::DatasetId, Vec<data_store::FieldId>>,
+	pub selected_data: HashMap<data_store::DatasetId, Vec<FieldId>>,
 	pub session: Arc<Mutex<Session>>,
 	pub file_io_thread: Option<(thread::JoinHandle<()>, mpsc::Receiver<Vec<u8>>)>,
 	
@@ -64,7 +65,7 @@ struct Trace {
 
 #[derive(Serialize, Deserialize, Default)]
 struct DataSetClientMeta {
-	field_ids: Vec<data_store::FieldId>,
+	field_ids: Vec<FieldId>,
     traces_meta: Vec<Trace>,
     n_lines: u64,
     dataset_id: data_store::DatasetId,
@@ -133,8 +134,8 @@ impl WsSession {
 				//parse requested fields
 				if let Ok(field_ids) = args[4..]
 					.iter()
-					.map(|arg| arg.parse::<data_store::FieldId>())
-					.collect::<Result<Vec<data_store::FieldId>,std::num::ParseIntError>>(){
+					.map(|arg| arg.parse::<FieldId>())
+					.collect::<Result<Vec<FieldId>,std::num::ParseIntError>>(){
 					
 					let mut subbed_fields = Vec::with_capacity(field_ids.len());
 					for field_id in field_ids { 

@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::DatasetId;
 use super::error_router;
-use super::{Data, Field};
+use super::{Data, MetaField};
 
 use crate::httpserver::Session;
 use crate::databases::{PasswordDatabase, UserDatabase, 
@@ -45,7 +45,7 @@ type ClientSessionId = u16;
 pub struct DataRouter {
 	sessions: HashMap<ClientSessionId, Clientinfo>,
 	subs: HashMap<DatasetId, HashSet<ClientSessionId>>,
-	meta: HashMap<DatasetId, Vec<Field<f32>>>,
+	meta: HashMap<DatasetId, Vec<MetaField<f32>>>,
 	alarms_by_set: HashMap<DatasetId, HashMap<(UserId,AlarmId), CompiledAlarm>>,
 	alarm_context: HashMapContext,
 	async_pool: ThreadPool,

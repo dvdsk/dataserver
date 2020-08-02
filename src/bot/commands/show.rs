@@ -6,7 +6,8 @@ use chrono::{DateTime, Utc};
 
 use telegram_bot::types::refs::{ChatId, UserId};
 
-use crate::data_store::{DatasetId, FieldId};
+use bitspec::FieldId;
+use crate::data_store::DatasetId;
 use crate::databases::{User, UserDbError};
 use crate::data_store::data_router::DataRouterState;
 

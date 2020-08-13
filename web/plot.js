@@ -106,7 +106,7 @@ function onOpen(evt){
   }
 
   websocket.onmessage = function(evt) { gotMeta(evt) };
-  doSend("/meta 1000"); //1000 is max numb of lines, paramater is optional
+  doSend("/meta 100000"); //1000 is max numb of lines, paramater is optional
 }
 
 function gotMeta(evt){

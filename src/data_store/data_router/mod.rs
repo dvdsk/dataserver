@@ -1,26 +1,25 @@
-use std::sync::{Arc, RwLock, Mutex};
-use std::sync::atomic::{AtomicUsize};
+use std::sync::atomic::AtomicUsize;
+use std::sync::{Arc, Mutex, RwLock};
 
-use chrono::Utc;
-use log::{debug, trace};
 use actix::prelude::*;
+use chrono::Utc;
+use evalexpr::{Context as evalContext, HashMapContext};
+use log::{debug, trace};
 use threadpool::ThreadPool;
-use evalexpr::{HashMapContext, Context as evalContext};
 
 use std::collections::{HashMap, HashSet};
 
-use super::DatasetId;
 use super::error_router;
+use super::DatasetId;
 use super::{Data, MetaField};
 
+use crate::databases::{
+	AlarmDatabase, AlarmId, PasswordDatabase, UserDatabase, UserId, UserLookup,
+};
 use crate::httpserver::Session;
-use crate::databases::{PasswordDatabase, UserDatabase, 
-	UserLookup, 
-	AlarmDatabase,
-	UserId, AlarmId};
 
 mod alarms;
-pub use alarms::{Alarm, CompiledAlarm, NotifyVia, AddAlarm, RemoveAlarm};
+pub use alarms::{AddAlarm, Alarm, CompiledAlarm, NotifyVia, RemoveAlarm};
 
 #[derive(Clone)]
 pub struct DataRouterState {
@@ -36,7 +35,7 @@ pub struct DataRouterState {
 
 	pub data: Arc<RwLock<Data>>,
 
-	pub sessions: Arc<RwLock<HashMap<u16, Arc<Mutex<Session>> >>> ,
+	pub sessions: Arc<RwLock<HashMap<u16, Arc<Mutex<Session>>>>>,
 	pub free_session_ids: Arc<AtomicUsize>,
 	pub free_ws_session_ids: Arc<AtomicUsize>,
 }
@@ -46,7 +45,7 @@ pub struct DataRouter {
 	sessions: HashMap<ClientSessionId, Clientinfo>,
 	subs: HashMap<DatasetId, HashSet<ClientSessionId>>,
 	meta: HashMap<DatasetId, Vec<MetaField<f32>>>,
-	alarms_by_set: HashMap<DatasetId, HashMap<(UserId,AlarmId), CompiledAlarm>>,
+	alarms_by_set: HashMap<DatasetId, HashMap<(UserId, AlarmId), CompiledAlarm>>,
 	alarm_context: HashMapContext,
 	async_pool: ThreadPool,
 	bot_token: String,
@@ -57,26 +56,30 @@ impl DataRouter {
 		let fields = self.meta.get(set_id).unwrap();
 		for field in fields {
 			let value: f64 = field.decode(&line);
-			let name = format!("{}_{}",set_id,field.id);
-			self.alarm_context.set_value(name.into(),value.into()).unwrap();
+			let name = format!("{}_{}", set_id, field.id);
+			self.alarm_context
+				.set_value(name.into(), value.into())
+				.unwrap();
 		}
 	}
 
 	//TODO get full alarm Id from iter method
 	//finish insertion
-	pub fn new(data: &Arc<RwLock<Data>>, alarm_db: AlarmDatabase, 
-		bot_token: String) -> DataRouter {
-		
-		type AlarmList = HashMap<(UserId,AlarmId), CompiledAlarm>;
-		
+	pub fn new(data: &Arc<RwLock<Data>>, alarm_db: AlarmDatabase, bot_token: String) -> DataRouter {
+		type AlarmList = HashMap<(UserId, AlarmId), CompiledAlarm>;
+
 		//collect metadata on all datasets
-		let meta = data.read().unwrap().sets.iter()
-			.map(|(id,set)| (*id, set.metadata.fields.clone() ))
+		let meta = data
+			.read()
+			.unwrap()
+			.sets
+			.iter()
+			.map(|(id, set)| (*id, set.metadata.fields.clone()))
 			.collect();
-		
+
 		//read alarms from the database into lookup hashmap
 		let mut alarms_by_set: HashMap<DatasetId, AlarmList> = HashMap::new();
-		for (owner_id, alarm_id, alarm) in alarm_db.iter(){
+		for (owner_id, alarm_id, alarm) in alarm_db.iter() {
 			for set in alarm.watched_sets() {
 				let compiled_alarm = CompiledAlarm::from(alarm.clone());
 				if let Some(list) = alarms_by_set.get_mut(&set) {
@@ -92,7 +95,7 @@ impl DataRouter {
 		DataRouter {
 			sessions: HashMap::new(),
 			subs: HashMap::new(),
-			bot_token, 
+			bot_token,
 			meta,
 			alarms_by_set,
 			alarm_context: HashMapContext::new(),
@@ -116,25 +119,29 @@ impl Handler<NewData> for DataRouter {
 		let updated_dataset_id = msg.from_id;
 
 		//check all alarms that could go off
-		if self.alarms_by_set.contains_key(&updated_dataset_id){
+		if self.alarms_by_set.contains_key(&updated_dataset_id) {
 			let now = Utc::now();
-			self.update_context(&msg.line, &updated_dataset_id); //Opt: 
-			if let Some(alarms) = self.alarms_by_set.get_mut(&updated_dataset_id){
+			self.update_context(&msg.line, &updated_dataset_id); //Opt:
+			if let Some(alarms) = self.alarms_by_set.get_mut(&updated_dataset_id) {
 				for alarm in alarms.values_mut() {
-					let token = 
-					alarm.evalute(&mut self.alarm_context, 
-						&now, &self.async_pool, self.bot_token.clone());
+					let token = alarm.evalute(
+						&mut self.alarm_context,
+						&now,
+						&self.async_pool,
+						self.bot_token.clone(),
+					);
 				}
 			}
 		}
 
 		//get a list of clients connected to the datasource with new data
-		if let Some(subs) = self.subs.get(&updated_dataset_id){
+		if let Some(subs) = self.subs.get(&updated_dataset_id) {
 			debug!("subs: {:?}", subs);
 			for websocket_session_id in subs.iter() {
 				// foward new data message to actor that maintains the
 				// websocket connection with this client.
-				let client_websocket_handler = &self.sessions.get(websocket_session_id).unwrap().addr;
+				let client_websocket_handler =
+					&self.sessions.get(websocket_session_id).unwrap().addr;
 				client_websocket_handler.do_send(msg.clone()).unwrap();
 			}
 		}
@@ -203,11 +210,14 @@ impl Handler<SubscribeToSource> for DataRouter {
 	type Result = ();
 
 	fn handle(&mut self, msg: SubscribeToSource, _: &mut Context<Self>) -> Self::Result {
-		let SubscribeToSource { ws_session_id, set_id } = msg;
+		let SubscribeToSource {
+			ws_session_id,
+			set_id,
+		} = msg;
 		let client_info = self.sessions.get_mut(&ws_session_id).unwrap();
 		client_info.subs.push(set_id);
 
-		trace!("subscribing to source: {:?}",set_id);
+		trace!("subscribing to source: {:?}", set_id);
 		//fix when non lexical borrow checker arrives
 		if let Some(subscribers) = self.subs.get_mut(&set_id) {
 			subscribers.insert(ws_session_id);
@@ -233,11 +243,10 @@ impl Actor for DataRouter {
 	/// with other actors.
 	type Context = Context<Self>;
 
-    fn started(&mut self, _ctx: &mut Context<Self>) {
-        // start heartbeats otherwise server will disconnect after 10 seconds
-        dbg!("started datarouter");
-    }
+	fn started(&mut self, _ctx: &mut Context<Self>) {
+		// start heartbeats otherwise server will disconnect after 10 seconds
+		dbg!("started datarouter");
+	}
 }
 
 ///////////////////////////////////
-

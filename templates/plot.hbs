@@ -20,7 +20,7 @@
       {{#each infos}}
         <input type="radio" id={{index}} name ="plotable" value={{set_id}},{{field_id}}> 
         <label for={{index}}> {{name}} </label><br>
-      {{~/each}}
+      {{~/each}}<br>
     {{~/each}}
   <br>
   <input type="button" onclick="init()" value="create plot">

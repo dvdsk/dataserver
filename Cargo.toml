@@ -16,7 +16,6 @@ debug-assertions = true
 overflow-checks = true
 
 [features]
-plotting = ["plotters", "image"]
 stable = []
 
 [dependencies]
@@ -26,6 +25,7 @@ console = "0.12"
 
 actix = "0.9"
 actix-rt = "1.0"
+#async-std = "1.4.0"
 futures = "0.3.1"
 actix-web = { version = "2", features = ["rustls"] }
 actix-web-actors = "2"
@@ -33,8 +33,9 @@ actix-net = "0.2.6"
 actix-identity = "0.2.0"
 actix-files = "0.2.1"
 actix-service = "1.0.1"
-yarte = { version ="0.12.2" }
+#yarte = { version ="0.12.2" }
 
+old_sled = { version = "0.30", package = "sled" }
 sled = "0.34"
 
 rustls = "0.16.0"
@@ -79,7 +80,15 @@ num-derive = "0.3"
 
 telegram-bot = "0.7"
 
-plotters = { version = "0.2", optional = true}
-image = { version = "0.23", optional = true }
+plotters = { version = "0.2" }
+image = { version = "0.23" }
 evalexpr = "5.0.5"
 regex = "1.3"
+
+#[patch.crates-io] 
+# override syntect package used by bat used by yarte to not use
+# onig-sys which can not be cross compiled
+# syntect = { version = "4.2", default-features = false, features = ["default-fancy"], git = "https://github.com/trishume/syntect"}
+#"servo-fontconfig-sys:4.0.6#servo-fontconfig-sys:4.0.9" = { git = "https://github.com/dskleingeld/libfontconfig" }
+
+#[profile.dev.package.foo]

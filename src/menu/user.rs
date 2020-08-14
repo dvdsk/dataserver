@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use dialoguer::{MultiSelect, Input, Password, Select};
+use dialoguer::{Input, MultiSelect, Password, Select};
 use futures::{executor::block_on, future};
 
 use crate::data_store::{Authorisation, Data, DatasetId};

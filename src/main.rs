@@ -65,6 +65,10 @@ struct Opt {
 	/// directory to look in for certificate and pirvate key
 	#[structopt(short = "k", long = "keys", default_value = "keys")]
 	key_dir: PathBuf,
+
+	/// upgrade the database from a previous sled version
+	#[structopt(short = "u", long = "upgrade-db")]
+	upgrade_db: bool,
 }
 
 #[actix_rt::main]
@@ -86,14 +90,24 @@ async fn main() {
 	}
 
 	error::setup_logging(1).expect("could not set up debugging");
-	let db = sled::Config::default() //651ms
-		.path("database")
-		.flush_every_ms(None) //do not flush to disk unless explicitly asked
-		.cache_capacity(1024 * 1024 * 32) //32 mb cache
-		.open()
-		.unwrap();
+	let db = if opt.upgrade_db {
+		log::warn!("upgrading database! .....");
+		std::fs::rename("database", "database_old").unwrap();
+		let old = old_sled::open("database_old").unwrap();
+		let export = old.export();
+		let mut db = sled::open("database").unwrap();
+		db.import(export);
+		log::warn!("done upgrading database");
+		db
+	} else {
+		sled::Config::default() //651ms
+			.path("database")
+			.flush_every_ms(None) //do not flush to disk unless explicitly asked
+			.cache_capacity(1024 * 1024 * 32) //32 mb cache
+			.open()
+			.unwrap()
+	};
 
-	//TODO can a tree be opened multiple times?
 	let passw_db = PasswordDatabase::from_db(&db).unwrap();
 	let user_db = UserDatabase::from_db(&db).unwrap();
 	let alarm_db = AlarmDatabase::from_db(&db).unwrap();

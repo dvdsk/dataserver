@@ -1,4 +1,4 @@
-use rand::{SeedableRng, rngs::StdRng, Rng};
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use rustls::internal::pemfile::{certs, pkcs8_private_keys};
 use rustls::{NoClientAuth, ServerConfig};
 

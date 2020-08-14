@@ -2,7 +2,7 @@ use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use plotters::prelude::*;
 use plotters::style::colors::{BLACK, RED, WHITE};
 
-use image::{png::PNGEncoder, RGB};
+use image::{png::PNGEncoder, ColorType};
 use log::{error, warn};
 
 use crate::data_store::data_router::DataRouterState;
@@ -28,7 +28,7 @@ pub enum Error {
 	CouldNotSetupRead(DatasetId, Vec<FieldId>),
 	NoDataWithinRange,
 	PlotLibError,
-	EncodingError(std::io::Error),
+	EncodingError(image::error::ImageError),
 	BotDatabaseError(UserDbError),
 	NotEnoughArguments,
 	DataLimitsAlarm,
@@ -291,7 +291,7 @@ fn plot(args: Vec<String>, state: &DataRouterState, user: &User) -> Result<Vec<u
 	//plot to png image
 	let mut image = Vec::new();
 	PNGEncoder::new(&mut image)
-		.encode(&subpixelbuffer, DIMENSIONS.0, DIMENSIONS.1, RGB(8))
+		.encode(&subpixelbuffer, DIMENSIONS.0, DIMENSIONS.1, ColorType::Rgb8)
 		.map_err(|io_error| Error::EncodingError(io_error))?;
 
 	return Ok(image);

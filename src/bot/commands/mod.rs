@@ -5,5 +5,4 @@ pub mod keyboard;
 pub mod plotables;
 pub mod show;
 
-#[cfg(feature = "plotting")]
 pub mod plot;

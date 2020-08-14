@@ -5,7 +5,6 @@ use telegram_bot::types::refs::ChatId;
 use super::super::send_text_reply;
 use super::{alarms, alias, keyboard, plotables, show};
 
-#[cfg(feature = "plotting")]
 use super::plot;
 
 const USAGE: &str = "/help";
@@ -13,7 +12,6 @@ const DESCRIPTION: &str = "shows this list";
 pub async fn send(chat_id: ChatId, user_info: &User, token: &str) -> Result<(), Error> {
 	let aliasses = &user_info.aliases;
 
-	#[cfg(feature = "plotting")]
 	let mut text = format!("{}\n\t{}\n\t{}\n\t{}\n\t{}\n\t{}\n\t{}\n\t{}\n{}\n\t{}\n{}\n\t{}\n{}\n\t{}\n{}\n\t{}\n{}\n\t{}\n",
 		USAGE, DESCRIPTION,
 		plot::USAGE, plot::DESCRIPTION,

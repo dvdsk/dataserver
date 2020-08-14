@@ -15,7 +15,7 @@ use crate::databases::{User, UserDbError};
 
 pub mod commands;
 pub use commands::alarms;
-#[cfg(feature = "plotting")]
+
 use commands::plot;
 use commands::{alias, help, keyboard, plotables, show};
 
@@ -34,7 +34,6 @@ pub enum Error {
 	KeyBoardError(keyboard::Error),
 	AlarmError(alarms::Error),
 
-	#[cfg(feature = "plotting")]
 	PlotError(plot::Error),
 }
 
@@ -62,7 +61,6 @@ impl From<keyboard::Error> for Error {
 	}
 }
 
-#[cfg(feature = "plotting")]
 impl From<plot::Error> for Error {
 	fn from(error: plot::Error) -> Self {
 		Error::PlotError(error)
@@ -125,7 +123,6 @@ async fn handle_command(
 				break;
 			}
 			//TODO needs to use threadpool
-			#[cfg(feature = "plotting")]
 			"/plot" => {
 				plot::send(chat_id, state, token, args, &user).await?;
 				break;
@@ -178,7 +175,6 @@ const INT_ERR_TEXT: &str = "apologies, an internal error happend this has been r
 const UNHANDLED: &str = "sorry I can not understand your input";
 async fn handle_error(error: Error, chat_id: ChatId, user_id: UserId, token: &str) {
 	let error_message = match error {
-		#[cfg(feature = "plotting")]
 		Error::PlotError(error) => error.to_text(user_id),
 		Error::AliasError(error) => error.to_text(user_id),
 		Error::BotDatabaseError(error) => error.to_text(user_id),

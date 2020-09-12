@@ -1,3 +1,4 @@
+use crate::data_store;
 use crate::databases;
 use crate::httpserver::utility;
 use bincode;
@@ -13,6 +14,7 @@ pub enum DataserverError {
 	SerializationError(bincode::Error),
 	CertGenerationError(cert_manager::Error),
 	CertLoadError(utility::Error),
+	DataStoreError(data_store::Error),
 	//TelegramBotError(telegram_bot::Error)
 }
 
@@ -78,14 +80,16 @@ pub fn setup_logging(verbosity: u8) -> Result<(), fern::InitError> {
 				.level(log::LevelFilter::Info)
 				.level_for("actix-web", log::LevelFilter::Warn)
 				.level_for("dataserver", log::LevelFilter::Trace)
-				.level_for("minimal_timeseries", log::LevelFilter::Info)
+				.level_for("byteseries", log::LevelFilter::Info)
 		}
 		3 =>
 		// Let's say we depend on something which whose "info" level messages are too
 		// verbose to include in end-user output. If we don't need them,
 		// let's not include them.
 		{
-			base_config.level(log::LevelFilter::Trace)
+			base_config
+				.level(log::LevelFilter::Warn)
+				.level_for("minimal_timeseries", log::LevelFilter::Debug)
 		}
 		4 =>
 		// Let's say we depend on something which whose "info" level messages are too

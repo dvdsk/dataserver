@@ -89,7 +89,7 @@ async fn main() {
 		}
 	}
 
-	error::setup_logging(1).expect("could not set up debugging");
+	error::setup_logging(3).expect("could not set up debugging");
 	let db = if opt.upgrade_db {
 		log::warn!("upgrading database! .....");
 		std::fs::rename("database", "database_old").unwrap();

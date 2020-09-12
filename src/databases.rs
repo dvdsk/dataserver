@@ -1,5 +1,6 @@
 use crate::data_store;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use bincode;
 use log::error;
@@ -153,22 +154,14 @@ pub struct User {
 	pub timezone_offset: i32, //hours to the east
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum UserDbError {
+	#[error("User not in database")]
 	UserNotInDb,
-	DatabaseError(sled::Error),
-	SerializeError(bincode::Error),
-}
-
-impl From<sled::Error> for UserDbError {
-	fn from(error: sled::Error) -> Self {
-		UserDbError::DatabaseError(error)
-	}
-}
-impl From<bincode::Error> for UserDbError {
-	fn from(error: bincode::Error) -> Self {
-		UserDbError::SerializeError(error)
-	}
+	#[error("database error: {0}")]
+	DatabaseError(#[from] sled::Error),
+	#[error("serialization error: {0}")]
+	SerializeError(#[from] bincode::Error),
 }
 
 #[derive(Debug, Clone)]

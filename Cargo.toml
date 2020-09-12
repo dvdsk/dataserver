@@ -68,8 +68,9 @@ serde_json = "1.0.33"
 reqwest = {version = "0.10.0", features = ["blocking"]}
 byteorder = "1.2.6"
 
-minimal_timeseries = { git = "https://github.com/dskleingeld/minimal_timeseries" }
+byteseries = { version = "0.4", git = "https://github.com/dskleingeld/minimal_timeseries" }
 bitspec = { git = "https://github.com/dskleingeld/bitspec"}
+thiserror = "1"
 
 smallvec = {version = "1.4", features = ["write"]}
 crossbeam-utils = "0.7"

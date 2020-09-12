@@ -4,54 +4,34 @@ pub const DESCRIPTION: &str = "sends the current value(s) of the requested plota
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
-use telegram_bot::types::refs::{ChatId, UserId};
+use telegram_bot::types::refs::ChatId;
 
 use crate::data_store::data_router::DataRouterState;
-use crate::data_store::DatasetId;
+use crate::data_store::{DatasetId, FieldDecoder};
 use crate::databases::{User, UserDbError};
 use bitspec::FieldId;
 
 use super::super::send_text_reply;
 use super::super::Error as botError;
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
+	#[error("The argument {0} could not be parsed")]
 	ArgumentParseError(String, std::num::ParseIntError),
+	#[error("The argument {0} could not be interpreted, does it contain a \":\"?")]
 	ArgumentSplitError(String),
+	#[error("You do not have access to field: {0}")]
 	NoAccessToField(FieldId),
+	#[error("You do not have access to dataset: {0}")]
 	NoAccessToDataSet(DatasetId),
+	#[error("There is no data for dataset: {0}")]
 	NoData(DatasetId),
-	BotDatabaseError(UserDbError),
+	#[error("database error")]
+	BotDatabaseError(#[from] UserDbError),
+	#[error("Not enough arguments\nuse: {}", USAGE)]
 	NotEnoughArguments,
-}
-
-impl Error {
-	pub fn to_text(self, user_id: UserId) -> String {
-		match self {
-			Error::ArgumentParseError(arg, _err) => {
-				format!("The argument {} could not be parsed", arg)
-			}
-			Error::ArgumentSplitError(arg) => format!(
-				"The argument {} could not be interperted, does it contain a \":\"?",
-				arg
-			),
-			Error::NoAccessToField(field_id) => {
-				format!("You do not have access to field: {}", field_id)
-			}
-			Error::NoAccessToDataSet(dataset_id) => {
-				format!("You do not have access to dataset: {}", dataset_id)
-			}
-			Error::NoData(set_id) => format!("There is no data for dataset: {}", set_id),
-			Error::BotDatabaseError(db_error) => db_error.to_text(user_id),
-			Error::NotEnoughArguments => format!("Not enough arguments\nuse: {}", USAGE),
-		}
-	}
-}
-
-impl From<UserDbError> for Error {
-	fn from(error: UserDbError) -> Self {
-		Error::BotDatabaseError(error)
-	}
+	#[error("Error accessing dataset: {0}")]
+	DataSetError(#[from] byteseries::Error),
 }
 
 fn parse_args(args: String, user: &User) -> Result<Vec<(DatasetId, Vec<FieldId>)>, Error> {
@@ -116,24 +96,30 @@ pub async fn send(
 	let datasets = &mut state.data.write().unwrap().sets;
 	for (dataset_id, field_ids) in dataset_fields.iter() {
 		let set = datasets.get_mut(&dataset_id).unwrap();
-		let (time, line) = set
-			.timeseries
-			.decode_last_line()
-			.map_err(|_| Error::NoData(*dataset_id))?; //TODO make this return Option(tuple)
-		let fields = &set.metadata.fields;
-		let set_name = &set.metadata.name;
+		let fields = &set
+			.metadata
+			.fields
+			.iter()
+			.enumerate()
+			.filter(|(i, field)| field_ids.contains(&(*i as u8)))
+			.map(|(_, v)| v);
 
+		let decoder = FieldDecoder::from_fields(fields);
+		let (time, values) = set
+			.timeseries
+			.last_line(&mut decoder)
+			.map_err(|e| e.into())?;
+		let time = DateTime::from_utc(chrono::NaiveDateTime::from_timestamp(time, 0), Utc);
+
+		let set_name = &set.metadata.name;
 		let time_since = format_to_duration(time);
 		text.push_str(&format!(
 			"dataset: {}\nlast data: {} ago\n",
 			set_name, time_since
 		));
 
-		for field in field_ids.iter().map(|id| &fields[*id as usize]) {
-			let value: f32 = field.decode(&line);
-			let field_name = &field.name;
-
-			text.push_str(&format!("\t-{}:\t{:.2}\n", field_name, value));
+		for (field, value) in fields.zip(values.into_iter()) {
+			text.push_str(&format!("\t-{}:\t{:.2}\n", &field.name, value));
 		}
 	}
 

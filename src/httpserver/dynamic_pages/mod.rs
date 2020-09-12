@@ -6,7 +6,7 @@ use actix_web::{HttpResponse, Responder};
 //use yarte::Template;
 
 use crate::bot::commands::show::format_to_duration;
-use crate::data_store;
+use crate::data_store::{self, FieldDecoder};
 use data_store::{data_router::DataRouterState, Authorisation};
 
 /*#[derive(Template)]
@@ -70,40 +70,40 @@ pub async fn list_data(id: Identity, state: Data<DataRouterState>) -> impl Respo
 		let set = datasets.get_mut(&dataset_id).unwrap();
 
 		let time_since;
-		let line = if let Ok((time, line)) = set.timeseries.decode_last_line() {
+		let field_ids: Vec<_> = authorized_fields.iter().map(|auth| auth.into()).collect();
+		let fields = &set
+			.metadata
+			.fields
+			.iter()
+			.enumerate()
+			.filter(|(i, field)| field_ids.contains(&(*i as u8)))
+			.map(|(_, v)| v);
+
+		let mut info = ListSetInfo::from_name_and_last_update(&set.metadata.name, time_since);
+		let decoder = FieldDecoder::from_fields(fields);
+		if let Ok((time, values)) = set.timeseries.last_line(&mut decoder) {
 			time_since = format_to_duration(time);
-			Some(line)
+			for v in values {
+				info.values.push(v.to_string())
+			}
 		} else {
 			time_since = String::from(String::from("-"));
-			None
-		};
-
-		let fields = &set.metadata.fields;
-		let mut info = ListSetInfo::from_name_and_last_update(&set.metadata.name, time_since);
-
-		for field in authorized_fields {
-			let id = match field {
-				Authorisation::Owner(id) => {
-					info.owner.push("yes");
-					id
-				}
-				Authorisation::Reader(id) => {
-					info.owner.push("no");
-					id
-				}
-			};
-			if let Some(ref line) = line {
-				info.values
-					.push(fields[*id as usize].decode::<f32>(&line).to_string());
-			} else {
-				info.values.push(String::from("-"));
+			for (auth, field) in authorized_fields.iter().zip(fields) {
+				let id = match field {
+					Authorisation::Owner(id) => {
+						info.owner.push("yes");
+						id
+					}
+					Authorisation::Reader(id) => {
+						info.owner.push("no");
+						id
+					}
+				};
+				info.field_names.push(field.name.clone());
 			}
-			info.field_names
-				.push(set.metadata.fields[*id as usize].name.clone());
-		}
+		};
 		infos.push(info);
 	}
-
 	/*let page = ListPage { datasets: infos };
 	HttpResponse::Ok().body(page.call().unwrap())*/
 	HttpResponse::Ok()

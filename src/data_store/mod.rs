@@ -1,7 +1,7 @@
 use log::{debug, info, trace, warn};
 use serde::{Deserialize, Serialize};
 
-use byteorder::{ByteOrder, LittleEndian, NetworkEndian, WriteBytesExt};
+use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
 use bytes::Bytes;
 use smallvec::SmallVec;
 
@@ -15,33 +15,59 @@ use std::path::PathBuf;
 use chrono::prelude::*;
 
 use crate::httpserver::data_router_ws_client::SetSliceDecodeInfo;
-use bitspec::{FieldId, MetaData, MetaDataSpec, MetaField};
-use minimal_timeseries::{BoundResult, DecodeParams, Timeseries};
+use bitspec::{Field, FieldId, MetaData, MetaDataSpec, MetaField};
+use byteseries::{self, Decoder, Series};
 use std::collections::HashMap;
 
 //pub mod specifications;
-pub mod compression;
 pub mod data_router;
 pub mod error_router;
-pub mod read_to_array;
-pub mod read_to_packets;
 
 use std::f64;
 
 pub type DatasetId = u16;
 pub struct DataSet {
-	pub timeseries: Timeseries, //custom file format
-	pub metadata: MetaData,     //is stored by serde
+	pub timeseries: Series, //custom file format
+	pub metadata: MetaData, //is stored by serde
 }
 
-#[derive(Debug)]
-pub struct ReadState {
-	fields: Vec<MetaField<f32>>,
-	start_byte: u64,
-	stop_byte: u64,
-	decode_params: DecodeParams,
-	pub decoded_line_size: usize,
-	pub numb_lines: u64,
+#[derive(Debug, Clone)]
+pub struct FieldDecoder {
+	fields: Vec<Field<f32>>,
+}
+impl Decoder<f32> for FieldDecoder {
+	fn decode(&mut self, bytes: &[u8], out: &mut Vec<f32>) {
+		for field in self.fields {
+			out.push(field.decode(bytes));
+		}
+	}
+}
+impl FieldDecoder {
+	pub fn from_fields<'a>(fields: &impl Iterator<Item = &'a MetaField<f32>>) -> Self {
+		Self {
+			fields: fields.map(|f| f.clone().into()).collect(),
+		}
+	}
+	pub fn from_fields_and_id(fields: &[MetaField<f32>], ids: &[FieldId]) -> Self {
+		let fields = fields
+			.iter()
+			.enumerate()
+			.filter(|(i, field)| ids.contains(&(*i as u8)))
+			.map(|(_, v)| v);
+		FieldDecoder {
+			fields: fields.map(|f| f.clone().into()).collect(),
+		}
+	}
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+	#[error("error accessing byteseries")]
+	ByteSeries(#[from] byteseries::Error),
+	#[error("io error")]
+	IoError(#[from] io::Error),
+	#[error("syntax error in specification")]
+	MalformedSpec,
 }
 
 impl DataSet {
@@ -66,45 +92,45 @@ impl DataSet {
 		}
 	}
 
-	pub fn get_update(
-		&self,
-		line: Vec<u8>,
-		timestamp: i64,
-		allowed_fields: &Vec<FieldId>,
-		setid: DatasetId,
-	) -> Vec<u8> {
-		trace!("get_update");
+	// pub fn get_update(
+	// 	&self,
+	// 	line: Vec<u8>,
+	// 	timestamp: i64,
+	// 	allowed_fields: &Vec<FieldId>,
+	// 	setid: DatasetId,
+	// ) -> Vec<u8> {
+	// 	trace!("get_update");
 
-		let mut recoded_line_size = 0;
-		let mut offset_in_dataset = SmallVec::<[u8; 8]>::new();
-		let mut lengths = SmallVec::<[u8; 8]>::new();
-		let mut offset_in_recoded = SmallVec::<[u8; 8]>::new();
+	// 	let mut recoded_line_size = 0;
+	// 	let mut offset_in_dataset = SmallVec::<[u8; 8]>::new();
+	// 	let mut lengths = SmallVec::<[u8; 8]>::new();
+	// 	let mut offset_in_recoded = SmallVec::<[u8; 8]>::new();
 
-		let mut recoded_offset = 0;
-		for id in allowed_fields {
-			let field = &self.metadata.fields[*id as usize];
-			offset_in_dataset.push(field.offset);
-			lengths.push(field.length);
-			offset_in_recoded.push(recoded_offset);
-			recoded_offset += field.length;
-			recoded_line_size += field.length;
-		}
-		let recoded_line_size = (recoded_line_size as f32 / 8.0).ceil() as u8; //convert to bytes
-		let mut recoded_line: SmallVec<[u8; 24]> =
-			smallvec::smallvec![0; recoded_line_size as usize + 8];
+	// 	let mut recoded_offset = 0;
+	// 	for id in allowed_fields {
+	// 		let field = &self.metadata.fields[*id as usize];
+	// 		offset_in_dataset.push(field.offset);
+	// 		lengths.push(field.length);
+	// 		offset_in_recoded.push(recoded_offset);
+	// 		recoded_offset += field.length;
+	// 		recoded_line_size += field.length;
+	// 	}
+	// 	let recoded_line_size = (recoded_line_size as f32 / 8.0).ceil() as u8; //convert to bytes
+	// 	let mut recoded_line: SmallVec<[u8; 24]> =
+	// 		smallvec::smallvec![0; recoded_line_size as usize + 8];
 
-		recoded_line.write_u16::<NetworkEndian>(setid).unwrap();
-		recoded_line.write_i64::<NetworkEndian>(timestamp).unwrap();
-		for ((offset, len), recoded_offset) in offset_in_dataset
-			.iter()
-			.zip(lengths.iter())
-			.zip(offset_in_recoded.iter())
-		{
-			let decoded: u32 = compression::decode(&line, *offset, *len);
-			compression::encode(decoded, &mut recoded_line, *recoded_offset, *len);
-		}
-		recoded_line.to_vec()
-	}
+	// 	recoded_line.write_u16::<NetworkEndian>(setid).unwrap();
+	// 	recoded_line.write_i64::<NetworkEndian>(timestamp).unwrap();
+	// 	for ((offset, len), recoded_offset) in offset_in_dataset
+	// 		.iter()
+	// 		.zip(lengths.iter())
+	// 		.zip(offset_in_recoded.iter())
+	// 	{
+	// 		let decoded: u32 = compression::decode(&line, *offset, *len);
+	// 		compression::encode(decoded, &mut recoded_line, *recoded_offset, *len);
+	// 	}
+	// 	recoded_line.to_vec()
+	// }
 
 	pub fn get_update_uncompressed(
 		&self,
@@ -194,7 +220,6 @@ pub fn init<P: Into<PathBuf>>(dir: P) -> Result<Data, io::Error> {
 	let mut sets: HashMap<DatasetId, DataSet> = HashMap::new();
 
 	fn is_datafile(entry: &fs::DirEntry) -> bool {
-		//println!("hellloooaaa: {:?}",entry.unwrap().path());
 		entry
 			.path()
 			.to_str()
@@ -220,9 +245,9 @@ pub fn init<P: Into<PathBuf>>(dir: P) -> Result<Data, io::Error> {
 	}
 
 	Ok(Data {
-		dir: dir,
-		free_dataset_id: free_dataset_id,
-		sets: sets,
+		dir,
+		free_dataset_id,
+		sets,
 	})
 }
 
@@ -238,13 +263,13 @@ pub fn load_data(data: &mut HashMap<DatasetId, DataSet>, datafile_path: &Path, d
 		if let Ok(metadata) = serde_yaml::from_reader::<std::fs::File, MetaData>(metadata_file) {
 			let line_size = metadata.fieldsum();
 
-			if let Ok(timeserie) = Timeseries::open(datafile_path, line_size as usize) {
+			if let Ok(timeserie) = Series::open(datafile_path, line_size as usize) {
 				info!("loaded dataset with id: {}", &data_id);
 				data.insert(
 					data_id,
 					DataSet {
 						timeseries: timeserie,
-						metadata: metadata,
+						metadata,
 					},
 				);
 			}
@@ -257,38 +282,32 @@ pub fn load_data(data: &mut HashMap<DatasetId, DataSet>, datafile_path: &Path, d
 }
 
 impl Data {
-	pub fn add_set<T: AsRef<Path>>(&mut self, spec_path: T) -> io::Result<DatasetId> {
+	pub fn add_set<T: AsRef<Path>>(&mut self, spec_path: T) -> Result<DatasetId, Error> {
 		let f = fs::OpenOptions::new()
 			.read(true)
 			.write(false)
 			.create(false)
 			.open(spec_path)?;
-		if let Ok(metadata) = serde_yaml::from_reader::<File, MetaDataSpec>(f) {
-			let metadata: MetaData = metadata.into();
-			let line_size: u16 = metadata.fieldsum();
-			let dataset_id = self.free_dataset_id;
-			self.free_dataset_id += 1;
-			let mut datafile_path = self.dir.clone();
-			datafile_path.push(dataset_id.to_string());
+		let metadata =
+			serde_yaml::from_reader::<File, MetaDataSpec>(f).map_err(|_| Error::MalformedSpec)?;
+		let metadata: MetaData = metadata.into();
+		let line_size: u16 = metadata.fieldsum();
+		let dataset_id = self.free_dataset_id;
+		self.free_dataset_id += 1;
+		let mut datafile_path = self.dir.clone();
+		datafile_path.push(dataset_id.to_string());
 
-			let set = DataSet {
-				timeseries: Timeseries::open(&datafile_path, line_size as usize)?,
-				metadata: metadata,
-			};
-			datafile_path.set_extension("yaml");
-			let f = fs::File::create(datafile_path).unwrap();
-			serde_yaml::to_writer(f, &set.metadata).unwrap();
+		let set = DataSet {
+			timeseries: Series::open(&datafile_path, line_size as usize)?,
+			metadata,
+		};
+		datafile_path.set_extension("yaml");
+		let f = fs::File::create(datafile_path).unwrap();
+		serde_yaml::to_writer(f, &set.metadata).unwrap();
 
-			self.sets.insert(dataset_id, set);
-			info!("added timeseries under id: {}", dataset_id);
-			Ok(dataset_id)
-		} else {
-			warn!("could not parse specification");
-			Err(io::Error::new(
-				io::ErrorKind::InvalidData,
-				"could not parse specification",
-			))
-		}
+		self.sets.insert(dataset_id, set);
+		info!("added timeseries under id: {}", dataset_id);
+		Ok(dataset_id)
 	}
 }
 

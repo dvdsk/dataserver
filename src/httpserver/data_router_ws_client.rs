@@ -18,10 +18,8 @@ use std::thread;
 
 use super::Session;
 use crate::data_store;
-use crate::data_store::data_router;
+use crate::data_store::{data_router, FieldDecoder};
 use bitspec::FieldId;
-
-use data_store::read_to_packets::{prepare_read_processing, read_into_packages, ReaderInfo};
 
 pub struct TimesRange {
 	pub start: DateTime<Utc>,
@@ -116,7 +114,8 @@ impl Handler<data_router::NewData> for WsSession {
 			fields, from_id
 		);
 		let line = if self.compression_enabled {
-			dataset.get_update(line, timestamp, fields, from_id)
+			todo!("reimplement");
+		//dataset.get_update(line, timestamp, fields, from_id)
 		} else {
 			dataset.get_update_uncompressed(line, timestamp, fields, from_id)
 		};
@@ -259,46 +258,36 @@ impl WsSession {
 			return;
 		}
 
-		let mut reader_infos: Vec<ReaderInfo> = Vec::with_capacity(self.selected_data.len());
 		let mut client_metadata = Vec::with_capacity(self.selected_data.len());
 		let data_handle = self.data.clone();
 		let mut data = data_handle.write().unwrap();
 
+		let mut samplers = Vec::new();
 		for (dataset_id, field_ids) in &self.selected_data {
 			let mut dataset_client_metadata: DataSetClientMeta = Default::default();
 			let dataset = data.sets.get_mut(dataset_id).unwrap();
-			if let Some(read_state) =
-				dataset.prepare_read(self.timerange.start, self.timerange.stop, field_ids)
-			{
-				//prepare for reading and calc number of bytes we will be sending
-				let n_lines = std::cmp::min(read_state.numb_lines, max_plot_points);
-				if let Some(reader_info) = prepare_read_processing(
-					read_state,
-					&dataset.timeseries,
-					max_plot_points,
-					*dataset_id,
-				) {
-					reader_infos.push(reader_info);
+			let fields = &dataset.metadata.fields;
+			let decoder = FieldDecoder::from_fields_and_id(fields, field_ids);
+			let mut sampler = byteseries::new_sampler(&dataset.timeseries, &mut decoder)
+				.start(self.timerange.start)
+				.stop(self.timerange.stop)
+				.points(max_plot_points as usize)
+				.build()
+				.unwrap(); // #TODO #FIXME check if safe
+			samplers.push(sampler);
 
-					//prepare and send metadata
-					for field_id in field_ids.iter().map(|id| *id) {
-						let field = &dataset.metadata.fields[field_id as usize];
-						dataset_client_metadata.traces_meta.push(Trace {
-							r#type: "scattergl".to_string(),
-							mode: "markers".to_string(),
-							name: field.name.to_owned(),
-						});
-						dataset_client_metadata.field_ids.push(field_id);
-					}
-					dataset_client_metadata.n_lines = n_lines;
-					dataset_client_metadata.dataset_id = *dataset_id;
-					client_metadata.push(dataset_client_metadata);
-				} else {
-					warn!("could not setup read");
-				}
-			} else {
-				warn!("no data within given window");
+			for field_id in field_ids.iter().map(|id| *id) {
+				let field = &dataset.metadata.fields[field_id as usize];
+				dataset_client_metadata.traces_meta.push(Trace {
+					r#type: "scattergl".to_string(),
+					mode: "markers".to_string(),
+					name: field.name.to_owned(),
+				});
+				dataset_client_metadata.field_ids.push(field_id);
 			}
+			dataset_client_metadata.n_lines = todo!(); //n_lines;
+			dataset_client_metadata.dataset_id = *dataset_id;
+			client_metadata.push(dataset_client_metadata);
 		}
 		std::mem::drop(data);
 
@@ -310,7 +299,8 @@ impl WsSession {
 		//spawn file io thread
 		let (tx, rx) = sync_channel(2);
 		let thread = thread::spawn(move || {
-			read_into_packages(data_handle, tx, reader_infos);
+			todo!("actually sending data over websocket is broken");
+			//read_into_packages(data_handle, tx, reader_infos);
 		});
 		self.file_io_thread = Some((thread, rx));
 	}

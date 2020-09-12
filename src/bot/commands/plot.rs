@@ -2,106 +2,57 @@ use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use plotters::prelude::*;
 use plotters::style::colors::{BLACK, RED, WHITE};
 
-use image::{png::PNGEncoder, ColorType};
+use image::{png::PngEncoder, ColorType};
 use log::{error, warn};
 
 use crate::data_store::data_router::DataRouterState;
-use crate::data_store::read_to_array::{prepare_read_processing, read_into_arrays};
-use crate::data_store::Data;
-use crate::data_store::DatasetId;
+use crate::data_store::{Data, DatasetId, FieldDecoder};
 use crate::databases::{User, UserDbError};
 use bitspec::FieldId;
 
 use crate::bot::Error as botError;
-use telegram_bot::types::refs::{ChatId, UserId};
+use telegram_bot::types::refs::ChatId;
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-
-#[derive(Debug)]
-pub enum Error {
-	ArgumentParseErrorF(std::num::ParseFloatError),
-	ArgumentParseErrorI(std::num::ParseIntError),
-	IncorrectArgument(String),
-	NoAccessToField(FieldId),
-	NoAccessToDataSet(DatasetId),
-	CouldNotSetupRead(DatasetId, Vec<FieldId>),
-	NoDataWithinRange,
-	PlotLibError,
-	EncodingError(image::error::ImageError),
-	BotDatabaseError(UserDbError),
-	NotEnoughArguments,
-	DataLimitsAlarm,
-}
 
 pub const USAGE: &str = "/plot <plotable_id> <number><s|m|h|d|w|monthes|years>";
 pub const DESCRIPTION: &str = "send a line graph of a sensor value aka plotable, \
  from a given time ago till now. Optionally adding <start:stop> allows to \
  specify the start and stop value for the y-axis";
-impl Error {
-	pub fn to_text(self, user_id: UserId) -> String {
-		match self {
-			Error::ArgumentParseErrorF(_) => format!(
-				"One of the arguments could not be converted to a number\nuse: {}",
-				USAGE
-			),
-			Error::ArgumentParseErrorI(_) => format!(
-				"One of the arguments could not be converted to a number\nuse: {}",
-				USAGE
-			),
-			Error::IncorrectArgument(arg) => format!(
-				"Incorrectly formatted argument: \"{}\"\nuse: {}",
-				arg, USAGE
-			),
-			Error::NoAccessToField(field_id) => {
-				format!("You do not have access to field: {}", field_id)
-			}
-			Error::NoAccessToDataSet(dataset_id) => {
-				format!("You do not have access to dataset: {}", dataset_id)
-			}
-			Error::CouldNotSetupRead(dataset_id, fields) => {
-				error!(
-					"could not setup read for dataset {} and fields {:?}",
-					dataset_id, fields
-				);
-				String::from("Apologies an internal error occured, it has been reported")
-			}
-			Error::NoDataWithinRange => {
-				String::from("I have no data between the times you requested")
-			}
-			Error::PlotLibError => {
-				error!("internal error in plotting lib");
-				String::from("Apologies an internal error occured, I have reported it")
-			}
-			Error::EncodingError(error) => {
-				error!("could not encode png: {}", error);
-				String::from("Apologies an internal error occured, I have reported it")
-			}
-			Error::BotDatabaseError(db_error) => db_error.to_text(user_id),
-			Error::NotEnoughArguments => format!("Not enough arguments\nuse: {}", USAGE),
-			Error::DataLimitsAlarm => {
-				String::from("Apologies an internal error occured, I have reported it")
-			}
-		}
-	}
-}
 
-impl From<std::num::ParseIntError> for Error {
-	fn from(error: std::num::ParseIntError) -> Self {
-		Error::ArgumentParseErrorI(error)
-	}
-}
-
-impl From<std::num::ParseFloatError> for Error {
-	fn from(error: std::num::ParseFloatError) -> Self {
-		Error::ArgumentParseErrorF(error)
-	}
-}
-
-impl From<UserDbError> for Error {
-	fn from(error: UserDbError) -> Self {
-		Error::BotDatabaseError(error)
-	}
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+	#[error(
+		"One of the arguments could not be converted to a number\nuse: {}",
+		USAGE
+	)]
+	ArgumentParseErrorF(#[from] std::num::ParseFloatError),
+	#[error(
+		"One of the arguments could not be converted to a number\nuse: {}",
+		USAGE
+	)]
+	ArgumentParseErrorI(#[from] std::num::ParseIntError),
+	#[error("Incorrectly formatted argument: \"{0}\"\nuse: {}", USAGE)]
+	IncorrectArgument(String),
+	#[error("Incorrectly formatted argument: \"{0}\"\nuse: {}", USAGE)]
+	NoAccessToField(FieldId),
+	#[error("You do not have access to field: {0}")]
+	NoAccessToDataSet(DatasetId),
+	#[error("could not setup read for dataset {0} and fields {1:?}")]
+	CouldNotSetupRead(DatasetId, Vec<FieldId>),
+	#[error("internal error in plotting lib")]
+	PlotLibError,
+	#[error("could not encode png: {0}")]
+	EncodingError(image::error::ImageError),
+	#[error("internal db error")]
+	BotDatabaseError(#[from] UserDbError),
+	#[error("Not enough arguments \nuse: {}", USAGE)]
+	NotEnoughArguments,
+	#[error("Internal error regarding the limits of the data")] //TODO remove if no longer issue
+	DataLimitsAlarm,
+	#[error("Error getting data: {0}")]
+	DatasetError(#[from] byteseries::Error),
 }
 
 pub async fn send(
@@ -141,8 +92,14 @@ fn xlimits_from_data(data: &Vec<PlotData>) -> Result<(DateTime<Utc>, DateTime<Ut
 	let mut max_ts = data.iter().map(|d| *d.0.last().unwrap()).max().unwrap();
 
 	if min_ts > max_ts {
-		dbg!(min_ts);
+		dbg!(min_ts); //min is correct max is wrong
 		dbg!(max_ts);
+
+		for times in data.iter().map(|d| &d.0) {
+			dbg!(&times[times.len() - 5..]);
+			dbg!(&times[..5]);
+		}
+
 		return Err(Error::DataLimitsAlarm);
 	}
 
@@ -290,7 +247,7 @@ fn plot(args: Vec<String>, state: &DataRouterState, user: &User) -> Result<Vec<u
 
 	//plot to png image
 	let mut image = Vec::new();
-	PNGEncoder::new(&mut image)
+	PngEncoder::new(&mut image)
 		.encode(&subpixelbuffer, DIMENSIONS.0, DIMENSIONS.1, ColorType::Rgb8)
 		.map_err(|io_error| Error::EncodingError(io_error))?;
 
@@ -401,7 +358,7 @@ pub fn select_data(
 
 fn read_data(
 	selected_data: (DatasetId, Vec<FieldId>),
-	data: &Arc<RwLock<Data>>,
+        data: &Arc<RwLock<Data>>,
 	timerange: (DateTime<Utc>, DateTime<Utc>),
 ) -> Result<PlotData, Error> {
 	let max_plot_points = 1000;
@@ -410,28 +367,25 @@ fn read_data(
 	let data_handle = data;
 	let mut data = data_handle.write().unwrap();
 
-	let mut metadata = Vec::new();
 	let dataset = data.sets.get_mut(&dataset_id).unwrap();
-	if let Some(read_state) = dataset.prepare_read(timerange.0, timerange.1, &field_ids) {
-		//prepare for reading and calc number of bytes we will be sending
-		if let Some(reader_info) =
-			prepare_read_processing(read_state, &dataset.timeseries, max_plot_points, dataset_id)
-		{
-			//prepare metadata
-			for field_id in field_ids.iter().map(|id| *id) {
-				let field = &dataset.metadata.fields[field_id as usize];
-				metadata.push((field_id, field.name.to_owned()));
-			}
-			std::mem::drop(data);
 
-			let (x_shared, y_datas) = read_into_arrays(data_handle.clone(), reader_info);
-			return Ok((x_shared, y_datas, metadata));
-		} else {
-			error!("could not setup read");
-			return Err(Error::CouldNotSetupRead(dataset_id, field_ids));
-		}
-	} else {
-		warn!("no data within given window");
-		return Err(Error::NoDataWithinRange);
+	let fields = &dataset.metadata.fields;
+	let decoder = FieldDecoder::from_fields_and_id(fields, &field_ids);
+	let mut sampler = byteseries::new_sampler(&dataset.timeseries, &mut decoder)
+		.start(timerange.0)
+		.stop(timerange.1)
+		.points(max_plot_points)
+		.build()?;
+
+	sampler.sample_all()?; //TODO some sampling over a mean probably wise
+	let (x_shared, ys) = sampler.into_data();
+
+	//prepare metadata
+	let mut metadata = Vec::new();
+	for field_id in field_ids.iter().map(|id| *id) {
+		let field = &dataset.metadata.fields[field_id as usize];
+		metadata.push((field_id, field.name.to_owned()));
 	}
+
+	Ok((x_shared, ys, metadata))
 }

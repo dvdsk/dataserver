@@ -175,10 +175,10 @@ const INT_ERR_TEXT: &str = "apologies, an internal error happend this has been r
 const UNHANDLED: &str = "sorry I can not understand your input";
 async fn handle_error(error: Error, chat_id: ChatId, user_id: UserId, token: &str) {
 	let error_message = match error {
-		Error::PlotError(error) => error.to_text(user_id),
+		Error::PlotError(error) => error.to_string(),
 		Error::AliasError(error) => error.to_text(user_id),
 		Error::BotDatabaseError(error) => error.to_text(user_id),
-		Error::ShowError(error) => error.to_text(user_id),
+		Error::ShowError(error) => error.to_string(),
 		Error::KeyBoardError(error) => error.to_text(user_id),
 		Error::AlarmError(error) => error.to_text(user_id),
 		Error::UnknownAlias(alias_text) => format!(

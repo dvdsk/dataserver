@@ -50,33 +50,36 @@ use super::super::Error as botError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-        #[error("Not enough arguments")]
+	#[error("Not enough arguments")]
 	NotEnoughArguments,
-        #[error("Internal error, could not save alarm")]
+	#[error("Internal error, could not save alarm")]
 	BotDatabaseError(crate::databases::UserDbError),
 	#[error("You do not have access to field: {0}")]
 	NoAccessToField(FieldId),
-        #[error("You do not have access to dataset: {0}")]
+	#[error("You do not have access to dataset: {0}")]
 	NoAccessToDataSet(DatasetId),
 	#[error("This \"{0}\" is not a valid field specification, see the plotables command")]
-        IncorrectFieldSpecifier(String),
-        #[error("An alarm must have a condition, type /alarms for help")]
+	IncorrectFieldSpecifier(String),
+	#[error("An alarm must have a condition, type /alarms for help")]
 	NoExpression,
-        #[error("This \"{0}\" is not a valid duration unit, options are s, m, h, d, w")]
+	#[error("This \"{0}\" is not a valid duration unit, options are s, m, h, d, w")]
 	IncorrectTimeUnit(String),
-        #[error("One of the arguments could not be converted to a number\nuse: {}", HELP_ADD)]
+	#[error(
+		"One of the arguments could not be converted to a number\nuse: {}",
+		HELP_ADD
+	)]
 	ArgumentParseError(#[from] std::num::ParseIntError),
-        #[error("I could not understand the alarms condition. Cause: {0}")]
+	#[error("I could not understand the alarms condition. Cause: {0}")]
 	ExpressionError(#[from] EvalexprError),
-        #[error("I could not understand what day this is: {0}")]
+	#[error("I could not understand what day this is: {0}")]
 	InvalidDay(String),
-        #[error("not a sub command for alarms: {0}")]
+	#[error("not a sub command for alarms: {0}")]
 	InvalidSubCommand(String),
-        #[error("can not set more then 255 alarms")]
+	#[error("can not set more then 255 alarms")]
 	TooManyAlarms,
-        #[error("Could not recognise an alarm number in: {0}")]
+	#[error("Could not recognise an alarm number in: {0}")]
 	NotAnAlarmNumber(String),
-        #[error("Could not save alarm")]
+	#[error("Could not save alarm")]
 	DbError(#[from] AlarmDbError),
 }
 

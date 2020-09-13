@@ -156,10 +156,10 @@ pub struct User {
 
 #[derive(Error, Debug)]
 pub enum UserDbError {
-    #[error("this telegram account may not use this bot, to be able to use this bot add your telegram id: {0} to your account")]
-    TelegramUserNotInDb(TelegramUserId),
-    #[error("I know no user by the name: {0}")]
-    UserNameNotInDb(String),
+	#[error("this telegram account may not use this bot, to be able to use this bot add your telegram id: {0} to your account")]
+	TelegramUserNotInDb(TelegramUserId),
+	#[error("I know no user by the name: {0}")]
+	UserNameNotInDb(String),
 	#[error("No user with id {0} exists in the database")]
 	UserNotInDb(UserId),
 	#[error("An internal error occured")]
@@ -329,9 +329,9 @@ pub struct AlarmDatabase {
 
 #[derive(thiserror::Error, Debug)]
 pub enum AlarmDbError {
-        #[error("internal database error: {0:?}")]
+	#[error("internal database error: {0:?}")]
 	DatabaseError(#[from] sled::Error),
-        #[error("already removed this alarm")]
+	#[error("already removed this alarm")]
 	AlreadyRemoved,
 }
 

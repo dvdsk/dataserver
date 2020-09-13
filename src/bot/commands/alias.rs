@@ -11,9 +11,9 @@ use super::super::Error as botError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-        #[error("not enough arguments")]
+	#[error("not enough arguments")]
 	NotEnoughArguments,
-        #[error("could not update database during setting of alias")]
+	#[error("could not update database during setting of alias")]
 	DbError(crate::databases::UserDbError),
 }
 

@@ -98,10 +98,7 @@ pub async fn send(
 		let set = datasets.get_mut(&dataset_id).unwrap();
 		let fields = &set.metadata.fields;
 
-		let (time, line) = set
-			.timeseries
-			.last_line_raw()
-                        .map_err(|e| Error::from(e))?;
+		let (time, line) = set.timeseries.last_line_raw().map_err(|e| Error::from(e))?;
 
 		let set_name = &set.metadata.name;
 		let time_since = format_to_duration(time);
@@ -110,7 +107,7 @@ pub async fn send(
 			set_name, time_since
 		));
 
-                for field in field_ids.iter().map(|id| &fields[*id as usize]) {
+		for field in field_ids.iter().map(|id| &fields[*id as usize]) {
 			let value: f32 = field.decode(&line);
 			let field_name = &field.name;
 

@@ -20,7 +20,7 @@ use commands::plot;
 use commands::{alias, help, keyboard, plotables, show};
 
 async fn handle_error(error: Error, chat_id: ChatId, token: &str) {
-    let error_message = error.to_string();
+	let error_message = error.to_string();
 	if let Err(error) = send_text_reply(chat_id, token, error_message).await {
 		error!("Could not send text reply to user: {:?}", error);
 	}
@@ -29,33 +29,35 @@ async fn handle_error(error: Error, chat_id: ChatId, token: &str) {
 const INT_ERR_TEXT: &str = "apologies, an internal error happend this has been reported and will be fixed as soon as possible";
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-        #[error("{}", INT_ERR_TEXT)]
+	#[error("{}", INT_ERR_TEXT)]
 	HttpClientError(#[from] reqwest::Error),
-        #[error("could not set up webhook for telegram bot")]
+	#[error("could not set up webhook for telegram bot")]
 	CouldNotSetWebhook,
-        #[error("{}", INT_ERR_TEXT)]
+	#[error("{}", INT_ERR_TEXT)]
 	InvalidServerResponse(reqwest::Response),
-        #[error("{}", INT_ERR_TEXT)]
+	#[error("{}", INT_ERR_TEXT)]
 	InvalidServerResponseBlocking(reqwest::blocking::Response),
-        #[error("sorry I can not understand your input")]
+	#[error("sorry I can not understand your input")]
 	UnhandledUpdateKind,
-        #[error("sorry I can not understand your input")]
+	#[error("sorry I can not understand your input")]
 	UnhandledMessageKind,
-        #[error("sorry I can not understand your input")]
+	#[error("sorry I can not understand your input")]
 	BotDatabaseError(#[from] UserDbError),
-	#[error("your input: \"{0}\", is not a possible command or \
+	#[error(
+		"your input: \"{0}\", is not a possible command or \
                 a configured alias. Use /help to get a list of possible \
-                commands and configured aliases") ]
-        UnknownAlias(String),
-        #[error("{0}")]
+                commands and configured aliases"
+	)]
+	UnknownAlias(String),
+	#[error("{0}")]
 	ShowError(#[from] show::Error),
-        #[error("{0}")]
+	#[error("{0}")]
 	AliasError(#[from] alias::Error),
-        #[error("{0}")]
+	#[error("{0}")]
 	KeyBoardError(#[from] keyboard::Error),
-        #[error("{0}")]
+	#[error("{0}")]
 	AlarmError(#[from] alarms::Error),
-        #[error("{0}")]
+	#[error("{0}")]
 	PlotError(#[from] plot::Error),
 }
 
@@ -150,7 +152,6 @@ async fn handle_command(
 	}
 	Ok(())
 }
-
 
 async fn handle(update: Update, state: DataRouterState) {
 	let token = &state.bot_token;

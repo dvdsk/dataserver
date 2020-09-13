@@ -22,11 +22,11 @@ const CAPACITY: usize = MAX_ROW * MAX_COLUMN;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-        #[error("No keyboard set")]
+	#[error("No keyboard set")]
 	NoKeyboardSet,
-        #[error("Not enough space")]
+	#[error("Not enough space")]
 	NotEnoughSpace(usize),
-        #[error("Internal error, could not save keyboard")]
+	#[error("Internal error, could not save keyboard")]
 	DbError(crate::databases::UserDbError),
 }
 

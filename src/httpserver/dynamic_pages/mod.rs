@@ -102,8 +102,8 @@ pub async fn list_data(id: Identity, state: Data<DataRouterState>) -> impl Respo
 				.push(set.metadata.fields[*id as usize].name.clone());
 		}
 		infos.push(info);
-	}/*let page = ListPage { datasets: infos };
-	HttpResponse::Ok().body(page.call().unwrap())*/
+	} /*let page = ListPage { datasets: infos };
+  HttpResponse::Ok().body(page.call().unwrap())*/
 	HttpResponse::Ok()
 }
 

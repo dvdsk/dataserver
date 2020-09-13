@@ -206,11 +206,13 @@ fn plot(args: Vec<String>, state: &DataRouterState, user: &User) -> Result<Vec<u
 
 	//add lines
 	for (shared_x, ys, mut labels) in plot_data {
-        let n_lines = labels.len();
+		let n_lines = labels.len();
 		for (i, label) in labels.drain(..).enumerate() {
 			chart
 				.draw_series(LineSeries::new(
-					shared_x.iter().map(|x| {
+					shared_x
+						.iter()
+						.map(|x| {
 							DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(*x, 0), Utc)
 						})
 						.zip(ys.iter().skip(i).step_by(n_lines).copied()),
@@ -344,7 +346,7 @@ pub fn select_data(
 
 fn read_data(
 	selected_data: (DatasetId, Vec<FieldId>),
-        data: &Arc<RwLock<Data>>,
+	data: &Arc<RwLock<Data>>,
 	timerange: (DateTime<Utc>, DateTime<Utc>),
 ) -> Result<PlotData, Error> {
 	let max_plot_points = 1000;

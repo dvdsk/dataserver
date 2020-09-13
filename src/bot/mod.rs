@@ -19,64 +19,44 @@ pub use commands::alarms;
 use commands::plot;
 use commands::{alias, help, keyboard, plotables, show};
 
-#[derive(Debug)]
+async fn handle_error(error: Error, chat_id: ChatId, token: &str) {
+    let error_message = error.to_string();
+	if let Err(error) = send_text_reply(chat_id, token, error_message).await {
+		error!("Could not send text reply to user: {:?}", error);
+	}
+}
+
+const INT_ERR_TEXT: &str = "apologies, an internal error happend this has been reported and will be fixed as soon as possible";
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
-	HttpClientError(reqwest::Error),
+        #[error("{}", INT_ERR_TEXT)]
+	HttpClientError(#[from] reqwest::Error),
+        #[error("could not set up webhook for telegram bot")]
 	CouldNotSetWebhook,
+        #[error("{}", INT_ERR_TEXT)]
 	InvalidServerResponse(reqwest::Response),
+        #[error("{}", INT_ERR_TEXT)]
 	InvalidServerResponseBlocking(reqwest::blocking::Response),
+        #[error("sorry I can not understand your input")]
 	UnhandledUpdateKind,
+        #[error("sorry I can not understand your input")]
 	UnhandledMessageKind,
-	BotDatabaseError(UserDbError),
-	UnknownAlias(String),
-	ShowError(show::Error),
-	AliasError(alias::Error),
-	KeyBoardError(keyboard::Error),
-	AlarmError(alarms::Error),
-
-	PlotError(plot::Error),
-}
-
-impl From<alarms::Error> for Error {
-	fn from(err: alarms::Error) -> Self {
-		Error::AlarmError(err)
-	}
-}
-
-impl From<show::Error> for Error {
-	fn from(error: show::Error) -> Self {
-		Error::ShowError(error)
-	}
-}
-
-impl From<alias::Error> for Error {
-	fn from(error: alias::Error) -> Self {
-		Error::AliasError(error)
-	}
-}
-
-impl From<keyboard::Error> for Error {
-	fn from(error: keyboard::Error) -> Self {
-		Error::KeyBoardError(error)
-	}
-}
-
-impl From<plot::Error> for Error {
-	fn from(error: plot::Error) -> Self {
-		Error::PlotError(error)
-	}
-}
-
-impl From<reqwest::Error> for Error {
-	fn from(error: reqwest::Error) -> Self {
-		Error::HttpClientError(error)
-	}
-}
-
-impl From<UserDbError> for Error {
-	fn from(error: UserDbError) -> Self {
-		Error::BotDatabaseError(error)
-	}
+        #[error("sorry I can not understand your input")]
+	BotDatabaseError(#[from] UserDbError),
+	#[error("your input: \"{0}\", is not a possible command or \
+                a configured alias. Use /help to get a list of possible \
+                commands and configured aliases") ]
+        UnknownAlias(String),
+        #[error("{0}")]
+	ShowError(#[from] show::Error),
+        #[error("{0}")]
+	AliasError(#[from] alias::Error),
+        #[error("{0}")]
+	KeyBoardError(#[from] keyboard::Error),
+        #[error("{0}")]
+	AlarmError(#[from] alarms::Error),
+        #[error("{0}")]
+	PlotError(#[from] plot::Error),
 }
 
 fn to_string_and_ids(update: Update) -> Result<(String, ChatId, UserId), Error> {
@@ -171,45 +151,12 @@ async fn handle_command(
 	Ok(())
 }
 
-const INT_ERR_TEXT: &str = "apologies, an internal error happend this has been reported and will be fixed as soon as possible";
-const UNHANDLED: &str = "sorry I can not understand your input";
-async fn handle_error(error: Error, chat_id: ChatId, user_id: UserId, token: &str) {
-	let error_message = match error {
-		Error::PlotError(error) => error.to_string(),
-		Error::AliasError(error) => error.to_text(user_id),
-		Error::BotDatabaseError(error) => error.to_text(user_id),
-		Error::ShowError(error) => error.to_string(),
-		Error::KeyBoardError(error) => error.to_text(user_id),
-		Error::AlarmError(error) => error.to_text(user_id),
-		Error::UnknownAlias(alias_text) => format!(
-			"your input: \"{}\", is not a possible command or \
-			a configured alias. Use /help to get a list of possible \
-			commands and configured aliasses",
-			alias_text
-		),
-		Error::HttpClientError(err) => {
-			error!("Internal error in http client: {}", err);
-			String::from(INT_ERR_TEXT)
-		}
-		Error::InvalidServerResponse(resp) => {
-			error!("Incorrect bot api response {:?}", resp);
-			String::from(INT_ERR_TEXT)
-		}
-		Error::UnhandledMessageKind => String::from(UNHANDLED),
-		Error::UnhandledUpdateKind => String::from(UNHANDLED),
-		Error::CouldNotSetWebhook => unreachable!(),
-		Error::InvalidServerResponseBlocking(_) => unreachable!(),
-	};
-	if let Err(error) = send_text_reply(chat_id, token, error_message).await {
-		error!("Could not send text reply to user: {:?}", error);
-	}
-}
 
 async fn handle(update: Update, state: DataRouterState) {
 	let token = &state.bot_token;
 	if let Ok((text, chat_id, user_id)) = to_string_and_ids(update) {
 		if let Err(error) = handle_command(text, chat_id, user_id, &state).await {
-			handle_error(error, chat_id, user_id, token).await;
+			handle_error(error, chat_id, token).await;
 		}
 	}
 }

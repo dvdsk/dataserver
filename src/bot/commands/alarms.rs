@@ -44,83 +44,40 @@ use evalexpr::{build_operator_tree, EvalexprError};
 use log::error;
 use regex::{Captures, Regex};
 use telegram_bot::types::refs::ChatId;
-use telegram_bot::types::refs::UserId as TelegramUserId;
 
 use super::super::send_text_reply;
 use super::super::Error as botError;
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
+        #[error("Not enough arguments")]
 	NotEnoughArguments,
+        #[error("Internal error, could not save alarm")]
 	BotDatabaseError(crate::databases::UserDbError),
+	#[error("You do not have access to field: {0}")]
 	NoAccessToField(FieldId),
+        #[error("You do not have access to dataset: {0}")]
 	NoAccessToDataSet(DatasetId),
-	IncorrectFieldSpecifier(String),
+	#[error("This \"{0}\" is not a valid field specification, see the plotables command")]
+        IncorrectFieldSpecifier(String),
+        #[error("An alarm must have a condition, type /alarms for help")]
 	NoExpression,
+        #[error("This \"{0}\" is not a valid duration unit, options are s, m, h, d, w")]
 	IncorrectTimeUnit(String),
-	ArgumentParseError(std::num::ParseIntError),
-	ExpressionError(EvalexprError),
+        #[error("One of the arguments could not be converted to a number\nuse: {}", HELP_ADD)]
+	ArgumentParseError(#[from] std::num::ParseIntError),
+        #[error("I could not understand the alarms condition. Cause: {0}")]
+	ExpressionError(#[from] EvalexprError),
+        #[error("I could not understand what day this is: {0}")]
 	InvalidDay(String),
+        #[error("not a sub command for alarms: {0}")]
 	InvalidSubCommand(String),
+        #[error("can not set more then 255 alarms")]
 	TooManyAlarms,
+        #[error("Could not recognise an alarm number in: {0}")]
 	NotAnAlarmNumber(String),
-	DbError(AlarmDbError),
-}
-
-impl From<AlarmDbError> for Error {
-	fn from(err: AlarmDbError) -> Self {
-		Error::DbError(err)
-	}
-}
-
-impl From<std::num::ParseIntError> for Error {
-	fn from(err: std::num::ParseIntError) -> Self {
-		Error::ArgumentParseError(err)
-	}
-}
-impl From<EvalexprError> for Error {
-	fn from(err: EvalexprError) -> Self {
-		Error::ExpressionError(err)
-	}
-}
-
-impl Error {
-	pub fn to_text(self, user_id: TelegramUserId) -> String {
-		match self {
-			Error::NotEnoughArguments => format!("Not enough arguments, usage: {}", HELP_ADD),
-			Error::ArgumentParseError(_) => format!(
-				"One of the arguments could not be converted to a number\nuse: {}",
-				HELP_ADD
-			),
-			Error::NoAccessToField(field_id) => {
-				format!("You do not have access to field: {}", field_id)
-			}
-			Error::NoAccessToDataSet(dataset_id) => {
-				format!("You do not have access to dataset: {}", dataset_id)
-			}
-			Error::IncorrectFieldSpecifier(field) => format!(
-				"This \"{}\" is not a valid field specification, see the plotables command",
-				field
-			),
-			Error::NoExpression => format!("An alarm must have a condition, type /alarms for help"),
-			Error::IncorrectTimeUnit(unit) => format!(
-				"This \"{}\" is not a valid duration unit, options are s, m, h, d, w",
-				unit
-			),
-			Error::ExpressionError(err) => format!(
-				"I could not understand the alarms condition. Cause: {}",
-				err
-			),
-			Error::InvalidDay(day) => format!("I could not understand what day this is: {}", day),
-			Error::BotDatabaseError(db_err) => db_err.to_text(user_id),
-			Error::InvalidSubCommand(input) => format!("not a sub command for alarms: {}", input),
-			Error::TooManyAlarms => String::from("can not set more then 255 alarms"), //FIXME not true after readme
-			Error::DbError(db_err) => db_err.to_text(),
-			Error::NotAnAlarmNumber(input) => {
-				format!("Could not recognise an alarm number in: {}", input)
-			}
-		}
-	}
+        #[error("Could not save alarm")]
+	DbError(#[from] AlarmDbError),
 }
 
 //alarm will fire on a Sunday or Saturday
@@ -333,7 +290,7 @@ async fn add(
 		expression,
 		inv_expr,
 		weekday: day,
-		period: period,
+		period,
 		message,
 		command,
 		tz_offset,

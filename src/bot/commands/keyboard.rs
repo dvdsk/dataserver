@@ -12,7 +12,7 @@ use std::collections::HashSet;
 use crate::data_store::data_router::DataRouterState;
 use crate::databases::User;
 use log::error;
-use telegram_bot::types::refs::{ChatId, UserId};
+use telegram_bot::types::refs::ChatId;
 
 use crate::bot::Error as botError;
 
@@ -20,32 +20,14 @@ const MAX_ROW: usize = 3;
 const MAX_COLUMN: usize = 4;
 const CAPACITY: usize = MAX_ROW * MAX_COLUMN;
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
-	//NotEnoughArguments,
+        #[error("No keyboard set")]
 	NoKeyboardSet,
+        #[error("Not enough space")]
 	NotEnoughSpace(usize),
+        #[error("Internal error, could not save keyboard")]
 	DbError(crate::databases::UserDbError),
-}
-
-impl Error {
-	pub fn to_text(self, user_id: UserId) -> String {
-		match self {
-			/*Error::NotEnoughArguments =>
-			format!("Not enough arguments, usage: {}", USAGE_SHOW),*/
-			Error::NoKeyboardSet => {
-				format!("No keyboard set, set one by adding a button: {}", USAGE_ADD)
-			}
-			Error::NotEnoughSpace(free) => format!(
-				"Not enough space on the keyboard, {} of {} spots left",
-				free, CAPACITY
-			),
-			Error::DbError(db_error) => {
-				error!("could not update database for user_id: {} during setting of alias, error: {:?}", user_id, db_error);
-				String::from("Internal error during setting of database")
-			}
-		}
-	}
 }
 
 pub async fn show(chat_id: ChatId, token: &str, user: User) -> Result<(), botError> {

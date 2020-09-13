@@ -4,27 +4,17 @@ pub const DESCRIPTION: &str = "this defines an new command that can be used to c
 use crate::data_store::data_router::DataRouterState;
 use crate::databases::User;
 use log::error;
-use telegram_bot::types::refs::{ChatId, UserId};
+use telegram_bot::types::refs::ChatId;
 
 use super::super::send_text_reply;
 use super::super::Error as botError;
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
+        #[error("not enough arguments")]
 	NotEnoughArguments,
+        #[error("could not update database during setting of alias")]
 	DbError(crate::databases::UserDbError),
-}
-
-impl Error {
-	pub fn to_text(self, user_id: UserId) -> String {
-		match self {
-			Error::NotEnoughArguments => format!("Not enough arguments, usage: {}", USAGE),
-			Error::DbError(db_error) => {
-				error!("could not update database for user_id: {} during setting of alias, error: {:?}", user_id, db_error);
-				String::from("Internal error during setting of database")
-			}
-		}
-	}
 }
 
 pub async fn send(

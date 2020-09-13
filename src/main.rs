@@ -95,7 +95,7 @@ async fn main() {
 		std::fs::rename("database", "database_old").unwrap();
 		let old = old_sled::open("database_old").unwrap();
 		let export = old.export();
-		let mut db = sled::open("database").unwrap();
+		let db = sled::open("database").unwrap();
 		db.import(export);
 		log::warn!("done upgrading database");
 		db

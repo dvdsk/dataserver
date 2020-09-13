@@ -124,7 +124,7 @@ impl Handler<NewData> for DataRouter {
 			self.update_context(&msg.line, &updated_dataset_id); //Opt:
 			if let Some(alarms) = self.alarms_by_set.get_mut(&updated_dataset_id) {
 				for alarm in alarms.values_mut() {
-					let token = alarm.evalute(
+					alarm.evalute(
 						&mut self.alarm_context,
 						&now,
 						&self.async_pool,

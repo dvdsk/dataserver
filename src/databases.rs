@@ -156,11 +156,15 @@ pub struct User {
 
 #[derive(Error, Debug)]
 pub enum UserDbError {
-	#[error("User not in database")]
-	UserNotInDb,
-	#[error("database error: {0}")]
+    #[error("this telegram account may not use this bot, to be able to use this bot add your telegram id: {0} to your account")]
+    TelegramUserNotInDb(TelegramUserId),
+    #[error("I know no user by the name: {0}")]
+    UserNameNotInDb(String),
+	#[error("No user with id {0} exists in the database")]
+	UserNotInDb(UserId),
+	#[error("An internal error occured")]
 	DatabaseError(#[from] sled::Error),
-	#[error("serialization error: {0}")]
+	#[error("An internal error occured")]
 	SerializeError(#[from] bincode::Error),
 }
 
@@ -196,7 +200,7 @@ impl UserDatabase {
 			let user = bincode::deserialize(&user)?;
 			Ok(user)
 		} else {
-			Err(UserDbError::UserNotInDb)
+			Err(UserDbError::UserNotInDb(id))
 		}
 	}
 
@@ -254,7 +258,7 @@ impl UserLookup {
 			.read()
 			.unwrap()
 			.get(username)
-			.ok_or(UserDbError::UserNotInDb)?;
+			.ok_or(UserDbError::UserNameNotInDb(username.clone()))?;
 		Ok(id)
 	}
 	pub fn by_telegram_id(&self, telegram_id: &TelegramUserId) -> Result<UserId, UserDbError> {
@@ -263,7 +267,7 @@ impl UserLookup {
 			.read()
 			.unwrap()
 			.get(telegram_id)
-			.ok_or(UserDbError::UserNotInDb)?;
+			.ok_or(UserDbError::TelegramUserNotInDb(telegram_id.clone()))?;
 		Ok(id)
 	}
 
@@ -323,19 +327,14 @@ pub struct AlarmDatabase {
 	pub storage: Tree,
 }
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum AlarmDbError {
-	DatabaseError(sled::Error),
+        #[error("internal database error: {0:?}")]
+	DatabaseError(#[from] sled::Error),
+        #[error("already removed this alarm")]
 	AlreadyRemoved,
 }
 
-impl From<sled::Error> for AlarmDbError {
-	fn from(error: sled::Error) -> Self {
-		AlarmDbError::DatabaseError(error)
-	}
-}
-
-//#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub type AlarmList = Vec<(usize, Alarm)>;
 pub type AlarmId = u64;
 impl AlarmDatabase {
@@ -438,34 +437,5 @@ impl AlarmDatabase {
 
 		self.storage.insert(key, data)?;
 		Ok(id)
-	}
-}
-
-impl AlarmDbError {
-	pub fn to_text(self) -> String {
-		match self {
-			AlarmDbError::AlreadyRemoved => String::from("alarm was already removed"),
-			AlarmDbError::DatabaseError(e) => {
-				error!("error during alarm db access: {}", e);
-				String::from("internal error in database")
-			}
-		}
-	}
-}
-
-impl UserDbError {
-	pub fn to_text(self, user_id: TelegramUserId) -> String {
-		match self {
-			UserDbError::UserNotInDb =>
-				format!("this telegram account may not use this bot, to be able to use this bot add your telegram id: {} to your account", user_id),
-			UserDbError::DatabaseError(error) => {
-				error!("Error happend in embedded database: {:?}", error);
-				format!("apologies, an internal error happend this has been reported and will be fixed as soon as possible")
-			}
-			UserDbError::SerializeError(error) => {
-				error!("Error happend during serialisation for the embedded database: {:?}", error);
-				format!("apologies, an internal error happend this has been reported and will be fixed as soon as possible")
-			}
-		}
 	}
 }

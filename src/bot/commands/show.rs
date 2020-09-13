@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use telegram_bot::types::refs::ChatId;
 
 use crate::data_store::data_router::DataRouterState;
-use crate::data_store::{DatasetId, FieldDecoder};
+use crate::data_store::DatasetId;
 use crate::databases::{User, UserDbError};
 use bitspec::FieldId;
 
@@ -96,20 +96,12 @@ pub async fn send(
 	let datasets = &mut state.data.write().unwrap().sets;
 	for (dataset_id, field_ids) in dataset_fields.iter() {
 		let set = datasets.get_mut(&dataset_id).unwrap();
-		let fields = &set
-			.metadata
-			.fields
-			.iter()
-			.enumerate()
-			.filter(|(i, field)| field_ids.contains(&(*i as u8)))
-			.map(|(_, v)| v);
+		let fields = &set.metadata.fields;
 
-		let decoder = FieldDecoder::from_fields(fields);
-		let (time, values) = set
+		let (time, line) = set
 			.timeseries
-			.last_line(&mut decoder)
-			.map_err(|e| e.into())?;
-		let time = DateTime::from_utc(chrono::NaiveDateTime::from_timestamp(time, 0), Utc);
+			.last_line_raw()
+                        .map_err(|e| Error::from(e))?;
 
 		let set_name = &set.metadata.name;
 		let time_since = format_to_duration(time);
@@ -118,8 +110,11 @@ pub async fn send(
 			set_name, time_since
 		));
 
-		for (field, value) in fields.zip(values.into_iter()) {
-			text.push_str(&format!("\t-{}:\t{:.2}\n", &field.name, value));
+                for field in field_ids.iter().map(|id| &fields[*id as usize]) {
+			let value: f32 = field.decode(&line);
+			let field_name = &field.name;
+
+			text.push_str(&format!("\t-{}:\t{:.2}\n", field_name, value));
 		}
 	}
 

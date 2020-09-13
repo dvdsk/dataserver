@@ -39,8 +39,6 @@ pub enum Error {
 	NoAccessToField(FieldId),
 	#[error("You do not have access to field: {0}")]
 	NoAccessToDataSet(DatasetId),
-	#[error("could not setup read for dataset {0} and fields {1:?}")]
-	CouldNotSetupRead(DatasetId, Vec<FieldId>),
 	#[error("internal error in plotting lib")]
 	PlotLibError,
 	#[error("could not encode png: {0}")]
@@ -86,7 +84,7 @@ pub async fn send(
 	}
 }
 
-type PlotData = (Vec<i64>, Vec<Vec<f32>>, Vec<(FieldId, String)>);
+type PlotData = (Vec<i64>, Vec<f32>, Vec<(FieldId, String)>);
 fn xlimits_from_data(data: &Vec<PlotData>) -> Result<(DateTime<Utc>, DateTime<Utc>), Error> {
 	let mut min_ts = data.iter().map(|d| *d.0.first().unwrap()).min().unwrap();
 	let mut max_ts = data.iter().map(|d| *d.0.last().unwrap()).max().unwrap();
@@ -120,11 +118,6 @@ fn ylimits_from_data(data: &Vec<PlotData>) -> (f32, f32) {
 			data_set
 				.1
 				.iter()
-				.map(|line| {
-					line.iter()
-						.min_by(|a, b| a.partial_cmp(b).expect("NAN in plot data"))
-						.unwrap()
-				})
 				.min_by(|a, b| a.partial_cmp(b).expect("NAN in plot data"))
 				.unwrap()
 		})
@@ -136,11 +129,6 @@ fn ylimits_from_data(data: &Vec<PlotData>) -> (f32, f32) {
 			data_set
 				.1
 				.iter()
-				.map(|line| {
-					line.iter()
-						.max_by(|a, b| a.partial_cmp(b).expect("NAN in plot data"))
-						.unwrap()
-				})
 				.max_by(|a, b| a.partial_cmp(b).expect("NAN in plot data"))
 				.unwrap()
 		})
@@ -217,17 +205,15 @@ fn plot(args: Vec<String>, state: &DataRouterState, user: &User) -> Result<Vec<u
 		.map_err(|_| Error::PlotLibError)?;
 
 	//add lines
-	for (shared_x, mut y_datas, mut labels) in plot_data {
-		for (mut y, label) in y_datas.drain(..).zip(labels.drain(..)) {
+	for (shared_x, ys, mut labels) in plot_data {
+        let n_lines = labels.len();
+		for (i, label) in labels.drain(..).enumerate() {
 			chart
 				.draw_series(LineSeries::new(
-					shared_x
-						.iter()
-						//.map(|x|*x)
-						.map(|x| {
+					shared_x.iter().map(|x| {
 							DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(*x, 0), Utc)
 						})
-						.zip(y.drain(..)),
+						.zip(ys.iter().skip(i).step_by(n_lines).copied()),
 					&RED,
 				))
 				.map_err(|_| Error::PlotLibError)?
@@ -370,7 +356,7 @@ fn read_data(
 	let dataset = data.sets.get_mut(&dataset_id).unwrap();
 
 	let fields = &dataset.metadata.fields;
-	let decoder = FieldDecoder::from_fields_and_id(fields, &field_ids);
+	let mut decoder = FieldDecoder::from_fields_and_id(fields, &field_ids);
 	let mut sampler = byteseries::new_sampler(&dataset.timeseries, &mut decoder)
 		.start(timerange.0)
 		.stop(timerange.1)

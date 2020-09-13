@@ -37,23 +37,23 @@ pub struct FieldDecoder {
 }
 impl Decoder<f32> for FieldDecoder {
 	fn decode(&mut self, bytes: &[u8], out: &mut Vec<f32>) {
-		for field in self.fields {
+		for field in &self.fields {
 			out.push(field.decode(bytes));
 		}
 	}
 }
 impl FieldDecoder {
-	pub fn from_fields<'a>(fields: &impl Iterator<Item = &'a MetaField<f32>>) -> Self {
+	pub fn from_fields<'a>(fields: &Vec<MetaField<f32>>) -> Self {
 		Self {
-			fields: fields.map(|f| f.clone().into()).collect(),
+			fields: fields.iter().map(|f| f.clone().into()).collect(),
 		}
 	}
 	pub fn from_fields_and_id(fields: &[MetaField<f32>], ids: &[FieldId]) -> Self {
 		let fields = fields
 			.iter()
 			.enumerate()
-			.filter(|(i, field)| ids.contains(&(*i as u8)))
-			.map(|(_, v)| v);
+			.filter(|(i, _)| ids.contains(&(*i as u8)))
+			.map(|(_, f)| f);
 		FieldDecoder {
 			fields: fields.map(|f| f.clone().into()).collect(),
 		}

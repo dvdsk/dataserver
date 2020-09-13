@@ -267,7 +267,7 @@ impl WsSession {
 			let mut dataset_client_metadata: DataSetClientMeta = Default::default();
 			let dataset = data.sets.get_mut(dataset_id).unwrap();
 			let fields = &dataset.metadata.fields;
-			let decoder = FieldDecoder::from_fields_and_id(fields, field_ids);
+			let mut decoder = FieldDecoder::from_fields_and_id(fields, field_ids);
 			let mut sampler = byteseries::new_sampler(&dataset.timeseries, &mut decoder)
 				.start(self.timerange.start)
 				.stop(self.timerange.stop)

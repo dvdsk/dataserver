@@ -5,12 +5,14 @@ use crate::data_store::data_router::DataRouterState;
 use crate::databases::User;
 use log::error;
 use telegram_bot::types::refs::ChatId;
+use error_level::ErrorLevel;
 
 use super::super::send_text_reply;
 use super::super::Error as botError;
 
-#[derive(thiserror::Error, Debug)]
+#[derive(ErrorLevel, thiserror::Error, Debug)]
 pub enum Error {
+    #[report(debug)]
 	#[error("not enough arguments")]
 	NotEnoughArguments,
 	#[error("could not update database during setting of alias")]

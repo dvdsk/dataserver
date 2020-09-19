@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
 use telegram_bot::types::refs::ChatId;
+use error_level::ErrorLevel;
 
 use crate::data_store::data_router::DataRouterState;
 use crate::data_store::DatasetId;
@@ -14,22 +15,29 @@ use bitspec::FieldId;
 use super::super::send_text_reply;
 use super::super::Error as botError;
 
-#[derive(thiserror::Error, Debug)]
+#[derive(ErrorLevel, thiserror::Error, Debug)]
 pub enum Error {
+    #[report(debug)]
 	#[error("The argument {0} could not be parsed")]
 	ArgumentParseError(String, std::num::ParseIntError),
+    #[report(debug)]
 	#[error("The argument {0} could not be interpreted, does it contain a \":\"?")]
 	ArgumentSplitError(String),
+    #[report(debug)]
 	#[error("You do not have access to field: {0}")]
 	NoAccessToField(FieldId),
+    #[report(debug)]
 	#[error("You do not have access to dataset: {0}")]
 	NoAccessToDataSet(DatasetId),
+    #[report(debug)]
 	#[error("There is no data for dataset: {0}")]
 	NoData(DatasetId),
 	#[error("database error")]
 	BotDatabaseError(#[from] UserDbError),
+    #[report(debug)]
 	#[error("Not enough arguments\nuse: {}", USAGE)]
 	NotEnoughArguments,
+    #[report(error)]
 	#[error("Error accessing dataset: {0}")]
 	DataSetError(#[from] byteseries::Error),
 }

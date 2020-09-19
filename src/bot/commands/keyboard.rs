@@ -8,6 +8,7 @@ pub const DESCRIPTION_REMOVE: &str = "remove aliasses from the keyboard";
 
 use itertools::Itertools;
 use std::collections::HashSet;
+use error_level::ErrorLevel;
 
 use crate::data_store::data_router::DataRouterState;
 use crate::databases::User;
@@ -20,12 +21,15 @@ const MAX_ROW: usize = 3;
 const MAX_COLUMN: usize = 4;
 const CAPACITY: usize = MAX_ROW * MAX_COLUMN;
 
-#[derive(thiserror::Error, Debug)]
+#[derive(ErrorLevel, thiserror::Error, Debug)]
 pub enum Error {
+    #[report(no)]
 	#[error("No keyboard set")]
 	NoKeyboardSet,
+    #[report(no)]
 	#[error("Not enough space")]
 	NotEnoughSpace(usize),
+    #[report(error)]
 	#[error("Internal error, could not save keyboard")]
 	DbError(crate::databases::UserDbError),
 }

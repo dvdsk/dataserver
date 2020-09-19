@@ -18,8 +18,10 @@ pub use commands::alarms;
 
 use commands::plot;
 use commands::{alias, help, keyboard, plotables, show};
+use error_level::ErrorLevel;
 
 async fn handle_error(error: Error, chat_id: ChatId, token: &str) {
+    error.log_error();
 	let error_message = error.to_string();
 	if let Err(error) = send_text_reply(chat_id, token, error_message).await {
 		error!("Could not send text reply to user: {:?}", error);
@@ -27,22 +29,29 @@ async fn handle_error(error: Error, chat_id: ChatId, token: &str) {
 }
 
 const INT_ERR_TEXT: &str = "apologies, an internal error happend this has been reported and will be fixed as soon as possible";
-#[derive(thiserror::Error, Debug)]
+#[derive(ErrorLevel, thiserror::Error, Debug)]
 pub enum Error {
-	#[error("{}", INT_ERR_TEXT)]
+	#[report(error)]
+    #[error("{}", INT_ERR_TEXT)]
 	HttpClientError(#[from] reqwest::Error),
+	#[report(error)]
 	#[error("could not set up webhook for telegram bot")]
 	CouldNotSetWebhook,
+	#[report(warn)]
 	#[error("{}", INT_ERR_TEXT)]
 	InvalidServerResponse(reqwest::Response),
+	#[report(warn)]
 	#[error("{}", INT_ERR_TEXT)]
 	InvalidServerResponseBlocking(reqwest::blocking::Response),
+	#[report(no)]
 	#[error("sorry I can not understand your input")]
 	UnhandledUpdateKind,
+	#[report(no)]
 	#[error("sorry I can not understand your input")]
 	UnhandledMessageKind,
 	#[error("sorry I can not understand your input")]
 	BotDatabaseError(#[from] UserDbError),
+	#[report(no)]
 	#[error(
 		"your input: \"{0}\", is not a possible command or \
                 a configured alias. Use /help to get a list of possible \

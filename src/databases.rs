@@ -1,5 +1,6 @@
 use crate::data_store;
 use serde::{Deserialize, Serialize};
+use error_level::ErrorLevel;
 use thiserror::Error;
 
 use bincode;
@@ -154,16 +155,21 @@ pub struct User {
 	pub timezone_offset: i32, //hours to the east
 }
 
-#[derive(Error, Debug)]
+#[derive(ErrorLevel, Error, Debug)]
 pub enum UserDbError {
+    #[report(no)]
 	#[error("this telegram account may not use this bot, to be able to use this bot add your telegram id: {0} to your account")]
 	TelegramUserNotInDb(TelegramUserId),
+    #[report(no)]
 	#[error("I know no user by the name: {0}")]
 	UserNameNotInDb(String),
+    #[report(no)]
 	#[error("No user with id {0} exists in the database")]
 	UserNotInDb(UserId),
+    #[report(error)]
 	#[error("An internal error occured")]
 	DatabaseError(#[from] sled::Error),
+    #[report(error)]
 	#[error("An internal error occured")]
 	SerializeError(#[from] bincode::Error),
 }

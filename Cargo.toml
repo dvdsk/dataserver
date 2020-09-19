@@ -56,6 +56,7 @@ rand = "0.7"
 
 log = "0.4.5"
 fern = { version = "0.6", features = ["colored"] }
+error_level = { version = "0.1", git = "https://github.com/dskleingeld/error_level" }
 
 bincode = "1.0.1"
 text_io = "0.1.7"

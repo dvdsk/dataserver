@@ -9,6 +9,7 @@ use crate::data_store::data_router::DataRouterState;
 use crate::data_store::{Data, DatasetId, FieldDecoder};
 use crate::databases::{User, UserDbError};
 use bitspec::FieldId;
+use error_level::ErrorLevel;
 
 use crate::bot::Error as botError;
 use telegram_bot::types::refs::ChatId;
@@ -21,34 +22,45 @@ pub const DESCRIPTION: &str = "send a line graph of a sensor value aka plotable,
  from a given time ago till now. Optionally adding <start:stop> allows to \
  specify the start and stop value for the y-axis";
 
-#[derive(thiserror::Error, Debug)]
+#[derive(ErrorLevel, thiserror::Error, Debug)]
 pub enum Error {
+    #[report(debug)]
 	#[error(
 		"One of the arguments could not be converted to a number\nuse: {}",
 		USAGE
 	)]
 	ArgumentParseErrorF(#[from] std::num::ParseFloatError),
+    #[report(debug)]
 	#[error(
 		"One of the arguments could not be converted to a number\nuse: {}",
 		USAGE
 	)]
 	ArgumentParseErrorI(#[from] std::num::ParseIntError),
+    #[report(debug)]
 	#[error("Incorrectly formatted argument: \"{0}\"\nuse: {}", USAGE)]
 	IncorrectArgument(String),
+    #[report(debug)]
 	#[error("Incorrectly formatted argument: \"{0}\"\nuse: {}", USAGE)]
 	NoAccessToField(FieldId),
+    #[report(debug)]
 	#[error("You do not have access to field: {0}")]
 	NoAccessToDataSet(DatasetId),
+    #[report(error)]
 	#[error("internal error in plotting lib")]
 	PlotLibError,
+    #[report(error)]
 	#[error("could not encode png: {0}")]
 	EncodingError(image::error::ImageError),
+    #[report(error)]
 	#[error("internal db error")]
 	BotDatabaseError(#[from] UserDbError),
+    #[report(debug)]
 	#[error("Not enough arguments \nuse: {}", USAGE)]
 	NotEnoughArguments,
+    #[report(error)]
 	#[error("Internal error regarding the limits of the data")] //TODO remove if no longer issue
 	DataLimitsAlarm,
+    #[report(error)]
 	#[error("Error getting data: {0}")]
 	DatasetError(#[from] byteseries::Error),
 }

@@ -1,6 +1,73 @@
 pub const USAGE: &str = "/alarm";
 pub const DESCRIPTION: &str = "list, add and remove sensor notifications";
 
+use std::collections::{HashMap, HashSet};
+use std::time::Duration;
+
+use crate::data_store::data_router::{AddAlarm, RemoveAlarm};
+use crate::data_store::data_router::{Alarm, DataRouterState, NotifyVia};
+use crate::data_store::DatasetId;
+use crate::databases::{AlarmDbError, User};
+use bitspec::FieldId;
+use chrono::{self, Weekday};
+use evalexpr::{build_operator_tree, EvalexprError};
+use log::error;
+use regex::{Captures, Regex};
+use telegram_bot::types::refs::ChatId;
+use error_level::ErrorLevel;
+
+use super::super::send_text_reply;
+use super::super::Error as botError;
+
+#[derive(ErrorLevel, thiserror::Error, Debug)]
+pub enum Error {
+    #[report(debug)]
+	#[error("Not enough arguments")]
+	NotEnoughArguments,
+    #[report(error)]
+	#[error("Internal error, could not save alarm")]
+	BotDatabaseError(crate::databases::UserDbError),
+    #[report(debug)]
+	#[error("You do not have access to field: {0}")]
+	NoAccessToField(FieldId),
+    #[report(debug)]
+	#[error("You do not have access to dataset: {0}")]
+	NoAccessToDataSet(DatasetId),
+    #[report(debug)]
+	#[error("This \"{0}\" is not a valid field specification, see the plotables command")]
+	IncorrectFieldSpecifier(String),
+	#[error("An alarm must have a condition, type /alarms for help")]
+    #[report(debug)]
+	NoExpression,
+	#[error("This \"{0}\" is not a valid duration unit, options are s, m, h, d, w")]
+    #[report(debug)]
+	IncorrectTimeUnit(String),
+    #[report(debug)]
+	#[error(
+		"One of the arguments could not be converted to a number\nuse: {}",
+		HELP_ADD
+	)]
+	ArgumentParseError(#[from] std::num::ParseIntError),
+    #[report(debug)]
+	#[error("I could not understand the alarms condition. Cause: {0}")]
+	ExpressionError(#[from] EvalexprError),
+    #[report(debug)]
+	#[error("I could not understand what day this is: {0}")]
+	InvalidDay(String),
+    #[report(debug)]
+	#[error("not a sub command for alarms: {0}")]
+	InvalidSubCommand(String),
+    #[report(warn)]
+	#[error("can not set more then 255 alarms")]
+	TooManyAlarms,
+    #[report(debug)]
+	#[error("Could not recognise an alarm number in: {0}")]
+	NotAnAlarmNumber(String),
+    #[report(error)]
+	#[error("Could not save alarm")]
+	DbError(#[from] AlarmDbError),
+}
+
 pub const HELP_ADD: &'static str = "/alarm add [options] \"condition\"\n\
 	example: add \"3_0> 3_1 & t>9:30 & t<12:00\" -d [Sunday,Saturday] -p 5h -c /plotables\
 	\ncondition; a boolean statement that may use these binairy operators: \
@@ -30,58 +97,6 @@ pub const HELP_LIST: &'static str = "/alarm list\n\
 pub const HELP_REMOVE: &'static str = "/alarm remove list_numb_1 list_numb_2....list_numb_n\n\
 	removes one or multiple active alarms, space seperate list \
 	of the numbers in front of the expressions of the alarm list.";
-
-use std::collections::{HashMap, HashSet};
-use std::time::Duration;
-
-use crate::data_store::data_router::{AddAlarm, RemoveAlarm};
-use crate::data_store::data_router::{Alarm, DataRouterState, NotifyVia};
-use crate::data_store::DatasetId;
-use crate::databases::{AlarmDbError, User};
-use bitspec::FieldId;
-use chrono::{self, Weekday};
-use evalexpr::{build_operator_tree, EvalexprError};
-use log::error;
-use regex::{Captures, Regex};
-use telegram_bot::types::refs::ChatId;
-
-use super::super::send_text_reply;
-use super::super::Error as botError;
-
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-	#[error("Not enough arguments")]
-	NotEnoughArguments,
-	#[error("Internal error, could not save alarm")]
-	BotDatabaseError(crate::databases::UserDbError),
-	#[error("You do not have access to field: {0}")]
-	NoAccessToField(FieldId),
-	#[error("You do not have access to dataset: {0}")]
-	NoAccessToDataSet(DatasetId),
-	#[error("This \"{0}\" is not a valid field specification, see the plotables command")]
-	IncorrectFieldSpecifier(String),
-	#[error("An alarm must have a condition, type /alarms for help")]
-	NoExpression,
-	#[error("This \"{0}\" is not a valid duration unit, options are s, m, h, d, w")]
-	IncorrectTimeUnit(String),
-	#[error(
-		"One of the arguments could not be converted to a number\nuse: {}",
-		HELP_ADD
-	)]
-	ArgumentParseError(#[from] std::num::ParseIntError),
-	#[error("I could not understand the alarms condition. Cause: {0}")]
-	ExpressionError(#[from] EvalexprError),
-	#[error("I could not understand what day this is: {0}")]
-	InvalidDay(String),
-	#[error("not a sub command for alarms: {0}")]
-	InvalidSubCommand(String),
-	#[error("can not set more then 255 alarms")]
-	TooManyAlarms,
-	#[error("Could not recognise an alarm number in: {0}")]
-	NotAnAlarmNumber(String),
-	#[error("Could not save alarm")]
-	DbError(#[from] AlarmDbError),
-}
 
 //alarm will fire on a Sunday or Saturday
 //between 9:30 and 12am if the value of

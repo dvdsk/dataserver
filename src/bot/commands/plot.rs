@@ -207,11 +207,11 @@ fn plot(args: Vec<String>, state: &DataRouterState, user: &User) -> Result<Vec<u
 	let mut chart = ChartBuilder::on(&root)
 		.x_label_area_size(40)
 		.y_label_area_size(40)
-		.build_ranged(from_date..to_date, y_min..y_max)
+		.build_cartesian_2d(from_date..to_date, y_min..y_max)
 		.map_err(|_| Error::PlotLibError)?;
-	chart //Causes crash (div zero), or takes forever, need to solve
+	chart
 		.configure_mesh()
-		.line_style_2(&WHITE)
+		// .line_style_2(&WHITE)
 		.x_label_formatter(&|v| v.format(x_label_formatstr).to_string())
 		.draw()
 		.map_err(|_| Error::PlotLibError)?;

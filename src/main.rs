@@ -22,7 +22,6 @@ use std::thread;
 use std::time::Duration;
 
 use actix::prelude::*;
-use cert_manager;
 use log::error;
 use structopt::StructOpt;
 use threadpool::ThreadPool;

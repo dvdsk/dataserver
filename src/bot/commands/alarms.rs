@@ -22,12 +22,6 @@ use super::super::Error as botError;
 #[derive(ErrorLevel, thiserror::Error, Debug)]
 pub enum Error {
     #[report(debug)]
-	#[error("Not enough arguments")]
-	NotEnoughArguments,
-    #[report(error)]
-	#[error("Internal error, could not save alarm")]
-	BotDatabaseError(crate::databases::UserDbError),
-    #[report(debug)]
 	#[error("You do not have access to field: {0}")]
 	NoAccessToField(FieldId),
     #[report(debug)]
@@ -54,9 +48,6 @@ pub enum Error {
     #[report(debug)]
 	#[error("I could not understand what day this is: {0}")]
 	InvalidDay(String),
-    #[report(debug)]
-	#[error("not a sub command for alarms: {0}")]
-	InvalidSubCommand(String),
     #[report(warn)]
 	#[error("can not set more then 255 alarms")]
 	TooManyAlarms,
@@ -68,7 +59,7 @@ pub enum Error {
 	DbError(#[from] AlarmDbError),
 }
 
-pub const HELP_ADD: &'static str = "/alarm add [options] \"condition\"\n\
+pub const HELP_ADD: &str = "/alarm add [options] \"condition\"\n\
 	example: add \"3_0> 3_1 & t>9:30 & t<12:00\" -d [Sunday,Saturday] -p 5h -c /plotables\
 	\ncondition; a boolean statement that may use these binairy operators: \
 	^ * / % + - < > == != && || on sensor fields (see /plotables for options) \
@@ -91,10 +82,10 @@ pub const HELP_ADD: &'static str = "/alarm add [options] \"condition\"\n\
 	alarm that will re-enable it once one of the values \
 	it watches deviates the given percentage from the alarm \
 	activation value\n";
-pub const HELP_LIST: &'static str = "/alarm list\n\
+pub const HELP_LIST: &str = "/alarm list\n\
 	shows for all set alarms their: id, condition, timezone and action\
 	performed when the condition is satisfied.\n";
-pub const HELP_REMOVE: &'static str = "/alarm remove list_numb_1 list_numb_2....list_numb_n\n\
+pub const HELP_REMOVE: &str = "/alarm remove list_numb_1 list_numb_2....list_numb_n\n\
 	removes one or multiple active alarms, space seperate list \
 	of the numbers in front of the expressions of the alarm list.";
 
@@ -147,12 +138,10 @@ pub fn format_time_human_readable(expression: String) -> String {
 				} else {
 					format!("t {} {}:0{}", equality, hours, minutes)
 				}
+			} else if hours < 10 {
+				format!("t {} 0{}:{}", equality, hours, minutes)
 			} else {
-				if hours < 10 {
-					format!("t {} 0{}:{}", equality, hours, minutes)
-				} else {
-					format!("t {} {}:{}", equality, hours, minutes)
-				}
+				format!("t {} {}:{}", equality, hours, minutes)
 			}
 		})
 		.to_string()
@@ -224,8 +213,8 @@ fn parse_arguments(args: &str) -> Result<Arguments, Error> {
 
 		let mut split = ids_str.splitn(2, '_');
 		let set_id = split
-			.nth(0)
-			.ok_or(Error::IncorrectFieldSpecifier(ids_str.to_owned()))?
+			.next()
+			.ok_or_else(|| Error::IncorrectFieldSpecifier(ids_str.to_owned()))?
 			.parse::<DatasetId>()?;
 		let field_id = split
 			.last()
@@ -318,14 +307,14 @@ async fn add(
 	let alarm_id = state
 		.alarm_db
 		.add(&alarm, user.id)
-		.map_err(|e| Error::from(e))?;
+		.map_err(Error::from)?;
 	state
 		.data_router_addr
 		.send(AddAlarm {
 			alarm,
 			user_id: user.id,
 			alarm_id,
-			sets: fields.keys().map(|id| *id).collect(),
+			sets: fields.keys().copied().collect(),
 		})
 		.await
 		.unwrap()
@@ -431,7 +420,7 @@ async fn remove(
 		let (alarm, alarm_id) = state
 			.alarm_db
 			.remove(user.id, *numb)
-			.map_err(|e| Error::from(e))?;
+			.map_err(Error::from)?;
 		let sets = alarm.watched_sets();
 
 		state

@@ -2,25 +2,23 @@ use actix_identity::Identity;
 use actix_web::web::Data;
 use actix_web::{HttpResponse, Responder};
 
-//extern crate yarte;
-//use yarte::Template;
+use yarte::Template;
 
 use crate::bot::commands::show::format_to_duration;
 use crate::data_store;
 use data_store::{data_router::DataRouterState, Authorisation};
 
-/*#[derive(Template)]
+#[derive(Template)]
 #[template(path = "settings.hbs")]
 struct SettingsPage<'a> {
 	telegram_id: &'a str,
-}*/
+}
 
 pub async fn settings_page(_id: Identity, _state: Data<DataRouterState>) -> impl Responder {
-	/*let page = SettingsPage {
+	let page = SettingsPage {
 		telegram_id: "test",
 	};
-	HttpResponse::Ok().body(page.call().unwrap())*/
-	HttpResponse::Ok()
+	HttpResponse::Ok().body(page.call().unwrap())
 }
 
 #[derive(Default)]
@@ -42,12 +40,11 @@ impl ListSetInfo {
 	}
 }
 
-/*
 #[derive(Template)]
 #[template(path = "list_data.hbs")]
 struct ListPage {
 	datasets: Vec<ListSetInfo>,
-}*/
+}
 
 pub async fn list_data(id: Identity, state: Data<DataRouterState>) -> impl Responder {
 	let session_id = id
@@ -74,7 +71,7 @@ pub async fn list_data(id: Identity, state: Data<DataRouterState>) -> impl Respo
 			time_since = format_to_duration(time);
 			Some(line)
 		} else {
-			time_since = String::from(String::from("-"));
+			time_since = String::from("-");
 			None
 		};
 
@@ -102,9 +99,9 @@ pub async fn list_data(id: Identity, state: Data<DataRouterState>) -> impl Respo
 				.push(set.metadata.fields[*id as usize].name.clone());
 		}
 		infos.push(info);
-	} /*let page = ListPage { datasets: infos };
-  HttpResponse::Ok().body(page.call().unwrap())*/
-	HttpResponse::Ok()
+	} 
+    let page = ListPage { datasets: infos };
+    HttpResponse::Ok().body(page.call().unwrap())
 }
 
 struct PlotInfo {
@@ -118,12 +115,11 @@ struct PlotSetsInfo {
 	infos: Vec<PlotInfo>,
 }
 
-/*
 #[derive(Template)]
 #[template(path = "plot.hbs")]
 struct PlotPage {
 	datasets: Vec<PlotSetsInfo>,
-}*/
+}
 
 pub async fn plot_data(id: Identity, state: Data<DataRouterState>) -> impl Responder {
 	let session_id = id
@@ -164,7 +160,6 @@ pub async fn plot_data(id: Identity, state: Data<DataRouterState>) -> impl Respo
 		});
 	}
 
-	/*let page = PlotPage { datasets: all_info };
-	HttpResponse::Ok().body(page.call().unwrap())*/
-	HttpResponse::Ok()
+	let page = PlotPage { datasets: all_info };
+	HttpResponse::Ok().body(page.call().unwrap())
 }

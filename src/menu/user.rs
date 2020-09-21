@@ -105,7 +105,7 @@ pub fn add_user(user_db: &mut UserDatabase, passw_db: &mut PasswordDatabase, loo
 		.interact()
 		.unwrap();
 
-	if name.len() == 0 {
+	if name.is_empty() {
 		println!("name must be at least 1 character");
 		thread::sleep(Duration::from_secs(2));
 		return;
@@ -173,7 +173,7 @@ fn change_user_name(user: &mut User, lookup: &UserLookup) {
 		.interact()
 		.unwrap();
 
-	if new_name.len() > 0 {
+	if !new_name.is_empty() {
 		if lookup.is_unique_name(&new_name) {
 			user.name = new_name;
 		} else {
@@ -193,7 +193,7 @@ fn set_telegram_id(user: &mut User, lookup: &UserLookup) {
 		.interact()
 		.unwrap();
 
-	if new_id.len() > 0 {
+	if !new_id.is_empty() {
 		if let Ok(new_id) = new_id.parse::<i64>() {
 			if lookup.is_unique_telegram_id(&new_id.into()) {
 				user.telegram_id.replace(new_id.into());
@@ -233,7 +233,7 @@ fn change_dataset_access(user: &mut User, data: &Arc<RwLock<Data>>) {
 		.unwrap();
 
 	match list_numb {
-		0 => return,
+		0 => (),
 		1 => add_dataset(data, access),
 		_ => {
 			let set_id = dataset_list.1[list_numb - 2];
@@ -295,7 +295,7 @@ fn select_fields(set_id: DatasetId, data: &Arc<RwLock<Data>>) -> Vec<Authorisati
 		.metadata
 		.fields
 		.iter()
-		.map(|field| (format!("{}", field.name), field.id))
+		.map(|field| (field.name.to_string(), field.id))
 		.unzip();
 
 	let list_numbs = MultiSelect::new()
@@ -384,7 +384,7 @@ fn modify_dataset_fields(set_id: DatasetId, access: &mut Access, data: &Arc<RwLo
 		.metadata
 		.clone();
 
-	while accessible_fields.len() > 0 {
+	while !accessible_fields.is_empty() {
 		let (removable, removable_access, addable, addable_ids) =
 			make_field_actions(metadata, &accessible_fields);
 		let list_numb = Select::new()

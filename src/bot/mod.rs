@@ -2,8 +2,6 @@ use actix_web::http::StatusCode;
 use actix_web::web::{Bytes, Data, HttpResponse};
 
 use log::{error, info, warn};
-use reqwest;
-use serde_json;
 
 use telegram_bot::types::message::MessageKind;
 use telegram_bot::types::refs::{ChatId, UserId};
@@ -75,14 +73,14 @@ fn to_string_and_ids(update: Update) -> Result<(String, ChatId, UserId), Error> 
 		let chat_id = message.chat.id();
 		let user_id = message.from.id;
 		if let MessageKind::Text { data, entities: _ } = message.kind {
-			return Ok((data, chat_id, user_id));
+			Ok((data, chat_id, user_id))
 		} else {
 			warn!("unhandled message kind");
-			return Err(Error::UnhandledUpdateKind);
+			Err(Error::UnhandledUpdateKind)
 		}
 	} else {
 		warn!("unhandled update from telegram: {:?}", update);
-		return Err(Error::UnhandledMessageKind);
+		Err(Error::UnhandledMessageKind)
 	}
 }
 
@@ -107,7 +105,7 @@ async fn handle_command(
 	loop {
 		let split = text.find(char::is_whitespace);
 		let mut command = text;
-		let args = command.split_off(split.unwrap_or(command.len()));
+		let args = command.split_off(split.unwrap_or_else(|| command.len()));
 		match command.as_str() {
 			"/test" => {
 				send_text_reply(chat_id, token, "hi").await?;

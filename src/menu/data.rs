@@ -119,7 +119,7 @@ fn modify_set(set_id: DatasetId, user_db: &mut UserDatabase, data: &Arc<RwLock<D
 		.unwrap();
 
 	match list_numb {
-		0 => return,
+		0 => (),
 		1 => unimplemented!(),
 		2 => unimplemented!(),
 		3 => archive(set_id, user_db, data),
@@ -157,8 +157,8 @@ fn archive(set_id: DatasetId, user_db: &mut UserDatabase, data: &Arc<RwLock<Data
 		info!("Created archive directory: {:?}", archive_dir);
 	};
 
-	let mut org_location = data_dir.clone();
-	let mut new_location = archive_dir.clone();
+	let mut org_location = data_dir;
+	let mut new_location = archive_dir;
 	org_location.push(format!("{}", set_id));
 	new_location.push(format!("{}", set_id));
 

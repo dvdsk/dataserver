@@ -43,11 +43,6 @@ impl Decoder<f32> for FieldDecoder {
 	}
 }
 impl FieldDecoder {
-	pub fn from_fields<'a>(fields: &Vec<MetaField<f32>>) -> Self {
-		Self {
-			fields: fields.iter().map(|f| f.clone().into()).collect(),
-		}
-	}
 	pub fn from_fields_and_id(fields: &[MetaField<f32>], ids: &[FieldId]) -> Self {
 		let fields = fields
 			.iter()
@@ -71,7 +66,7 @@ pub enum Error {
 }
 
 impl DataSet {
-	pub fn get_decode_info(&self, allowed_fields: &Vec<FieldId>) -> SetSliceDecodeInfo {
+	pub fn get_decode_info(&self, allowed_fields: &[FieldId]) -> SetSliceDecodeInfo {
 		let mut offset_in_dataset = SmallVec::<[u8; 8]>::new();
 		let mut lengths = SmallVec::<[u8; 8]>::new();
 		let mut offset_in_recoded = SmallVec::<[u8; 8]>::new();
@@ -136,7 +131,7 @@ impl DataSet {
 		&self,
 		line: Vec<u8>,
 		timestamp: i64,
-		allowed_fields: &Vec<FieldId>,
+		allowed_fields: &[FieldId],
 		setid: DatasetId,
 	) -> Vec<u8> {
 		trace!("get_update_uncompressed");
@@ -150,7 +145,7 @@ impl DataSet {
 			.write_f64::<LittleEndian>(timestamp as f64)
 			.unwrap();
 		for field in allowed_fields
-			.into_iter()
+			.iter()
 			.map(|id| &self.metadata.fields[*id as usize])
 		{
 			let decoded: f32 = field.decode::<f32>(&line);
@@ -160,7 +155,7 @@ impl DataSet {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq)]
 pub enum Authorisation {
 	Owner(FieldId),
 	Reader(FieldId),
@@ -182,6 +177,12 @@ impl PartialEq for Authorisation {
 	fn eq(&self, other: &Self) -> bool {
 		FieldId::from(self) == FieldId::from(other)
 	}
+}
+
+impl std::hash::Hash for Authorisation {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        FieldId::from(self).hash(state);
+    }
 }
 
 impl AsRef<FieldId> for Authorisation {

@@ -6,8 +6,8 @@ use evalexpr::{
 	Context as evalContext,
 };
 use log::{error, warn};
+use error_level::ErrorLevel;
 use regex::Regex;
-use reqwest;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -18,8 +18,9 @@ use super::{AlarmId, DataRouter, UserId};
 use crate::bot;
 use crate::data_store::DatasetId;
 
-#[derive(Debug)]
+#[derive(ErrorLevel, Debug)]
 pub enum AlarmError {
+    #[report(warn)] //could just be telegram is down
 	CouldNotNotify(reqwest::Response),
 }
 
@@ -184,18 +185,16 @@ fn sound_alarm(
 ) {
 	let to_send = if let Some(message) = &message {
 		message.to_owned()
+	} else if inverted {
+        format!(
+            "alarm re-enabled: {}",
+            bot::alarms::format_time_human_readable(expression)
+        )
 	} else {
-		if inverted {
-			format!(
-				"alarm re-enabled: {}",
-				bot::alarms::format_time_human_readable(expression)
-			)
-		} else {
-			format!(
-				"alarm fired: {}",
-				bot::alarms::format_time_human_readable(expression)
-			)
-		}
+        format!(
+            "alarm fired: {}",
+            bot::alarms::format_time_human_readable(expression)
+        )
 	};
 
 	if let Some(_email) = &notify.email {

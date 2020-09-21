@@ -1,10 +1,6 @@
-use crate::data_store;
 use crate::databases;
 use crate::httpserver::utility;
-use bincode;
-use cert_manager;
 use fern::colors::{Color, ColoredLevelConfig};
-use sled;
 
 #[derive(Debug)]
 pub enum DataserverError {
@@ -14,8 +10,6 @@ pub enum DataserverError {
 	SerializationError(bincode::Error),
 	CertGenerationError(cert_manager::Error),
 	CertLoadError(utility::Error),
-	DataStoreError(data_store::Error),
-	//TelegramBotError(telegram_bot::Error)
 }
 
 impl From<utility::Error> for DataserverError {

@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, NaiveDateTime, Utc};
+use chrono::{DateTime, Duration, NaiveDateTime, Utc, Local, TimeZone};
 use plotters::prelude::*;
 use plotters::style::colors::{BLACK, RED, WHITE};
 
@@ -58,9 +58,6 @@ pub enum Error {
 	#[error("Not enough arguments \nuse: {}", USAGE)]
 	NotEnoughArguments,
     #[report(error)]
-	#[error("Internal error regarding the limits of the data")] //TODO remove if no longer issue
-	DataLimitsAlarm,
-    #[report(error)]
 	#[error("Error getting data: {0}")]
 	DatasetError(#[from] byteseries::Error),
 }
@@ -97,33 +94,31 @@ pub async fn send(
 }
 
 type PlotData = (Vec<i64>, Vec<f32>, Vec<(FieldId, String)>);
-fn xlimits_from_data(data: &Vec<PlotData>) -> Result<(DateTime<Utc>, DateTime<Utc>), Error> {
+fn xlimits_from_data(data: &[PlotData]) -> Result<(DateTime<Local>, DateTime<Local>), Error> {
 	let mut min_ts = data.iter().map(|d| *d.0.first().unwrap()).min().unwrap();
 	let mut max_ts = data.iter().map(|d| *d.0.last().unwrap()).max().unwrap();
 
-	if min_ts > max_ts {
-		dbg!(min_ts); //min is correct max is wrong
+	assert!(min_ts > max_ts,{ //FIXME remove if never happens 
+        dbg!(min_ts); //min is correct max is wrong
 		dbg!(max_ts);
 
 		for times in data.iter().map(|d| &d.0) {
 			dbg!(&times[times.len() - 5..]);
 			dbg!(&times[..5]);
 		}
-
-		return Err(Error::DataLimitsAlarm);
-	}
+	});
 
 	if min_ts == max_ts {
 		min_ts -= 1;
 		max_ts += 1;
 	}
 
-	let min = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(min_ts, 0), Utc);
-	let max = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(max_ts, 0), Utc);
+	let min = Local.from_utc_datetime(&NaiveDateTime::from_timestamp(min_ts, 0));
+	let max = Local.from_utc_datetime(&NaiveDateTime::from_timestamp(max_ts, 0));
 	Ok((min, max))
 }
 
-fn ylimits_from_data(data: &Vec<PlotData>) -> (f32, f32) {
+fn ylimits_from_data(data: &[PlotData]) -> (f32, f32) {
 	let mut min = *data
 		.iter()
 		.map(|data_set| {
@@ -147,7 +142,7 @@ fn ylimits_from_data(data: &Vec<PlotData>) -> (f32, f32) {
 		.max_by(|a, b| a.partial_cmp(b).expect("NAN in plot data"))
 		.unwrap();
 
-	if min == max {
+	if (min - max).abs() < f32::EPSILON {
 		min -= 0.1;
 		max += 0.1;
 	} else {
@@ -157,7 +152,7 @@ fn ylimits_from_data(data: &Vec<PlotData>) -> (f32, f32) {
 	(min, max)
 }
 
-fn format_str_from_limits(from: &DateTime<Utc>, to: &DateTime<Utc>) -> &'static str {
+fn format_str_from_limits(from: &DateTime<Local>, to: &DateTime<Local>) -> &'static str {
 	let duration = *to - *from;
 
 	if duration < Duration::minutes(1) {
@@ -184,13 +179,12 @@ fn plot(args: Vec<String>, state: &DataRouterState, user: &User) -> Result<Vec<u
 
 	//collect data for plotting
 	let plot_data: Result<Vec<PlotData>, Error> = selected_datasets
-		.into_iter() //.filter_map(Result::ok)
+		.into_iter()
 		.map(|sel| read_data(sel, &state.data, timerange))
 		.collect();
 	let plot_data = plot_data?;
 
 	let (from_date, to_date) = xlimits_from_data(&plot_data)?;
-	dbg!(&from_date, &to_date);
 	let x_label_formatstr = format_str_from_limits(&from_date, &to_date);
 	let (y_min, y_max) = if let Some(manual) = scaling_args {
 		manual
@@ -203,7 +197,6 @@ fn plot(args: Vec<String>, state: &DataRouterState, user: &User) -> Result<Vec<u
 	let root = BitMapBackend::with_buffer(&mut subpixelbuffer, DIMENSIONS).into_drawing_area();
 	root.fill(&WHITE).map_err(|_| Error::PlotLibError)?;
 
-	dbg!(y_min, y_max);
 	let mut chart = ChartBuilder::on(&root)
 		.x_label_area_size(40)
 		.y_label_area_size(40)
@@ -225,7 +218,8 @@ fn plot(args: Vec<String>, state: &DataRouterState, user: &User) -> Result<Vec<u
 					shared_x
 						.iter()
 						.map(|x| {
-							DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(*x, 0), Utc)
+                            let naive = NaiveDateTime::from_timestamp(*x, 0);
+							Local.from_utc_datetime(&naive)
 						})
 						.zip(ys.iter().skip(i).step_by(n_lines).copied()),
 					&RED,
@@ -249,50 +243,43 @@ fn plot(args: Vec<String>, state: &DataRouterState, user: &User) -> Result<Vec<u
 	let mut image = Vec::new();
 	PngEncoder::new(&mut image)
 		.encode(&subpixelbuffer, DIMENSIONS.0, DIMENSIONS.1, ColorType::Rgb8)
-		.map_err(|io_error| Error::EncodingError(io_error))?;
+		.map_err(Error::EncodingError)?;
 
-	return Ok(image);
+	Ok(image)
 }
 
+type PlotArgs = ((DateTime<Utc>, DateTime<Utc>), DatasetId, FieldId, Option<(f32, f32)>);
 fn parse_plot_arguments(
 	args: Vec<String>,
-) -> Result<
-	(
-		(DateTime<Utc>, DateTime<Utc>),
-		DatasetId,
-		FieldId,
-		Option<(f32, f32)>,
-	),
-	Error,
-> {
+) -> Result<PlotArgs, Error> {
 	if args.len() < 2 {
 		return Err(Error::NotEnoughArguments);
 	}
 
-	let mut plotable = args[0].split("_");
+	let mut plotable = args[0].split('_');
 	let set_id = plotable
-		.nth(0)
-		.ok_or(Error::IncorrectArgument(args[0].clone()))?
+		.next()
+		.ok_or_else(|| Error::IncorrectArgument(args[0].clone()))?
 		.parse::<DatasetId>()?;
 
 	let field_id = plotable
 		.next()
-		.ok_or(Error::IncorrectArgument(args[0].clone()))?
+		.ok_or_else(|| Error::IncorrectArgument(args[0].clone()))?
 		.parse::<FieldId>()?;
 
 	let end = args[1]
 		.find(|c: char| c.is_alphabetic() || c == '.')
-		.ok_or(Error::IncorrectArgument(args[1].clone()))?;
+		.ok_or_else(|| Error::IncorrectArgument(args[1].clone()))?;
 
 	let numb = args[1][..end].parse::<f32>()?;
 	let unit = &args[1][end..];
 	let duration = match unit {
-		"s" => numb * (1) as f32,
-		"m" => numb * (60) as f32,
-		"h" => numb * (3600) as f32,
+		"s" => numb * 1_f32,
+		"m" => numb * 60_f32,
+		"h" => numb * 3600_f32,
 		"d" => numb * (24 * 3600) as f32,
 		"w" => numb * (7 * 24 * 3600) as f32,
-		"monthes" => numb * (4 * 7 * 24 * 3600) as f32,
+		"months" => numb * (4 * 7 * 24 * 3600) as f32,
 		"years" => numb * (365 * 24 * 3600) as f32,
 		_ => return Err(Error::IncorrectArgument(args[1].clone())),
 	};
@@ -303,14 +290,15 @@ fn parse_plot_arguments(
 	let scaling = if args.len() > 2 {
 		let mut params = args[2].split(":");
 		let y_min = params
-			.nth(0)
-			.ok_or(Error::IncorrectArgument(args[2].clone()))?
+			.next()
+			.ok_or_else(|| Error::IncorrectArgument(args[2].clone()))?
 			.parse::<f32>()?;
 		let y_max = params
 			.next()
-			.ok_or(Error::IncorrectArgument(args[2].clone()))?
+			.ok_or_else(|| Error::IncorrectArgument(args[2].clone()))?
 			.parse::<f32>()?;
-		if y_min == y_max {
+        #[allow(clippy::float_cmp)]
+		if y_min == y_max { //direct float cmp allowed as both come from a parse
 			return Err(Error::IncorrectArgument(args[2].clone()));
 		}
 
@@ -344,7 +332,7 @@ pub fn select_data(
 			{
 				subbed_fields.push(field_id);
 			} else {
-				warn!("unautorised field requested");
+				warn!("unauthorised field requested");
 				return Err(Error::NoAccessToField(field_id));
 			}
 		}
@@ -370,8 +358,8 @@ fn read_data(
 	let dataset = data.sets.get_mut(&dataset_id).unwrap();
 
 	let fields = &dataset.metadata.fields;
-	let mut decoder = FieldDecoder::from_fields_and_id(fields, &field_ids);
-	let mut sampler = byteseries::new_sampler(&dataset.timeseries, &mut decoder)
+	let decoder = FieldDecoder::from_fields_and_id(fields, &field_ids);
+	let mut sampler = byteseries::new_sampler(&dataset.timeseries, decoder)
 		.start(timerange.0)
 		.stop(timerange.1)
 		.points(max_plot_points)

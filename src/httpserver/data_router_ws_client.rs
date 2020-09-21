@@ -1,6 +1,7 @@
 use actix::*;
 use log::{debug, info, trace, warn};
 use serde::{Deserialize, Serialize};
+use byteorder::{WriteBytesExt, LittleEndian};
 
 use actix_web_actors::ws;
 
@@ -18,7 +19,7 @@ use std::thread;
 
 use super::Session;
 use crate::data_store;
-use crate::data_store::{data_router, FieldDecoder};
+use crate::data_store::{data_router, FieldDecoder, DatasetId};
 use bitspec::FieldId;
 
 pub struct TimesRange {
@@ -36,6 +37,7 @@ impl Default for TimesRange {
 }
 
 // store data in here, it can then be accessed using self
+type IoReciever = mpsc::Receiver<(Vec<i64>,Vec<f32>, DatasetId)>;
 pub struct WsSession {
 	/// unique session id
 	pub http_session_id: u16,
@@ -46,7 +48,7 @@ pub struct WsSession {
 
 	pub selected_data: HashMap<data_store::DatasetId, Vec<FieldId>>,
 	pub session: Arc<Mutex<Session>>,
-	pub file_io_thread: Option<(thread::JoinHandle<()>, mpsc::Receiver<Vec<u8>>)>,
+	pub file_io_thread: Option<(thread::JoinHandle<()>, IoReciever)>,
 
 	pub data_router_addr: Addr<data_router::DataRouter>,
 	pub data: Arc<RwLock<data_store::Data>>,
@@ -267,14 +269,14 @@ impl WsSession {
 			let mut dataset_client_metadata: DataSetClientMeta = Default::default();
 			let dataset = data.sets.get_mut(dataset_id).unwrap();
 			let fields = &dataset.metadata.fields;
-			let mut decoder = FieldDecoder::from_fields_and_id(fields, field_ids);
-			let mut sampler = byteseries::new_sampler(&dataset.timeseries, &mut decoder)
+			let decoder = FieldDecoder::from_fields_and_id(fields, field_ids);
+			let sampler = byteseries::new_sampler(&dataset.timeseries, decoder)
 				.start(self.timerange.start)
 				.stop(self.timerange.stop)
 				.points(max_plot_points as usize)
 				.build()
 				.unwrap(); // #TODO #FIXME check if safe
-			samplers.push(sampler);
+			samplers.push((sampler, *dataset_id));
 
 			for field_id in field_ids.iter().map(|id| *id) {
 				let field = &dataset.metadata.fields[field_id as usize];
@@ -299,22 +301,39 @@ impl WsSession {
 		//spawn file io thread
 		let (tx, rx) = sync_channel(2);
 		let thread = thread::spawn(move || {
-			todo!("actually sending data over websocket is broken");
-			//read_into_packages(data_handle, tx, reader_infos);
-		});
+            for (mut sampler, id) in samplers {
+                if let Err(e) = sampler.sample_all(){
+                    warn!("could not sample data for websocket request: {:?}", e);
+                    return;
+                }
+                let (t, v) = sampler.into_data();
+                if tx.send((t,v,id)).is_err() {
+                    //if error then other side dropped
+                    //connection so stop reading data
+                    return;
+                }
+            }
+        });
 		self.file_io_thread = Some((thread, rx));
 	}
 
 	fn send_data(&mut self, ctx: &mut ws::WebsocketContext<Self>) {
 		if let Some((_thread, rx)) = self.file_io_thread.take() {
-			while let Ok(buffer) = rx.recv() {
-				if ctx.state().alive() {
-					ctx.binary(Bytes::from(buffer));
+			while let Ok((mut times, mut values,id)) = rx.recv() { //if other end closed
+                let mut package: Vec<u8> = Vec::new();
+                package.write_u16::<LittleEndian>(0).unwrap();
+                package.write_u16::<LittleEndian>(id).unwrap();
+                package.write_u32::<LittleEndian>(0).unwrap();//padding
+                times.drain(..).for_each(|t| package.write_f64::<LittleEndian>(t as f64).unwrap());
+                values.drain(..).for_each(|v| package.write_f32::<LittleEndian>(v as f32).unwrap());
+
+                if ctx.state().alive() {
+					ctx.binary(Bytes::from(package));
 				} else {
 					return;
 				}
 			} //send message to signal we are done sending data
-  //third byte set to one signals this
+              //third byte set to one signals this
 			ctx.binary(Bytes::from(vec![0u8, 0, 1, 0]));
 		}
 	}

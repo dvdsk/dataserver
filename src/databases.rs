@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use error_level::ErrorLevel;
 use thiserror::Error;
 
-use bincode;
 use log::error;
 use sled::{Db, Tree};
 
@@ -189,15 +188,13 @@ impl UserDatabase {
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = User> {
-		let values = self
+		self
 			.storage
 			.iter()
 			.values()
 			.filter_map(Result::ok)
 			.map(|user| bincode::deserialize(&user))
-			.filter_map(Result::ok);
-
-		values
+			.filter_map(Result::ok)
 	}
 
 	pub fn get_user(&self, id: UserId) -> Result<User, UserDbError> {
@@ -258,13 +255,13 @@ impl UserLookup {
 		!self.name_to_id.read().unwrap().contains_key(name)
 	}
 
-	pub fn by_name(&self, username: &String) -> Result<UserId, UserDbError> {
+	pub fn by_name(&self, username: &str) -> Result<UserId, UserDbError> {
 		let id = *self
 			.name_to_id
 			.read()
 			.unwrap()
 			.get(username)
-			.ok_or(UserDbError::UserNameNotInDb(username.clone()))?;
+			.ok_or_else(|| UserDbError::UserNameNotInDb(username.to_owned()))?;
 		Ok(id)
 	}
 	pub fn by_telegram_id(&self, telegram_id: &TelegramUserId) -> Result<UserId, UserDbError> {
@@ -273,7 +270,7 @@ impl UserLookup {
 			.read()
 			.unwrap()
 			.get(telegram_id)
-			.ok_or(UserDbError::TelegramUserNotInDb(telegram_id.clone()))?;
+			.ok_or_else(|| UserDbError::TelegramUserNotInDb(*telegram_id))?;
 		Ok(id)
 	}
 
@@ -296,10 +293,10 @@ impl UserLookup {
 
 	pub fn add(&self, name: String, id: UserId) {
 		let mut name_to_id = self.name_to_id.write().unwrap();
-		name_to_id.insert(name.clone(), id);
+		name_to_id.insert(name, id);
 	}
 
-	pub fn remove_by_name(&self, name: &String) {
+	pub fn remove_by_name(&self, name: &str) {
 		let mut name_to_id = self.name_to_id.write().unwrap();
 		name_to_id.remove(name);
 	}
@@ -371,7 +368,7 @@ impl AlarmDatabase {
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = (UserId, AlarmId, Alarm)> {
-		let values = self
+		self
 			.storage
 			.iter()
 			.filter_map(Result::ok)
@@ -384,8 +381,7 @@ impl AlarmDatabase {
 					)
 				})
 			})
-			.filter_map(Result::ok);
-		values
+			.filter_map(Result::ok)
 	}
 
 	pub fn list_users_alarms(&self, user_id: UserId) -> AlarmList {

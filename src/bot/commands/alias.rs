@@ -36,13 +36,13 @@ pub async fn send(
 	});
 
 	let mut text = String::default();
-	if command.len() == 0 {
+	if command.is_empty() {
 		if let Some(old_command) = user.aliases.remove(&alias_name) {
 			state
 				.user_db
 				.set_user(user.clone())
 				.await
-				.map_err(|e| Error::DbError(e))?;
+				.map_err(Error::DbError)?;
 			text.push_str(&format!("unset \"{}\" {}", alias_name, old_command));
 		} else {
 			text.push_str("did not unset alias as non was set");
@@ -60,7 +60,7 @@ pub async fn send(
 			.user_db
 			.set_user(user.clone())
 			.await
-			.map_err(|e| Error::DbError(e))?;
+			.map_err(Error::DbError)?;
 	}
 
 	send_text_reply(chat_id, token, text).await?;

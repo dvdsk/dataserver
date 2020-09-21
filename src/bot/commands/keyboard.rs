@@ -90,7 +90,7 @@ pub async fn add_button(
 	}
 
 	//add buttons to the end of the keyboard
-	if keyboard.len() == 0 {
+	if keyboard.is_empty() {
 		keyboard.push(Vec::new());
 	}
 	let mut row = keyboard.last_mut().unwrap();
@@ -99,7 +99,7 @@ pub async fn add_button(
 			keyboard.push(Vec::new());
 			row = keyboard.last_mut().unwrap();
 		}
-		row.push(button.into());
+		row.push(button);
 	}
 
 	//store new keyboard
@@ -110,7 +110,7 @@ pub async fn add_button(
 		.user_db
 		.set_user(user.clone())
 		.await
-		.map_err(|e| Error::DbError(e))?;
+		.map_err(Error::DbError)?;
 
 	//update users keyboard
 	reload(chat_id, token, user, "updated keyboard").await?;
@@ -140,7 +140,7 @@ pub async fn remove_button(
 		.collect();
 
 	//store new keyboard
-	if keyboard.len() > 0 {
+	if keyboard.is_empty() {
 		let keyboard_json = serde_json::to_string(&keyboard).unwrap();
 		user.keyboard = Some(keyboard_json);
 	} else {
@@ -151,7 +151,7 @@ pub async fn remove_button(
 		.user_db
 		.set_user(user.clone())
 		.await
-		.map_err(|e| Error::DbError(e))?;
+		.map_err(Error::DbError)?;
 
 	//update users keyboard
 	reload(chat_id, token, user, "updated keyboard").await?;

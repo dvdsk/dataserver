@@ -5,6 +5,7 @@ use actix::prelude::*;
 use chrono::Utc;
 use evalexpr::{Context as evalContext, HashMapContext};
 use log::{debug, trace};
+use error_level::ErrorLevel;
 use threadpool::ThreadPool;
 
 use std::collections::{HashMap, HashSet};
@@ -58,7 +59,7 @@ impl DataRouter {
 			let value: f64 = field.decode(&line);
 			let name = format!("{}_{}", set_id, field.id);
 			self.alarm_context
-				.set_value(name.into(), value.into())
+				.set_value(name, value.into())
 				.unwrap();
 		}
 	}
@@ -124,12 +125,15 @@ impl Handler<NewData> for DataRouter {
 			self.update_context(&msg.line, &updated_dataset_id); //Opt:
 			if let Some(alarms) = self.alarms_by_set.get_mut(&updated_dataset_id) {
 				for alarm in alarms.values_mut() {
-					alarm.evalute(
+					let res = alarm.evalute(
 						&mut self.alarm_context,
 						&now,
 						&self.async_pool,
 						self.bot_token.clone(),
 					);
+                    if let Err(e) = res {
+                        e.log_error();
+                    }
 				}
 			}
 		}
@@ -222,13 +226,12 @@ impl Handler<SubscribeToSource> for DataRouter {
 		if let Some(subscribers) = self.subs.get_mut(&set_id) {
 			subscribers.insert(ws_session_id);
 			//println!("added new id to subs");
-			return ();
+			return;
 		}
 
 		let mut subscribers = HashSet::new();
 		subscribers.insert(ws_session_id);
 		self.subs.insert(set_id, subscribers);
-		()
 	}
 }
 

@@ -29,9 +29,6 @@ pub enum Error {
     #[report(debug)]
 	#[error("You do not have access to dataset: {0}")]
 	NoAccessToDataSet(DatasetId),
-    #[report(debug)]
-	#[error("There is no data for dataset: {0}")]
-	NoData(DatasetId),
 	#[error("database error")]
 	BotDatabaseError(#[from] UserDbError),
     #[report(debug)]
@@ -50,12 +47,12 @@ fn parse_args(args: String, user: &User) -> Result<Vec<(DatasetId, Vec<FieldId>)
 		let mut ids = arg.split('_');
 		let dataset_id: DatasetId = ids
 			.next()
-			.ok_or(Error::ArgumentSplitError(arg.to_owned()))?
+			.ok_or_else(|| Error::ArgumentSplitError(arg.to_owned()))?
 			.parse()
 			.map_err(|e| Error::ArgumentParseError(arg.to_owned(), e))?;
 		let field_id: FieldId = ids
 			.next()
-			.ok_or(Error::ArgumentSplitError(arg.to_owned()))?
+			.ok_or_else(|| Error::ArgumentSplitError(arg.to_owned()))?
 			.parse()
 			.map_err(|e| Error::ArgumentParseError(arg.to_owned(), e))?;
 
@@ -80,7 +77,7 @@ fn parse_args(args: String, user: &User) -> Result<Vec<(DatasetId, Vec<FieldId>)
 		}
 	}
 
-	if dataset_fields.len() == 0 {
+	if dataset_fields.is_empty() {
 		return Err(Error::NotEnoughArguments);
 	}
 

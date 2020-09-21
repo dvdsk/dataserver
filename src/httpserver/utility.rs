@@ -52,10 +52,10 @@ pub fn make_tls_config(domain: &str, key_dir: &Path) -> Result<rustls::ServerCon
 	let mut tls_config = ServerConfig::new(NoClientAuth::new());
 	let cert_file = &mut BufReader::new(
 		fs::File::open(&cert_path)
-			.expect(&format!("could not open certificate file: {:?}", cert_path)),
+			.unwrap_or_else(|_| panic!("could not open certificate file: {:?}", cert_path)),
 	);
 	let key_file = &mut BufReader::new(
-		fs::File::open(&key_path).expect(&format!("could not open key file: {:?}", key_path)),
+		fs::File::open(&key_path).unwrap_or_else(|_| panic!("could not open key file: {:?}", key_path)),
 	);
 
 	let cert_chain = certs(cert_file).unwrap();

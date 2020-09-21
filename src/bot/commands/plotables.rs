@@ -31,7 +31,7 @@ pub async fn send(
 		}
 	}
 
-	if text.len() == 0 {
+	if text.is_empty() {
 		text.push_str("you have no plotables")
 	}
 	send_text_reply(chat_id, token, text).await

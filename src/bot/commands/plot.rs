@@ -95,19 +95,15 @@ pub async fn send(
 
 type PlotData = (Vec<i64>, Vec<f32>, Vec<(FieldId, String)>);
 fn xlimits_from_data(data: &[PlotData]) -> Result<(DateTime<Local>, DateTime<Local>), Error> {
-	let mut min_ts = data.iter().map(|d| *d.0.first().unwrap()).min().unwrap();
-	let mut max_ts = data.iter().map(|d| *d.0.last().unwrap()).max().unwrap();
+    assert!(data.len() > 0);
+    let mut min_ts: i64 = 0; //initializatoin does not matter as data.len > 0   
+    let mut max_ts: i64 = 0;
+	for (time, _values, _meta) in data {
+        min_ts = min_ts.min(*time.first().unwrap());
+        max_ts = min_ts.max(*time.last().unwrap());
+    }
 
-	assert!(min_ts > max_ts,{ //FIXME remove if never happens 
-        dbg!(min_ts); //min is correct max is wrong
-		dbg!(max_ts);
-
-		for times in data.iter().map(|d| &d.0) {
-			dbg!(&times[times.len() - 5..]);
-			dbg!(&times[..5]);
-		}
-	});
-
+	assert!(min_ts > max_ts);
 	if min_ts == max_ts {
 		min_ts -= 1;
 		max_ts += 1;

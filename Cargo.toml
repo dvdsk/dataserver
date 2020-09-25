@@ -45,8 +45,6 @@ walkdir = "2.2.5"
 num = "0.3.0"
 threadpool = "1.7.1"
 
-cert_tools = { git = "https://github.com/dskleingeld/cert_manager" }
-
 webpki = "0.21"
 webpki-roots = "0.20"
 
@@ -80,7 +78,7 @@ itertools = "0.9"
 num-traits = "0.2"
 num-derive = "0.3"
 
-telegram-bot = "0.7"
+telegram-bot = {version = "0.7", default-features = false, features = ["rustls"]}
 
 plotters = { version = "0.3" }
 image = { version = "0.23" }

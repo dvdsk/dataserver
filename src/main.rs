@@ -31,9 +31,6 @@ use threadpool::ThreadPool;
 #[structopt(name = "dataserver")]
 struct Opt {
 	#[structopt(short, long)]
-	create_new_certificate: bool,
-
-	#[structopt(short, long)]
 	no_menu: bool,
 
 	#[structopt(short, long)]
@@ -73,20 +70,6 @@ struct Opt {
 #[actix_rt::main]
 async fn main() {
 	let opt = Opt::from_args();
-
-	//only do if certs need update
-	if opt.create_new_certificate {
-		//generate_and_sign_keys
-		if let Err(error) = cert_manager::generate_and_sign_keys_guided(
-			"dataserver",
-			&opt.domain,
-			&opt.key_dir,
-			true,
-		) {
-			//TODO change to false
-			error!("could not auto generate certificate, error: {:?}", error)
-		}
-	}
 
 	error::setup_logging(3).expect("could not set up debugging");
 	let db = if opt.upgrade_db {

@@ -23,33 +23,33 @@ structopt = "0.3"
 dialoguer = "0.6"
 console = "0.12"
 
-actix = "0.9"
+actix = "0.10"
 actix-rt = "1.0"
 futures = "0.3.1"
-actix-web = { version = "2", features = ["rustls"] }
-actix-web-actors = "2"
+actix-web = { version = "3", features = ["rustls"] }
+actix-web-actors = "3"
 actix-net = "0.2.6"
-actix-identity = "0.2.0"
-actix-files = "0.2.1"
+actix-identity = "0.3"
+actix-files = "0.3"
 actix-service = "1.0.1"
 yarte = { version ="0.12" , git = "https://github.com/dskleingeld/yarte" }
 
 old_sled = { version = "0.30", package = "sled" }
 sled = "0.34"
 
-rustls = "0.16.0"
+rustls = "0.18.0"
 ring = "0.16.9"
 
 bytes = "0.5"
 walkdir = "2.2.5"
-num = "0.3.0"
+num-traits = "0.2"
+num-derive = "0.3"
 threadpool = "1.7.1"
 
 webpki = "0.21"
 webpki-roots = "0.20"
 
-chrono = { version = "0.4.6", features = ["serde"] }
-chrono-tz = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde"] }
 rand = "0.7"
 
 log = "0.4.5"
@@ -74,9 +74,6 @@ thiserror = "1"
 smallvec = {version = "1.4", features = ["write"]}
 crossbeam-utils = "0.7"
 itertools = "0.9"
-
-num-traits = "0.2"
-num-derive = "0.3"
 
 telegram-bot = {version = "0.7", default-features = false, features = ["rustls"]}
 

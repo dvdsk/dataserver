@@ -2,7 +2,7 @@ use std::task::{Context, Poll};
 
 use actix_service::{Service, Transform};
 use actix_web::dev::{ServiceRequest, ServiceResponse};
-use actix_web::{http, web, Error, HttpResponse};
+use actix_web::{http, Error, HttpResponse};
 
 use futures::future::{ok, Either, Ready};
 
@@ -38,7 +38,7 @@ pub struct CheckLoginMiddleware<S> {
 }
 
 //TODO can we get data into the middleware? look at existing identityservice
-fn is_logged_in(state: &web::Data<DataRouterState>, id: String) -> Result<(), ()> {
+fn is_logged_in(state: &DataRouterState, id: String) -> Result<(), ()> {
 	if let Ok(id) = id.parse::<u16>() {
 		//check if valid session (identity key contained in sessions)
 		if state.sessions.read().unwrap().contains_key(&id) {
@@ -69,9 +69,8 @@ where
 		// We only need to hook into the `start` for this middleware.
 
 		if let Some(id) = req.get_identity() {
-			//let id = req.get_identity().unwrap();
-			let data: web::Data<DataRouterState> = req.app_data().unwrap();
-			if is_logged_in(&data, id).is_ok() {
+			let data = req.app_data::<DataRouterState>().unwrap();
+			if is_logged_in(data, id).is_ok() {
 				//let fut =
 				Either::Left(self.service.call(req))
 			} else {

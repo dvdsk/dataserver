@@ -1,5 +1,5 @@
-use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+use num_derive::FromPrimitive;
 
 #[repr(u8)]
 #[derive(FromPrimitive)]

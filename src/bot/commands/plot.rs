@@ -62,6 +62,14 @@ pub enum Error {
 	DatasetError(#[from] byteseries::Error),
 }
 
+fn unwrap_threadpool_err<E: std::fmt::Debug>(e: actix_threadpool::BlockingError<E>) -> E { 
+    if let actix_threadpool::BlockingError::Error(e) = e {
+        e
+    } else {
+        panic!("error in actix_threadpool, execution was canceld")
+    }
+}
+
 pub async fn send(
 	chat_id: ChatId,
 	state: &DataRouterState,
@@ -70,7 +78,12 @@ pub async fn send(
 	user: &User,
 ) -> Result<(), botError> {
 	let args: Vec<String> = args.split_whitespace().map(|s| s.to_owned()).collect();
-	let plot = plot(args, state, user)?;
+
+    let user = user.clone();
+    let state = state.clone();
+    let plot_job = move || plot(args, state, user);
+    let plot = actix_threadpool::run(plot_job).await
+        .map_err(|e| unwrap_threadpool_err(e))?;
 
 	let photo_part = reqwest::multipart::Part::bytes(plot)
 		.mime_str("image/png")
@@ -167,10 +180,10 @@ fn format_str_from_limits(from: &DateTime<Local>, to: &DateTime<Local>) -> &'sta
 	}
 }
 
-fn plot(args: Vec<String>, state: &DataRouterState, user: &User) -> Result<Vec<u8>, Error> {
+fn plot(args: Vec<String>, state: DataRouterState, user: User) -> Result<Vec<u8>, Error> {
 	const DIMENSIONS: (u32, u32) = (900u32, 900u32);
 	let (timerange, set_id, field_id, scaling_args) = parse_plot_arguments(args)?;
-	let selected_datasets = select_data(set_id, vec![field_id], user)?;
+	let selected_datasets = select_data(set_id, vec![field_id], &user)?;
 
 	//collect data for plotting
 	let plot_data: Result<Vec<PlotData>, Error> = selected_datasets
@@ -301,7 +314,6 @@ fn parse_plot_arguments(
 	} else {
 		None
 	};
-	dbg!();
 	Ok((timerange, set_id, field_id, scaling))
 }
 

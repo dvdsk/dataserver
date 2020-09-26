@@ -160,7 +160,7 @@ async fn handle_command(
 	Ok(())
 }
 
-async fn handle(update: Update, state: DataRouterState) {
+async fn handle(update: Update, state: &DataRouterState) {
 	let token = &state.bot_token;
 	if let Ok((text, chat_id, user_id)) = to_string_and_ids(update) {
 		if let Err(error) = handle_command(text, chat_id, user_id, &state).await {
@@ -171,8 +171,7 @@ async fn handle(update: Update, state: DataRouterState) {
 
 pub async fn handle_webhook(state: Data<DataRouterState>, raw_update: Bytes) -> HttpResponse {
 	let update: Update = serde_json::from_slice(&raw_update.to_vec()).unwrap();
-	let state_cpy = state.get_ref().clone();
-	handle(update, state_cpy).await;
+	handle(update, state.get_ref()).await;
 
 	HttpResponse::Ok().status(StatusCode::OK).body("{}")
 }

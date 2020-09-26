@@ -24,7 +24,6 @@ use std::time::Duration;
 use actix::prelude::*;
 use log::error;
 use structopt::StructOpt;
-use threadpool::ThreadPool;
 
 /// A basic example
 #[derive(StructOpt)]
@@ -98,7 +97,6 @@ async fn main() {
 	let data = Arc::new(RwLock::new(data_store::init("data").unwrap()));
 
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
-	let bot_pool = ThreadPool::new(2);
 
 	let data_router_addr = DataRouter::new(&data, alarm_db.clone(), opt.token.clone()).start();
 
@@ -109,7 +107,6 @@ async fn main() {
 		user_db: user_db.clone(),
 		alarm_db: alarm_db.clone(),
 		db_lookup: db_lookup.clone(),
-		bot_pool,
 		bot_token: opt.token.clone(),
 
 		data_router_addr: data_router_addr.clone(),

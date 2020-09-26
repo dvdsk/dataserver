@@ -28,7 +28,6 @@ pub struct DataRouterState {
 	pub user_db: UserDatabase,
 	pub alarm_db: AlarmDatabase,
 	pub db_lookup: UserLookup,
-	pub bot_pool: ThreadPool,
 	pub bot_token: String,
 
 	pub data_router_addr: Addr<DataRouter>,

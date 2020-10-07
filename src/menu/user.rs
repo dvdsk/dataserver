@@ -9,7 +9,7 @@ use futures::{executor::block_on, future};
 use crate::data_store::{Authorisation, Data, DatasetId};
 use crate::databases::{Access, AlarmDatabase, PasswordDatabase, User, UserDatabase, UserLookup};
 use crate::error::DataserverError as Error;
-use bitspec::{FieldId, MetaData};
+use bitspec::{FieldId, FixedLine};
 
 pub fn menu(
 	mut user_db: &mut UserDatabase,
@@ -342,7 +342,7 @@ fn select_fields(set_id: DatasetId, data: &Arc<RwLock<Data>>) -> Vec<Authorisati
 }
 
 fn make_field_actions(
-	metadata: &MetaData,
+	metadata: &FixedLine,
 	accessible_fields: &HashSet<Authorisation>,
 ) -> (Vec<String>, Vec<Authorisation>, Vec<String>, Vec<FieldId>) {
 	let mut removable = Vec::with_capacity(metadata.fields.len());

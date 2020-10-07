@@ -98,9 +98,9 @@ pub async fn send(
 ) -> Result<(), botError> {
 	let mut text = String::default();
 	let dataset_fields = parse_args(args, user)?;
-	let datasets = &mut state.data.write().unwrap().sets;
+	let datasets = &state.data.read().unwrap().sets;
 	for (dataset_id, field_ids) in dataset_fields.iter() {
-		let set = datasets.get_mut(&dataset_id).unwrap();
+		let set = datasets.get(&dataset_id).unwrap();
 		let fields = &set.metadata.fields;
 
 		let (time, line) = set.timeseries.last_line_raw().map_err(|e| Error::from(e))?;
@@ -113,7 +113,7 @@ pub async fn send(
 		));
 
 		for field in field_ids.iter().map(|id| &fields[*id as usize]) {
-			let value: f32 = field.decode(&line);
+			let value: f32 = field.decode(&line).into();
 			let field_name = &field.name;
 
 			text.push_str(&format!("\t-{}:\t{:.2}\n", field_name, value));

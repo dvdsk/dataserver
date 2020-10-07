@@ -90,8 +90,8 @@ pub async fn list_data(id: Identity, state: Data<DataRouterState>) -> impl Respo
 				}
 			};
 			if let Some(ref line) = line {
-				info.values
-					.push(fields[*id as usize].decode::<f32>(&line).to_string());
+                let value: f32 = fields[*id as usize].decode(&line).into();
+				info.values.push(value.to_string());
 			} else {
 				info.values.push(String::from("-"));
 			}

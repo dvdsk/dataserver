@@ -360,9 +360,9 @@ fn read_data(
 	let (dataset_id, field_ids) = selected_data;
 
 	let data_handle = data;
-	let mut data = data_handle.write().unwrap();
+	let data = data_handle.read().unwrap();
 
-	let dataset = data.sets.get_mut(&dataset_id).unwrap();
+	let dataset = data.sets.get(&dataset_id).unwrap();
 
 	let fields = &dataset.metadata.fields;
 	let decoder = FieldDecoder::from_fields_and_id(fields, &field_ids);

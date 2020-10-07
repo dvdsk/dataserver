@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use chrono::prelude::*;
 
 use crate::httpserver::data_router_ws_client::SetSliceDecodeInfo;
-use bitspec::{Field, FieldId, MetaData, MetaDataSpec, MetaField};
+use bitspec::{Field, FieldId, MetaDataSpec, Meta, FixedLine};
 use byteseries::{self, Decoder, Series};
 use std::collections::HashMap;
 
@@ -28,22 +28,23 @@ use std::f64;
 pub type DatasetId = u16;
 pub struct DataSet {
 	pub timeseries: Series, //custom file format
-	pub metadata: MetaData, //is stored by serde
+	pub metadata: FixedLine, //is stored by serde
 }
 
 #[derive(Debug, Clone)]
 pub struct FieldDecoder {
-	fields: Vec<Field<f32>>,
+	fields: Vec<Field>,
 }
+
 impl Decoder<f32> for FieldDecoder {
 	fn decode(&mut self, bytes: &[u8], out: &mut Vec<f32>) {
 		for field in &self.fields {
-			out.push(field.decode(bytes));
+			out.push(field.decode(bytes).into());
 		}
 	}
 }
 impl FieldDecoder {
-	pub fn from_fields_and_id(fields: &[MetaField<f32>], ids: &[FieldId]) -> Self {
+	pub fn from_fields_and_id(fields: &[Meta], ids: &[FieldId]) -> Self {
 		let fields = fields
 			.iter()
 			.enumerate()
@@ -74,10 +75,10 @@ impl DataSet {
 		let mut recoded_offset = 0;
 		for id in allowed_fields {
 			let field = &self.metadata.fields[*id as usize];
-			offset_in_dataset.push(field.offset);
-			lengths.push(field.length);
+			offset_in_dataset.push(field.offset());
+			lengths.push(field.length());
 			offset_in_recoded.push(recoded_offset);
-			recoded_offset += field.length;
+			recoded_offset += field.length();
 		}
 
 		SetSliceDecodeInfo {
@@ -148,7 +149,7 @@ impl DataSet {
 			.iter()
 			.map(|id| &self.metadata.fields[*id as usize])
 		{
-			let decoded: f32 = field.decode::<f32>(&line);
+			let decoded: f32 = field.decode(&line).into();
 			recoded_line.write_f32::<LittleEndian>(decoded).unwrap();
 		}
 		recoded_line.to_vec()
@@ -261,7 +262,7 @@ pub fn load_data(data: &mut HashMap<DatasetId, DataSet>, datafile_path: &Path, d
 		.create(false)
 		.open(&info_path)
 	{
-		if let Ok(metadata) = serde_yaml::from_reader::<std::fs::File, MetaData>(metadata_file) {
+		if let Ok(metadata) = serde_yaml::from_reader::<std::fs::File, FixedLine>(metadata_file) {
 			let line_size = metadata.fieldsum();
 
 			if let Ok(timeserie) = Series::open(datafile_path, line_size as usize) {
@@ -291,7 +292,7 @@ impl Data {
 			.open(spec_path)?;
 		let metadata =
 			serde_yaml::from_reader::<File, MetaDataSpec>(f).map_err(|_| Error::MalformedSpec)?;
-		let metadata: MetaData = metadata.into();
+		let metadata: FixedLine = metadata.into();
 		let line_size: u16 = metadata.fieldsum();
 		let dataset_id = self.free_dataset_id;
 		self.free_dataset_id += 1;
@@ -371,7 +372,7 @@ impl Data {
 			if PRINTVALUES {
 				let mut list = String::from("");
 				for field in &set.metadata.fields {
-					let decoded: f32 = field.decode::<f32>(&data_string[10..]);
+					let decoded: f32 = field.decode(&data_string[10..]).into();
 					list.push_str(&format!("{}: {}\n", field.name, decoded));
 				}
 				println!("{}", list);

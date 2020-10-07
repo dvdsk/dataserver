@@ -7,12 +7,13 @@ use evalexpr::{Context as evalContext, HashMapContext};
 use log::{debug, trace};
 use error_level::ErrorLevel;
 use threadpool::ThreadPool;
+use bitspec::FixedLine;
 
 use std::collections::{HashMap, HashSet};
 
 use super::error_router;
 use super::DatasetId;
-use super::{Data, MetaField};
+use super::Data;
 
 use crate::databases::{
 	AlarmDatabase, AlarmId, PasswordDatabase, UserDatabase, UserId, UserLookup,
@@ -44,7 +45,7 @@ type ClientSessionId = u16;
 pub struct DataRouter {
 	sessions: HashMap<ClientSessionId, Clientinfo>,
 	subs: HashMap<DatasetId, HashSet<ClientSessionId>>,
-	meta: HashMap<DatasetId, Vec<MetaField<f32>>>,
+	meta: HashMap<DatasetId, FixedLine>,
 	alarms_by_set: HashMap<DatasetId, HashMap<(UserId, AlarmId), CompiledAlarm>>,
 	alarm_context: HashMapContext,
 	async_pool: ThreadPool,
@@ -53,9 +54,9 @@ pub struct DataRouter {
 
 impl DataRouter {
 	fn update_context(&mut self, line: &Vec<u8>, set_id: &DatasetId) {
-		let fields = self.meta.get(set_id).unwrap();
-		for field in fields {
-			let value: f64 = field.decode(&line);
+		let meta = self.meta.get(set_id).unwrap();
+		for field in &meta.fields {
+			let value: f64 = field.decode(&line).into();
 			let name = format!("{}_{}", set_id, field.id);
 			self.alarm_context
 				.set_value(name, value.into())
@@ -74,7 +75,7 @@ impl DataRouter {
 			.unwrap()
 			.sets
 			.iter()
-			.map(|(id, set)| (*id, set.metadata.fields.clone()))
+			.map(|(id, set)| (*id, set.metadata.clone()))
 			.collect();
 
 		//read alarms from the database into lookup hashmap

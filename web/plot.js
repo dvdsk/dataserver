@@ -61,7 +61,7 @@ function onOpen(evt){
 
   //parse the form
   //TODO change plot button to "update"
-  var selected = document.forms["choose lines"];
+  var selected = document.forms["what to plot?"];
   for (var i = 0; i < selected.length; i++) {//TODO selected.for ... of ... (look up)
     if (selected[i].checked === true) {
       var input = selected[i].value;
@@ -76,18 +76,19 @@ function onOpen(evt){
     }
   }
 
-  //var dateOffset = (7*24*60*60*1000);//TODO fix this
-  var dateOffset = (5*60*1000);//TODO fix this
-  var stop_timestamp = new Date( Date.now() );
+  //option one (debug), now minus fixed offset
+  //var dateOffset = (5*60*1000);
+  //var stop_timestamp = new Date( Date.now() );
+  //var start_timestamp = new Date();
+  //start_timestamp.setTime(stop_timestamp.getTime() - dateOffset);
 
-  var start_timestamp = new Date();
-  //console.log(stop_timestamp.getTime());
-  start_timestamp.setTime(stop_timestamp.getTime() - dateOffset);
-
-  //TODO improve
-  //var start_timestamp = document.getElementById('start-date').valueAsDate;
-  //var stop_timestamp = document.getElementById('stop-date').valueAsDate;
-
+  //option two from user selection
+  var start_timestamp = document.getElementById('start-date').valueAsDate;
+  var stop_timestamp = document.getElementById('stop-date').valueAsDate;
+  writeToScreen(start_timestamp.getTime());
+  writeToScreen(stop_timestamp.getTime());
+  
+  //option three hard coded
   //var start_timestamp = new Date(1553731200000);
   //var stop_timestamp = new Date(1554508800000);
 
@@ -105,7 +106,7 @@ function onOpen(evt){
   }
 
   websocket.onmessage = function(evt) { gotMeta(evt) };
-  doSend("/meta 1000"); //1000 is max numb of lines, paramater is optional
+  doSend("/meta 100000"); //1000 is max numb of lines, paramater is optional
 }
 
 function gotMeta(evt){

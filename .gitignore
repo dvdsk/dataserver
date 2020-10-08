@@ -12,3 +12,6 @@
 .md
 
 src/config.rs
+*.sh
+*.log
+database/

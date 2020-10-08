@@ -18,48 +18,48 @@ pub struct SayHi;
 // `B` - type of response's body
 impl<S, B> Transform<S> for SayHi
 where
-    S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
-    S::Future: 'static,
-    B: 'static,
+	S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+	S::Future: 'static,
+	B: 'static,
 {
-    type Request = ServiceRequest;
-    type Response = ServiceResponse<B>;
-    type Error = Error;
-    type InitError = ();
-    type Transform = SayHiMiddleware<S>;
-    type Future = Ready<Result<Self::Transform, Self::InitError>>;
+	type Request = ServiceRequest;
+	type Response = ServiceResponse<B>;
+	type Error = Error;
+	type InitError = ();
+	type Transform = SayHiMiddleware<S>;
+	type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
-    fn new_transform(&self, service: S) -> Self::Future {
-        ok(SayHiMiddleware { service })
-    }
+	fn new_transform(&self, service: S) -> Self::Future {
+		ok(SayHiMiddleware { service })
+	}
 }
 
 pub struct SayHiMiddleware<S> {
-    service: S,
+	service: S,
 }
 
 impl<S, B> Service for SayHiMiddleware<S>
 where
-    S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
-    S::Future: 'static,
-    B: 'static,
+	S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+	S::Future: 'static,
+	B: 'static,
 {
-    type Request = ServiceRequest;
-    type Response = ServiceResponse<B>;
-    type Error = Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
+	type Request = ServiceRequest;
+	type Response = ServiceResponse<B>;
+	type Error = Error;
+	type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
 
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.service.poll_ready(cx)
-    }
+	fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+		self.service.poll_ready(cx)
+	}
 
-    fn call(&mut self, req: ServiceRequest) -> Self::Future {
-        println!("You requested: {}", req.path());
+	fn call(&mut self, req: ServiceRequest) -> Self::Future {
+		println!("You requested: {}", req.path());
 
-        let fut = self.service.call(req);
-        Box::pin(async move {
-            let res = fut.await?;
-            Ok(res)
-        })
-    }
+		let fut = self.service.call(req);
+		Box::pin(async move {
+			let res = fut.await?;
+			Ok(res)
+		})
+	}
 }

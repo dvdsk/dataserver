@@ -1,12 +1,12 @@
 use actix::*;
-use log::{trace};
+use log::trace;
 
 use actix_web_actors::ws;
 
 use std::sync::{Arc, Mutex};
 
-use crate::httpserver::Session;
 use crate::data_store::error_router;
+use crate::httpserver::Session;
 
 // store data in here, it can then be accessed using self
 pub struct WsSession {
@@ -24,33 +24,38 @@ impl Actor for WsSession {
 
 	//fn started<T: InnerState>(&mut self, ctx: &mut Self::Context) {
 	fn started(&mut self, ctx: &mut Self::Context) {
-
 		let ts_with_access = &self.session.lock().unwrap().db_entry.timeseries_with_access;
 		let subscribed_errors = ts_with_access
-			.iter().flat_map(|(set_id, auth)| {
-			auth.iter().map(|auth| auth.as_ref()).map(move |field_id| {
-				error_router::to_field_specific_key(*set_id, *field_id)
-			}).chain(std::iter::once(error_router::to_field_specific_key(*set_id, u8::max_value())))
-		}).collect();
+			.iter()
+			.flat_map(|(set_id, auth)| {
+				auth.iter()
+					.map(|auth| auth.as_ref())
+					.map(move |field_id| error_router::to_field_specific_key(*set_id, *field_id))
+					.chain(std::iter::once(error_router::to_field_specific_key(
+						*set_id,
+						u8::max_value(),
+					)))
+			})
+			.collect();
 
 		let addr = ctx.address();
 		self.router_addr
-            .try_send(error_router::Connect {
-                addr: addr.recipient(),
-                ws_session_id: self.ws_session_id,
+			.try_send(error_router::Connect {
+				addr: addr.recipient(),
+				ws_session_id: self.ws_session_id,
 				subscribed_errors,
-            })
-            .unwrap();
+			})
+			.unwrap();
 	}
 
 	fn stopping(&mut self, _ctx: &mut Self::Context) -> Running {
 		// notify chat server
-		self.router_addr
-			.do_send(error_router::Disconnect { ws_session_id: self.ws_session_id });
+		self.router_addr.do_send(error_router::Disconnect {
+			ws_session_id: self.ws_session_id,
+		});
 		Running::Stop
 	}
 }
-
 
 /// send messages to server if requested by dataserver
 impl Handler<error_router::NewFormattedError> for WsSession {
@@ -62,15 +67,9 @@ impl Handler<error_router::NewFormattedError> for WsSession {
 	}
 }
 
-
 /// Handler for `ws::Message`
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsSession {
-	
-	fn handle(
-        &mut self,
-        msg: Result<ws::Message, ws::ProtocolError>,
-        _ctx: &mut Self::Context,
-    ) {
+	fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, _ctx: &mut Self::Context) {
 		// process websocket messages
 		println!("WS: {:?}", msg.unwrap()); // TODO FIXME should handle error here
 	}

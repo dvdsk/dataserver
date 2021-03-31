@@ -23,17 +23,20 @@ structopt = "0.3"
 dialoguer = "0.6"
 console = "0.12"
 
+futures = "0.3"
+
+# actix crates depend on eachoter, must upgrade simultaneiously
 actix = "0.10"
-actix-rt = "1.0"
-futures = "0.3.1"
+actix-rt = "1.0" # must match version used by actix-web-actors
 actix-web = { version = "3", features = ["rustls"] }
-actix-web-actors = "3"
-actix-net = "0.2.6"
+actix-web-actors = "3" # must match actix-rt version
+actix-net = "0.2"
 actix-identity = "0.3"
 actix-files = "0.3"
-actix-service = "1.0.1"
-actix-threadpool = "0.3.3"
-yarte = { version ="0.12" , git = "https://github.com/dskleingeld/yarte" }
+actix-service = "1"
+actix-threadpool = "0.3"
+
+yarte = { version ="0.15" }
 
 old_sled = { version = "0.30", package = "sled" }
 sled = "0.34"
@@ -42,10 +45,10 @@ rustls = "0.18.0"
 ring = "0.16.9"
 
 bytes = "0.5"
-walkdir = "2.2.5"
+walkdir = "2"
 num-traits = "0.2"
 num-derive = "0.3"
-threadpool = "1.7.1"
+threadpool = "1"
 
 webpki = "0.21"
 webpki-roots = "0.20"
@@ -53,20 +56,20 @@ webpki-roots = "0.20"
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.7"
 
-log = "0.4.5"
+log = "0.4"
 fern = { version = "0.6", features = ["colored"] }
 error_level = { version = "0.1", git = "https://github.com/dskleingeld/error_level" }
 
-bincode = "1.0.1"
-text_io = "0.1.7"
+bincode = "1"
+text_io = "0.1"
 
-serde_derive = "1.0.80"
-serde = "1.0.80"
-serde_yaml = "0.8.7"
-serde_json = "1.0.33"
+serde_derive = "1"
+serde = "1"
+serde_yaml = "0.8"
+serde_json = "1"
 
-reqwest = {version = "0.10.0", default-features = false, features = ["blocking","rustls-tls"]}
-byteorder = "1.2.6"
+reqwest = {version = "0.10", default-features = false, features = ["blocking","rustls-tls"]}
+byteorder = "1"
 
 byteseries = { version = "0.4", git = "https://github.com/dskleingeld/minimal_timeseries" }
 bitspec = { git = "https://github.com/dskleingeld/bitspec", branch = "bool-fields"}
@@ -80,5 +83,5 @@ telegram-bot = {version = "0.7", default-features = false, features = ["rustls"]
 
 plotters = { version = "0.3" }
 image = { version = "0.23" }
-evalexpr = "5.0.5"
+evalexpr = "5"
 regex = "1.3"

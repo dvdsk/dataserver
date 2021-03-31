@@ -1,4 +1,4 @@
-use actix::*;
+use actix::prelude::*;
 use log::{debug, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use byteorder::{WriteBytesExt, LittleEndian};
@@ -74,7 +74,6 @@ impl Actor for WsSession {
 	//type Context = ws::WebsocketContext<Self, DataRouterState>;
 	type Context = ws::WebsocketContext<Self>;
 
-	//fn started<T: InnerState>(&mut self, ctx: &mut Self::Context) {
 	fn started(&mut self, ctx: &mut Self::Context) {
 		let addr = ctx.address();
 		self.data_router_addr

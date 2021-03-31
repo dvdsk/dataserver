@@ -262,22 +262,20 @@ pub fn load_data(data: &mut HashMap<DatasetId, DataSet>, datafile_path: &Path, d
 		.create(false)
 		.open(&info_path)
 	{
-		if let Ok(metadata) = serde_yaml::from_reader::<std::fs::File, FixedLine>(metadata_file) {
-			let line_size = metadata.fieldsum();
+		let metadata = serde_yaml::from_reader::<std::fs::File, FixedLine>(metadata_file)
+            .expect(&format!("could not deserialise {:?}", info_path));
+        let line_size = metadata.fieldsum();
 
-			if let Ok(timeserie) = Series::open(datafile_path, line_size as usize) {
-				info!("loaded dataset with id: {}", &data_id);
-				data.insert(
-					data_id,
-					DataSet {
-						timeseries: timeserie,
-						metadata,
-					},
-				);
-			}
-		} else {
-			warn!("could not deserialise: {:?}", info_path);
-		}
+        if let Ok(timeserie) = Series::open(datafile_path, line_size as usize) {
+            info!("loaded dataset with id: {}", &data_id);
+            data.insert(
+                data_id,
+                DataSet {
+                    timeseries: timeserie,
+                    metadata,
+                },
+            );
+        }
 	} else {
 		warn!("could not open: {:?} for reading", info_path);
 	}

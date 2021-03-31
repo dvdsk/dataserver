@@ -317,7 +317,7 @@ async fn add(
 			sets: fields.keys().copied().collect(),
 		})
 		.await
-		.unwrap()
+		.unwrap() // never seems to arrive
 		.map_err(|_| Error::TooManyAlarms)?;
 	dbg!();
 	send_text_reply(chat_id, token, "alarm is set").await?;

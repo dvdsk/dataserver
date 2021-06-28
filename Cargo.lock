@@ -86,11 +86,8 @@ dependencies = [
  "futures-util",
  "http",
  "log 0.4.14",
- "rustls 0.18.1",
- "tokio-rustls 0.14.1",
  "trust-dns-proto 0.19.7",
  "trust-dns-resolver 0.19.7",
- "webpki",
 ]
 
 [[package]]
@@ -125,7 +122,6 @@ dependencies = [
  "actix-rt",
  "actix-service",
  "actix-threadpool",
- "actix-tls",
  "actix-utils",
  "base64 0.13.0",
  "bitflags",
@@ -308,10 +304,6 @@ dependencies = [
  "actix-service",
  "actix-utils",
  "futures-util",
- "rustls 0.18.1",
- "tokio-rustls 0.14.1",
- "webpki",
- "webpki-roots",
 ]
 
 [[package]]
@@ -364,7 +356,6 @@ dependencies = [
  "mime 0.3.16",
  "pin-project 1.0.6",
  "regex",
- "rustls 0.18.1",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -624,7 +615,6 @@ dependencies = [
  "mime 0.3.16",
  "percent-encoding 2.1.0",
  "rand 0.7.3",
- "rustls 0.18.1",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -1321,7 +1311,6 @@ dependencies = [
  "regex",
  "reqwest",
  "ring",
- "rustls 0.18.1",
  "serde",
  "serde_derive",
  "serde_json",
@@ -1335,8 +1324,6 @@ dependencies = [
  "thiserror",
  "threadpool",
  "walkdir",
- "webpki",
- "webpki-roots",
  "yarte",
 ]
 

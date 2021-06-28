@@ -5,7 +5,6 @@ mod handlers;
 mod login_redirect;
 pub mod utility;
 
-use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
 
@@ -15,7 +14,6 @@ use actix_web::{web, App, HttpServer};
 
 use crate::data_store::data_router::DataRouterState;
 use crate::databases::User;
-use crate::error::DataserverError as Error;
 
 use crate::bot;
 use login_redirect::CheckLogin;
@@ -27,11 +25,9 @@ pub struct Session {
 
 pub fn start(
 	data_router_state: DataRouterState,
-	key_dir: &Path,
 	port: u16,
 	domain: String,
-) -> Result<actix_web::dev::Server, Error> {
-	let tls_config = utility::make_tls_config(&domain, key_dir)?;
+) -> actix_web::dev::Server {
 	let cookie_key = utility::make_random_cookie_key();
 	let token = data_router_state.bot_token.clone();
 
@@ -95,7 +91,7 @@ pub fn start(
 				)
 		})
 		// WARNING TLS IS NEEDED FOR THE LOGIN SYSTEM TO FUNCTION
-		.bind_rustls(&format!("0.0.0.0:{}", port), tls_config)
+		.bind(&format!("0.0.0.0:{}", port))
 		.unwrap()
 		.shutdown_timeout(5) // shut down 5 seconds after getting the signal to shut down
 		.run(); // end of App::new()
@@ -105,5 +101,5 @@ pub fn start(
 	}); //httpserver closure
 
 	let web_handle = rx.recv().unwrap();
-	Ok(web_handle)
+	web_handle
 }

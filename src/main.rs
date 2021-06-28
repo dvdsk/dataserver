@@ -15,7 +15,6 @@ use databases::{AlarmDatabase, PasswordDatabase, UserDatabase, UserLookup};
 use menu::Menu;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -36,30 +35,20 @@ struct Opt {
 	service: bool,
 
 	/// Port for incomming trafic
-	#[cfg(feature = "stable")]
-	#[structopt(short = "p", long = "port", default_value = "443")]
+	#[structopt(short = "p", long = "port")]
 	port: u16,
 
-	#[cfg(not(feature = "stable"))]
-	#[structopt(short = "p", long = "port", default_value = "8443")]
-	port: u16,
-
-	/// Advertise this port to clients. By default the port
-	/// for clients is the same as is listend on
+	/// Advertise this port to telegram for websocket
 	#[structopt(short = "e", long = "external-port")]
-	external_port: Option<u16>,
+	external_port: u16,
 
+    // Telegram bot token
 	#[structopt(short = "t", long = "token")]
 	token: String,
 
-	/// domain without used subdomain fox example "example.com".
-	/// a variant with www attached will be added automatically
+	/// domain, for the webserver www will be added automatically
 	#[structopt(short = "d", long = "domain")]
 	domain: String,
-
-	/// directory to look in for certificate and pirvate key
-	#[structopt(short = "k", long = "keys", default_value = "keys")]
-	key_dir: PathBuf,
 
 	/// upgrade the database from a previous sled version
 	#[structopt(short = "u", long = "upgrade-db")]
@@ -120,17 +109,11 @@ async fn main() {
 	//runs in its own thread
 	let web_handle = httpserver::start(
 		data_router_state.clone(),
-		&opt.key_dir,
 		opt.port,
 		opt.domain.clone(),
-	)
-	.unwrap();
+	);
 
-	let res = if let Some(port) = opt.external_port {
-		bot::set_webhook(&opt.domain, &opt.token, port).await
-	} else {
-		bot::set_webhook(&opt.domain, &opt.token, opt.port).await
-	};
+    let res = bot::set_webhook(&opt.domain, &opt.token, opt.external_port).await;
 	if let Err(e) = res {
 		error!("could not start telegram bot: {:?}", e);
 	}

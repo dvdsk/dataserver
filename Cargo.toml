@@ -28,7 +28,7 @@ futures = "0.3"
 # actix crates depend on eachoter, must upgrade simultaneiously
 actix = "0.10"
 actix-rt = "1.0" # must match version used by actix-web-actors
-actix-web = { version = "3", features = ["rustls"] }
+actix-web = { version = "3" }
 actix-web-actors = "3" # must match actix-rt version
 actix-net = "0.2"
 actix-identity = "0.3"
@@ -41,7 +41,6 @@ yarte = { version ="0.15" }
 old_sled = { version = "0.30", package = "sled" }
 sled = "0.34"
 
-rustls = "0.18.0"
 ring = "0.16.9"
 
 bytes = "0.5"
@@ -49,9 +48,6 @@ walkdir = "2"
 num-traits = "0.2"
 num-derive = "0.3"
 threadpool = "1"
-
-webpki = "0.21"
-webpki-roots = "0.20"
 
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.7"

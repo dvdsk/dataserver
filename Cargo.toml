@@ -38,7 +38,6 @@ yarte = { version ="0.12" , git = "https://github.com/dskleingeld/yarte" }
 old_sled = { version = "0.30", package = "sled" }
 sled = "0.34"
 
-rustls = "0.18.0"
 ring = "0.16.9"
 
 bytes = "0.5"
@@ -46,9 +45,6 @@ walkdir = "2.2.5"
 num-traits = "0.2"
 num-derive = "0.3"
 threadpool = "1.7.1"
-
-webpki = "0.21"
-webpki-roots = "0.20"
 
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.7"

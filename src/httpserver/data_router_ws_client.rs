@@ -260,7 +260,7 @@ impl WsSession {
 			return;
 		}
 
-		let mut client_metadata = Vec::with_capacity(self.selected_data.len());
+		let client_metadata = Vec::with_capacity(self.selected_data.len());
 		let data_handle = self.data.clone();
 		let mut data = data_handle.write().unwrap();
 

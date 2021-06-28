@@ -5,7 +5,6 @@ mod handlers;
 mod login_redirect;
 pub mod utility;
 
-use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
 
@@ -27,11 +26,9 @@ pub struct Session {
 
 pub fn start(
 	data_router_state: DataRouterState,
-	key_dir: &Path,
 	port: u16,
 	domain: String,
 ) -> Result<actix_web::dev::Server, Error> {
-	let tls_config = utility::make_tls_config(&domain, key_dir)?;
 	let cookie_key = utility::make_random_cookie_key();
 	let token = data_router_state.bot_token.clone();
 
@@ -94,8 +91,8 @@ pub fn start(
 						.service(fs::Files::new("", "./web/")),
 				)
 		})
-		// WARNING TLS IS NEEDED FOR THE LOGIN SYSTEM TO FUNCTION
-		.bind_rustls(&format!("0.0.0.0:{}", port), tls_config)
+		// SEC: only allow connections from reverse tls proxy on same machine
+		.bind(&format!("127.0.0.1:{}", port))
 		.unwrap()
 		.shutdown_timeout(5) // shut down 5 seconds after getting the signal to shut down
 		.run(); // end of App::new()

@@ -1,5 +1,4 @@
 use crate::databases;
-use crate::httpserver::utility;
 use fern::colors::{Color, ColoredLevelConfig};
 
 #[derive(Debug)]
@@ -8,14 +7,8 @@ pub enum DataserverError {
 	DatabaseLoadError(databases::LoadDbError),
 	UserDatabaseError(databases::UserDbError),
 	SerializationError(bincode::Error),
-	CertLoadError(utility::Error),
 }
 
-impl From<utility::Error> for DataserverError {
-	fn from(error: utility::Error) -> Self {
-		DataserverError::CertLoadError(error)
-	}
-}
 impl From<sled::Error> for DataserverError {
 	fn from(error: sled::Error) -> Self {
 		DataserverError::DatabaseError(error)

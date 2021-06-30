@@ -39,7 +39,7 @@ struct Opt {
 	port: u16,
 
 	/// Advertise this port to telegram for websocket
-	#[structopt(short = "e", long = "external-port")]
+	#[structopt(short = "e", long = "external-port", default_value="443")]
 	external_port: u16,
 
     // Telegram bot token

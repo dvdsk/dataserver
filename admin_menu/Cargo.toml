@@ -6,3 +6,6 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+dataserver = { path = "../server" }
+structopt = "0.3"
+dialoguer = "0.8"

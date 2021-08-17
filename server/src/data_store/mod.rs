@@ -88,46 +88,6 @@ impl DataSet {
 		}
 	}
 
-	// pub fn get_update(
-	// 	&self,
-	// 	line: Vec<u8>,
-	// 	timestamp: i64,
-	// 	allowed_fields: &Vec<FieldId>,
-	// 	setid: DatasetId,
-	// ) -> Vec<u8> {
-	// 	trace!("get_update");
-
-	// 	let mut recoded_line_size = 0;
-	// 	let mut offset_in_dataset = SmallVec::<[u8; 8]>::new();
-	// 	let mut lengths = SmallVec::<[u8; 8]>::new();
-	// 	let mut offset_in_recoded = SmallVec::<[u8; 8]>::new();
-
-	// 	let mut recoded_offset = 0;
-	// 	for id in allowed_fields {
-	// 		let field = &self.metadata.fields[*id as usize];
-	// 		offset_in_dataset.push(field.offset);
-	// 		lengths.push(field.length);
-	// 		offset_in_recoded.push(recoded_offset);
-	// 		recoded_offset += field.length;
-	// 		recoded_line_size += field.length;
-	// 	}
-	// 	let recoded_line_size = (recoded_line_size as f32 / 8.0).ceil() as u8; //convert to bytes
-	// 	let mut recoded_line: SmallVec<[u8; 24]> =
-	// 		smallvec::smallvec![0; recoded_line_size as usize + 8];
-
-	// 	recoded_line.write_u16::<NetworkEndian>(setid).unwrap();
-	// 	recoded_line.write_i64::<NetworkEndian>(timestamp).unwrap();
-	// 	for ((offset, len), recoded_offset) in offset_in_dataset
-	// 		.iter()
-	// 		.zip(lengths.iter())
-	// 		.zip(offset_in_recoded.iter())
-	// 	{
-	// 		let decoded: u32 = compression::decode(&line, *offset, *len);
-	// 		compression::encode(decoded, &mut recoded_line, *recoded_offset, *len);
-	// 	}
-	// 	recoded_line.to_vec()
-	// }
-
 	pub fn get_update_uncompressed(
 		&self,
 		line: Vec<u8>,

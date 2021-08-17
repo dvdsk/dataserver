@@ -53,10 +53,10 @@ pub struct DataRouter {
 }
 
 impl DataRouter {
-	fn update_context(&mut self, line: &Vec<u8>, set_id: &DatasetId) {
+	fn update_context(&mut self, line: &[u8], set_id: &DatasetId) {
 		let meta = self.meta.get(set_id).unwrap();
 		for field in &meta.fields {
-			let value: f64 = field.decode(&line).into();
+			let value: f64 = field.decode(line).into();
 			let name = format!("{}_{}", set_id, field.id);
 			self.alarm_context
 				.set_value(name, value.into())

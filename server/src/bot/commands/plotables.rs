@@ -18,7 +18,7 @@ pub async fn send(
 
 	let data = state.data.read().unwrap();
 	for (dataset_id, authorized_fields) in user.timeseries_with_access.iter() {
-		let metadata = &data.sets.get(&dataset_id).unwrap().metadata;
+		let metadata = &data.sets.get(dataset_id).unwrap().metadata;
 		text.push_str(&metadata.name);
 		text.push_str(HEADER);
 

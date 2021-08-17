@@ -100,6 +100,5 @@ pub fn start(
 		let _ = sys.run();
 	}); //httpserver closure
 
-	let web_handle = rx.recv().unwrap();
-	web_handle
+	rx.recv().unwrap()
 }

@@ -3,30 +3,30 @@ use fern::colors::{Color, ColoredLevelConfig};
 
 #[derive(Debug)]
 pub enum DataserverError {
-	DatabaseError(sled::Error),
-	DatabaseLoadError(database::LoadDbError),
-	UserDatabaseError(database::UserDbError),
-	SerializationError(bincode::Error),
+	Database(sled::Error),
+	DatabaseLoad(database::LoadDbError),
+	UserDatabase(database::UserDbError),
+	Serialization(bincode::Error),
 }
 
 impl From<sled::Error> for DataserverError {
 	fn from(error: sled::Error) -> Self {
-		DataserverError::DatabaseError(error)
+		DataserverError::Database(error)
 	}
 }
 impl From<database::LoadDbError> for DataserverError {
 	fn from(error: database::LoadDbError) -> Self {
-		DataserverError::DatabaseLoadError(error)
+		DataserverError::DatabaseLoad(error)
 	}
 }
 impl From<database::UserDbError> for DataserverError {
 	fn from(error: database::UserDbError) -> Self {
-		DataserverError::UserDatabaseError(error)
+		DataserverError::UserDatabase(error)
 	}
 }
 impl From<bincode::Error> for DataserverError {
 	fn from(error: bincode::Error) -> Self {
-		DataserverError::SerializationError(error)
+		DataserverError::Serialization(error)
 	}
 }
 

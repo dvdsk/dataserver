@@ -31,7 +31,7 @@ const INT_ERR_TEXT: &str = "apologies, an internal error happend this has been r
 pub enum Error {
 	#[report(error)]
     #[error("{}", INT_ERR_TEXT)]
-	HttpClientError(#[from] reqwest::Error),
+	HttpClient(#[from] reqwest::Error),
 	#[report(error)]
 	#[error("could not set up webhook for telegram bot")]
 	CouldNotSetWebhook,
@@ -48,7 +48,7 @@ pub enum Error {
 	#[error("sorry I can not understand your input")]
 	UnhandledMessageKind,
 	#[error("sorry I can not understand your input")]
-	BotDatabaseError(#[from] UserDbError),
+	BotDatabase(#[from] UserDbError),
 	#[report(no)]
 	#[error(
 		"your input: \"{0}\", is not a possible command or \
@@ -57,15 +57,15 @@ pub enum Error {
 	)]
 	UnknownAlias(String),
 	#[error("{0}")]
-	ShowError(#[from] show::Error),
+	Show(#[from] show::Error),
 	#[error("{0}")]
-	AliasError(#[from] alias::Error),
+	Alias(#[from] alias::Error),
 	#[error("{0}")]
-	KeyBoardError(#[from] keyboard::Error),
+	KeyBoard(#[from] keyboard::Error),
 	#[error("{0}")]
-	AlarmError(#[from] alarms::Error),
+	Alarm(#[from] alarms::Error),
 	#[error("{0}")]
-	PlotError(#[from] plot::Error),
+	Plot(#[from] plot::Error),
 }
 
 fn to_string_and_ids(update: Update) -> Result<(String, ChatId, UserId), Error> {
@@ -163,7 +163,7 @@ async fn handle_command(
 async fn handle(update: Update, state: &DataRouterState) {
 	let token = &state.bot_token;
 	if let Ok((text, chat_id, user_id)) = to_string_and_ids(update) {
-		if let Err(error) = handle_command(text, chat_id, user_id, &state).await {
+		if let Err(error) = handle_command(text, chat_id, user_id, state).await {
 			handle_error(error, chat_id, token).await;
 		}
 	}

@@ -61,7 +61,7 @@ pub enum Error {
 	#[error("error accessing byteseries")]
 	ByteSeries(#[from] byteseries::Error),
 	#[error("io error")]
-	IoError(#[from] io::Error),
+	Io(#[from] io::Error),
 	#[error("syntax error in specification")]
 	MalformedSpec,
 }
@@ -342,10 +342,10 @@ impl Data {
 				return Err(());
 			}
 
-			return Ok((dataset_id, data_string.split_off(10).to_vec()));
+			Ok((dataset_id, data_string.split_off(10).to_vec()))
 		} else {
 			warn!("could not find dataset with id: {}", dataset_id);
-			return Err(());
+			Err(())
 		}
 	}
 }

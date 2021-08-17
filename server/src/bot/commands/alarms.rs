@@ -218,7 +218,7 @@ fn parse_arguments(args: &str) -> Result<Arguments, Error> {
 			.parse::<DatasetId>()?;
 		let field_id = split
 			.last()
-			.ok_or(Error::IncorrectFieldSpecifier(ids_str.to_owned()))?
+			.ok_or_else(|| Error::IncorrectFieldSpecifier(ids_str.to_owned()))?
 			.parse::<FieldId>()?;
 		if let Some(list) = fields.get_mut(&set_id) {
 			if !list.contains(&field_id) {
@@ -244,13 +244,13 @@ fn authorized(needed_fields: &HashMap<DatasetId, Vec<FieldId>>, user: &User) -> 
 	for (set_id, list) in needed_fields.iter() {
 		let fields_with_access = user
 			.timeseries_with_access
-			.get(&set_id)
+			.get(set_id)
 			.ok_or(Error::NoAccessToDataSet(*set_id))?;
 
 		for field_id in list.iter() {
 			//prevent users requesting a field twice (this leads to an overflow later)
 			fields_with_access
-				.binary_search_by(|auth| auth.as_ref().cmp(&field_id))
+				.binary_search_by(|auth| auth.as_ref().cmp(field_id))
 				.map_err(|_| Error::NoAccessToField(*field_id))?;
 		}
 	}

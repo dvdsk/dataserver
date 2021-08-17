@@ -173,8 +173,7 @@ fn format_error_code(data: &Arc<RwLock<Data>>, msg: &NewError) -> Result<String,
 			"{time} system error occured: {error}",
 			time = msg.timestamp,
 			error = error
-		)
-		.to_string());
+		));
 	}
 
 	if let Some(dataset) = data.read().unwrap().sets.get(&msg.dataset_id) {
@@ -185,7 +184,7 @@ fn format_error_code(data: &Arc<RwLock<Data>>, msg: &NewError) -> Result<String,
 				dataset_name=metadata.name,
 				dataset_description = metadata.description,
 				error=error,
-				).to_string())
+				))
 		} else {
 			let mut field_names = String::new();
 			for field_id in &msg.field_ids {
@@ -202,7 +201,7 @@ fn format_error_code(data: &Arc<RwLock<Data>>, msg: &NewError) -> Result<String,
 				dataset_name=metadata.name,
 				dataset_description = metadata.description,
 				error=error,
-				).to_string())
+				))
 		}
 	} else {
 		Err(())
@@ -318,10 +317,10 @@ impl ErrorRouter {
 		Ok(ErrorRouter {
 			sessions: HashMap::new(),
 			ws_subs: HashMap::new(),
-			clients_to_notify: NotifyChannels::load(&db)?, //keys = dataset_id+field_id
+			clients_to_notify: NotifyChannels::load(db)?, //keys = dataset_id+field_id
 			client_undisplayed_errors: db.open_tree("undisplayed errors")?,
 
-			reported_errors: ReportedErrors::load(&db)?,
+			reported_errors: ReportedErrors::load(db)?,
 			data,
 		})
 	}

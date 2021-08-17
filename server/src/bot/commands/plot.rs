@@ -47,19 +47,19 @@ pub enum Error {
 	NoAccessToDataSet(DatasetId),
     #[report(error)]
 	#[error("internal error in plotting lib")]
-	PlotLibError,
+	PlotLib,
     #[report(error)]
 	#[error("could not encode png: {0}")]
-	EncodingError(image::error::ImageError),
+	Encoding(image::error::ImageError),
     #[report(error)]
 	#[error("internal db error")]
-	BotDatabaseError(#[from] UserDbError),
+	BotDatabase(#[from] UserDbError),
     #[report(debug)]
 	#[error("Not enough arguments \nuse: {}", USAGE)]
 	NotEnoughArguments,
     #[report(error)]
 	#[error("Error getting data: {0}")]
-	DatasetError(#[from] byteseries::Error),
+	DataSet(#[from] byteseries::Error),
 }
 
 fn unwrap_threadpool_err<E: std::fmt::Debug>(e: actix_threadpool::BlockingError<E>) -> E { 
@@ -83,7 +83,7 @@ pub async fn send(
     let state = state.clone();
     let plot_job = move || plot(args, state, user);
     let plot = actix_threadpool::run(plot_job).await
-        .map_err(|e| unwrap_threadpool_err(e))?;
+        .map_err(unwrap_threadpool_err)?;
 
 	let photo_part = reqwest::multipart::Part::bytes(plot)
 		.mime_str("image/png")
@@ -108,7 +108,7 @@ pub async fn send(
 
 type PlotData = (Vec<i64>, Vec<f32>, Vec<(FieldId, String)>);
 fn xlimits_from_data(data: &[PlotData]) -> Result<(DateTime<Local>, DateTime<Local>), Error> {
-    assert!(data.len() > 0);
+    assert!(!data.is_empty());
     let mut min_ts = std::i64::MAX; //initialization does not matter as data.len > 0   
     let mut max_ts = std::i64::MIN;
 	for (time, _values, _meta) in data {
@@ -203,19 +203,19 @@ fn plot(args: Vec<String>, state: DataRouterState, user: User) -> Result<Vec<u8>
 	//Init plot
 	let mut subpixelbuffer: Vec<u8> = vec![0u8; (DIMENSIONS.0 * DIMENSIONS.1 * 3) as usize];
 	let root = BitMapBackend::with_buffer(&mut subpixelbuffer, DIMENSIONS).into_drawing_area();
-	root.fill(&WHITE).map_err(|_| Error::PlotLibError)?;
+	root.fill(&WHITE).map_err(|_| Error::PlotLib)?;
 
 	let mut chart = ChartBuilder::on(&root)
 		.x_label_area_size(40)
 		.y_label_area_size(40)
 		.build_cartesian_2d(from_date..to_date, y_min..y_max)
-		.map_err(|_| Error::PlotLibError)?;
+		.map_err(|_| Error::PlotLib)?;
 	chart
 		.configure_mesh()
 		// .line_style_2(&WHITE)
 		.x_label_formatter(&|v| v.format(x_label_formatstr).to_string())
 		.draw()
-		.map_err(|_| Error::PlotLibError)?;
+		.map_err(|_| Error::PlotLib)?;
 
 	//add lines
 	for (shared_x, ys, mut labels) in plot_data {
@@ -232,7 +232,7 @@ fn plot(args: Vec<String>, state: DataRouterState, user: User) -> Result<Vec<u8>
 						.zip(ys.iter().skip(i).step_by(n_lines).copied()),
 					&RED,
 				))
-				.map_err(|_| Error::PlotLibError)?
+				.map_err(|_| Error::PlotLib)?
 				.label(label.1);
 		}
 	}
@@ -242,7 +242,7 @@ fn plot(args: Vec<String>, state: DataRouterState, user: User) -> Result<Vec<u8>
 		.background_style(&WHITE.mix(0.8))
 		.border_style(&BLACK)
 		.draw()
-		.map_err(|_| Error::PlotLibError)?;
+		.map_err(|_| Error::PlotLib)?;
 
 	drop(chart);
 	drop(root);
@@ -251,7 +251,7 @@ fn plot(args: Vec<String>, state: DataRouterState, user: User) -> Result<Vec<u8>
 	let mut image = Vec::new();
 	PngEncoder::new(&mut image)
 		.encode(&subpixelbuffer, DIMENSIONS.0, DIMENSIONS.1, ColorType::Rgb8)
-		.map_err(Error::EncodingError)?;
+		.map_err(Error::Encoding)?;
 
 	Ok(image)
 }
@@ -296,7 +296,7 @@ fn parse_plot_arguments(
 
 	//optional argument
 	let scaling = if args.len() > 2 {
-		let mut params = args[2].split(":");
+		let mut params = args[2].split(':');
 		let y_min = params
 			.next()
 			.ok_or_else(|| Error::IncorrectArgument(args[2].clone()))?

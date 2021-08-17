@@ -64,7 +64,7 @@ pub async fn list_data(id: Identity, state: Data<DataRouterState>) -> impl Respo
 		.timeseries_with_access
 		.iter()
 	{
-		let set = datasets.get_mut(&dataset_id).unwrap();
+		let set = datasets.get_mut(dataset_id).unwrap();
 
 		let time_since;
 		let line = if let Ok((time, line)) = set.timeseries.last_line_raw() {
@@ -90,7 +90,7 @@ pub async fn list_data(id: Identity, state: Data<DataRouterState>) -> impl Respo
 				}
 			};
 			if let Some(ref line) = line {
-                let value: f32 = fields[*id as usize].decode(&line).into();
+                let value: f32 = fields[*id as usize].decode(line).into();
 				info.values.push(value.to_string());
 			} else {
 				info.values.push(String::from("-"));
@@ -142,7 +142,7 @@ pub async fn plot_data(id: Identity, state: Data<DataRouterState>) -> impl Respo
 		let mut infos = Vec::new();
 		let metadata = &data
 			.sets
-			.get(&dataset_id)
+			.get(dataset_id)
 			.expect("user has access to a database that does no longer exist")
 			.metadata;
 		for field_id in authorized_fields {

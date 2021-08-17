@@ -31,7 +31,7 @@ pub enum Error {
 	NotEnoughSpace(usize),
     #[report(error)]
 	#[error("Internal error, could not save keyboard")]
-	DbError(crate::database::UserDbError),
+	Db(crate::database::UserDbError),
 }
 
 pub async fn show(chat_id: ChatId, token: &str, user: User) -> Result<(), botError> {
@@ -76,8 +76,7 @@ pub async fn add_button(
 	if let Some(keyboard_str) = user.keyboard {
 		serde_json::from_str(&keyboard_str).unwrap()
 	} else {
-		let mut new_kb = Vec::new();
-		new_kb.push(Vec::new());
+        let new_kb = vec![Vec::new()];
 		new_kb
 	};
 
@@ -110,7 +109,7 @@ pub async fn add_button(
 		.user_db
 		.set_user(user.clone())
 		.await
-		.map_err(Error::DbError)?;
+		.map_err(Error::Db)?;
 
 	//update users keyboard
 	reload(chat_id, token, user, "updated keyboard").await?;
@@ -151,7 +150,7 @@ pub async fn remove_button(
 		.user_db
 		.set_user(user.clone())
 		.await
-		.map_err(Error::DbError)?;
+		.map_err(Error::Db)?;
 
 	//update users keyboard
 	reload(chat_id, token, user, "updated keyboard").await?;

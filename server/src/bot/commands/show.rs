@@ -19,10 +19,10 @@ use super::super::Error as botError;
 pub enum Error {
     #[report(debug)]
 	#[error("The argument {0} could not be parsed")]
-	ArgumentParseError(String, std::num::ParseIntError),
+	ArgumentParse(String, std::num::ParseIntError),
     #[report(debug)]
 	#[error("The argument {0} could not be interpreted, does it contain a \":\"?")]
-	ArgumentSplitError(String),
+	ArgumentSplit(String),
     #[report(debug)]
 	#[error("You do not have access to field: {0}")]
 	NoAccessToField(FieldId),
@@ -30,13 +30,13 @@ pub enum Error {
 	#[error("You do not have access to dataset: {0}")]
 	NoAccessToDataSet(DatasetId),
 	#[error("database error")]
-	BotDatabaseError(#[from] UserDbError),
+	BotDatabase(#[from] UserDbError),
     #[report(debug)]
 	#[error("Not enough arguments\nuse: {}", USAGE)]
 	NotEnoughArguments,
     #[report(error)]
 	#[error("Error accessing dataset: {0}")]
-	DataSetError(#[from] byteseries::Error),
+	DataSet(#[from] byteseries::Error),
 }
 
 fn parse_args(args: String, user: &User) -> Result<Vec<(DatasetId, Vec<FieldId>)>, Error> {
@@ -47,14 +47,14 @@ fn parse_args(args: String, user: &User) -> Result<Vec<(DatasetId, Vec<FieldId>)
 		let mut ids = arg.split('_');
 		let dataset_id: DatasetId = ids
 			.next()
-			.ok_or_else(|| Error::ArgumentSplitError(arg.to_owned()))?
+			.ok_or_else(|| Error::ArgumentSplit(arg.to_owned()))?
 			.parse()
-			.map_err(|e| Error::ArgumentParseError(arg.to_owned(), e))?;
+			.map_err(|e| Error::ArgumentParse(arg.to_owned(), e))?;
 		let field_id: FieldId = ids
 			.next()
-			.ok_or_else(|| Error::ArgumentSplitError(arg.to_owned()))?
+			.ok_or_else(|| Error::ArgumentSplit(arg.to_owned()))?
 			.parse()
-			.map_err(|e| Error::ArgumentParseError(arg.to_owned(), e))?;
+			.map_err(|e| Error::ArgumentParse(arg.to_owned(), e))?;
 
 		let fields_with_access = user
 			.timeseries_with_access
@@ -100,10 +100,10 @@ pub async fn send(
 	let dataset_fields = parse_args(args, user)?;
 	let datasets = &state.data.read().unwrap().sets;
 	for (dataset_id, field_ids) in dataset_fields.iter() {
-		let set = datasets.get(&dataset_id).unwrap();
+		let set = datasets.get(dataset_id).unwrap();
 		let fields = &set.metadata.fields;
 
-		let (time, line) = set.timeseries.last_line_raw().map_err(|e| Error::from(e))?;
+		let (time, line) = set.timeseries.last_line_raw().map_err(Error::from)?;
 
 		let set_name = &set.metadata.name;
 		let time_since = format_to_duration(time);

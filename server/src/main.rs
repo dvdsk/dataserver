@@ -6,19 +6,16 @@ mod database;
 mod debug_middleware;
 mod error;
 mod httpserver;
-mod menu;
+mod admin_interface;
 
 use data_store::{
 	data_router::DataRouter, data_router::DataRouterState, error_router::ErrorRouter,
 };
 use database::{AlarmDatabase, PasswordDatabase, UserDatabase, UserLookup};
-use menu::Menu;
 
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, RwLock};
-use std::thread;
-use std::time::Duration;
 
 use actix::prelude::*;
 use log::error;
@@ -107,7 +104,7 @@ async fn main() {
 	};
 
 	//runs in its own thread
-	let web_handle = httpserver::start(
+	let http_server = httpserver::start( // TODO get out of seperate thread into event loop
 		data_router_state.clone(),
 		opt.port,
 		opt.domain.clone(),
@@ -118,18 +115,6 @@ async fn main() {
 		error!("could not start telegram bot: {:?}", e);
 	}
 
-	if opt.service {
-		loop {
-			thread::sleep(Duration::from_secs(60 * 60 * 24));
-		} //TODO replace with something nice
-	} else {
-		let menu_future = if !opt.no_menu {
-			Menu::gui(data, passw_db, user_db, alarm_db, db_lookup)
-		} else {
-			Menu::simple()
-		};
-		menu_future.await;
-	}
-
-	web_handle.stop(false).await;
+    http_server.await;
+    // TODO add menu interface, it will block forever
 }

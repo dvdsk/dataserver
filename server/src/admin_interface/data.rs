@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
+use actix_rt::net::TcpStream;
 
 use dialoguer::{Input, Select};
 use futures::executor::block_on;
@@ -11,13 +12,10 @@ use log::{error, info};
 use crate::data_store::{Data, DatasetId};
 use crate::database::UserDatabase;
 
-pub fn add_set(data: &Arc<RwLock<Data>>) {
+pub fn add_set(stream: &mut TcpStream, data: &Arc<RwLock<Data>>) {
 	if !Path::new("specs/template.yaml").exists() {
 		bitspec::write_template().unwrap();
 	}
-	/*if !Path::new("specs/template_for_test.yaml").exists() {
-		bitspec::write_template_for_test().unwrap();
-	}*/
 
 	let file_name = loop {
 		let mut paths: Vec<String> = fs::read_dir("specs")
@@ -60,7 +58,7 @@ pub fn add_set(data: &Arc<RwLock<Data>>) {
 	thread::sleep(Duration::from_secs(2))
 }
 
-pub fn choose_dataset(user_db: &mut UserDatabase, data: &Arc<RwLock<Data>>) {
+pub fn choose_dataset(stream: &mut TcpStream, user_db: &mut UserDatabase, data: &Arc<RwLock<Data>>) {
 	let dataset_list: (Vec<String>, Vec<DatasetId>) = data
 		.read()
 		.unwrap()

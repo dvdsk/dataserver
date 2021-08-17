@@ -1,0 +1,17 @@
+/target
+**/*.rs.bk
+*.dat
+*.h
+*.der
+*.hm
+/test
+/specs
+/keys
+/DATA_WITH_ERROR
+/data
+.md
+
+src/config.rs
+*.sh
+*.log
+database/

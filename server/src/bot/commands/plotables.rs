@@ -1,5 +1,5 @@
 use crate::bot::{send_text_reply, Error};
-use crate::databases::User;
+use crate::database::User;
 use telegram_bot::types::refs::ChatId;
 
 use crate::data_store::data_router::DataRouterState;

@@ -2,7 +2,7 @@
 //mod test;
 mod bot;
 mod data_store;
-mod databases;
+mod database;
 mod debug_middleware;
 mod error;
 mod httpserver;
@@ -11,7 +11,7 @@ mod menu;
 use data_store::{
 	data_router::DataRouter, data_router::DataRouterState, error_router::ErrorRouter,
 };
-use databases::{AlarmDatabase, PasswordDatabase, UserDatabase, UserLookup};
+use database::{AlarmDatabase, PasswordDatabase, UserDatabase, UserLookup};
 use menu::Menu;
 
 use std::collections::HashMap;

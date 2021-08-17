@@ -15,7 +15,7 @@ use super::error_router;
 use super::DatasetId;
 use super::Data;
 
-use crate::databases::{
+use crate::database::{
 	AlarmDatabase, AlarmId, PasswordDatabase, UserDatabase, UserId, UserLookup,
 };
 use crate::httpserver::Session;

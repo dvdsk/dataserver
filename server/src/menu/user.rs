@@ -7,7 +7,7 @@ use dialoguer::{Input, MultiSelect, Password, Select};
 use futures::{executor::block_on, future};
 
 use crate::data_store::{Authorisation, Data, DatasetId};
-use crate::databases::{Access, AlarmDatabase, PasswordDatabase, User, UserDatabase, UserLookup};
+use crate::database::{Access, AlarmDatabase, PasswordDatabase, User, UserDatabase, UserLookup};
 use crate::error::DataserverError as Error;
 use bitspec::{FieldId, FixedLine};
 

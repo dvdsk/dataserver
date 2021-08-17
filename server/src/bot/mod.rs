@@ -9,7 +9,7 @@ use telegram_bot::types::update::Update;
 use telegram_bot::types::update::UpdateKind;
 
 use crate::data_store::data_router::DataRouterState;
-use crate::databases::{User, UserDbError};
+use crate::database::{User, UserDbError};
 
 pub mod commands;
 pub use commands::alarms;

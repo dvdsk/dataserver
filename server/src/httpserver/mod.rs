@@ -13,7 +13,7 @@ use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_web::{web, App, HttpServer};
 
 use crate::data_store::data_router::DataRouterState;
-use crate::databases::User;
+use crate::database::User;
 
 use crate::bot;
 use login_redirect::CheckLogin;

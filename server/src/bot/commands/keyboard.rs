@@ -11,7 +11,7 @@ use std::collections::HashSet;
 use error_level::ErrorLevel;
 
 use crate::data_store::data_router::DataRouterState;
-use crate::databases::User;
+use crate::database::User;
 use log::error;
 use telegram_bot::types::refs::ChatId;
 
@@ -31,7 +31,7 @@ pub enum Error {
 	NotEnoughSpace(usize),
     #[report(error)]
 	#[error("Internal error, could not save keyboard")]
-	DbError(crate::databases::UserDbError),
+	DbError(crate::database::UserDbError),
 }
 
 pub async fn show(chat_id: ChatId, token: &str, user: User) -> Result<(), botError> {

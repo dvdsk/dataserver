@@ -159,11 +159,11 @@ impl NewError {
 
 ///Formats error codes:
 /// if field_id and dataset_id > 0
-/// 	[time] data collection error in set: [dataset name]([dataset description]) specificly [field_id name] reports: [error code explanatin]
+///     [time] data collection error in set: [dataset name]([dataset description]) specificly [field_id name] reports: [error code explanatin]
 /// if the field_id == 0
-/// 	[time] data collection error in set: [dataset name]([dataset description]) error message: [error code explanatin]
+///     [time] data collection error in set: [dataset name]([dataset description]) error message: [error code explanatin]
 /// if the dataset_id == 0 then this is a system error and is reported on as follows:
-/// 	[time] system error [error code explanation]
+///     [time] system error [error code explanation]
 
 fn format_error_code(data: &Arc<RwLock<Data>>, msg: &NewError) -> Result<String, ()> {
 	//TODO add timestamp

@@ -6,21 +6,11 @@ use thiserror::Error;
 use log::error;
 use sled::{Db, Tree};
 
-use ring::{digest, pbkdf2};
 use std::collections::HashMap;
-use std::num::NonZeroU32;
 use std::sync::{Arc, RwLock};
 
-use byteorder::{BigEndian, ByteOrder};
 use chrono::{DateTime, Utc};
 use telegram_bot::types::refs::UserId as TelegramUserId;
-
-use crate::data_store::data_router::Alarm;
-use crate::error::DataserverError;
-
-static PBKDF2_ALG: pbkdf2::Algorithm = pbkdf2::PBKDF2_HMAC_SHA256;
-const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
-
 
 pub type Access = HashMap<data_store::DatasetId, Vec<data_store::Authorisation>>;
 pub type UserId = u64;

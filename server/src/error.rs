@@ -1,11 +1,11 @@
-use crate::databases;
+use crate::database;
 use fern::colors::{Color, ColoredLevelConfig};
 
 #[derive(Debug)]
 pub enum DataserverError {
 	DatabaseError(sled::Error),
-	DatabaseLoadError(databases::LoadDbError),
-	UserDatabaseError(databases::UserDbError),
+	DatabaseLoadError(database::LoadDbError),
+	UserDatabaseError(database::UserDbError),
 	SerializationError(bincode::Error),
 }
 
@@ -14,13 +14,13 @@ impl From<sled::Error> for DataserverError {
 		DataserverError::DatabaseError(error)
 	}
 }
-impl From<databases::LoadDbError> for DataserverError {
-	fn from(error: databases::LoadDbError) -> Self {
+impl From<database::LoadDbError> for DataserverError {
+	fn from(error: database::LoadDbError) -> Self {
 		DataserverError::DatabaseLoadError(error)
 	}
 }
-impl From<databases::UserDbError> for DataserverError {
-	fn from(error: databases::UserDbError) -> Self {
+impl From<database::UserDbError> for DataserverError {
+	fn from(error: database::UserDbError) -> Self {
 		DataserverError::UserDatabaseError(error)
 	}
 }

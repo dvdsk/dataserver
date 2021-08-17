@@ -7,7 +7,7 @@ use log::{error, warn};
 
 use crate::data_store::data_router::DataRouterState;
 use crate::data_store::{Data, DatasetId, FieldDecoder};
-use crate::databases::{User, UserDbError};
+use crate::database::{User, UserDbError};
 use bitspec::FieldId;
 use error_level::ErrorLevel;
 

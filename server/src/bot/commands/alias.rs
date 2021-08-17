@@ -2,7 +2,7 @@ pub const USAGE: &str = "/alias <name> <exiting command>";
 pub const DESCRIPTION: &str = "this defines an new command that can be used to call an existing command with or without arguments. Leave the <existing command> paramater empty to remove an existing alias";
 
 use crate::data_store::data_router::DataRouterState;
-use crate::databases::User;
+use crate::database::User;
 use log::error;
 use telegram_bot::types::refs::ChatId;
 use error_level::ErrorLevel;
@@ -16,7 +16,7 @@ pub enum Error {
 	#[error("not enough arguments")]
 	NotEnoughArguments,
 	#[error("could not update database during setting of alias")]
-	DbError(crate::databases::UserDbError),
+	DbError(crate::database::UserDbError),
 }
 
 pub async fn send(

@@ -8,7 +8,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
 use crate::data_store::Data;
-use crate::databases::{AlarmDatabase, PasswordDatabase, UserDatabase, UserLookup};
+use crate::database::{AlarmDatabase, PasswordDatabase, UserDatabase, UserLookup};
 use dialoguer::Select;
 
 mod data;

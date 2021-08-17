@@ -9,7 +9,7 @@ use error_level::ErrorLevel;
 
 use crate::data_store::data_router::DataRouterState;
 use crate::data_store::DatasetId;
-use crate::databases::{User, UserDbError};
+use crate::database::{User, UserDbError};
 use bitspec::FieldId;
 
 use super::super::send_text_reply;

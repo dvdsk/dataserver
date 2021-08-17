@@ -9,7 +9,7 @@ use futures::executor::block_on;
 use log::{error, info};
 
 use crate::data_store::{Data, DatasetId};
-use crate::databases::UserDatabase;
+use crate::database::UserDatabase;
 
 pub fn add_set(data: &Arc<RwLock<Data>>) {
 	if !Path::new("specs/template.yaml").exists() {
@@ -134,7 +134,7 @@ fn export(_set_id: DatasetId, _data: &Arc<RwLock<Data>>) {
 }
 
 fn archive(set_id: DatasetId, user_db: &mut UserDatabase, data: &Arc<RwLock<Data>>) {
-	//remove all mentions of set in all databases
+	//remove all mentions of set in all database
 	for mut user in user_db.iter() {
 		//remove access
 		if user.timeseries_with_access.remove(&set_id).is_some() {

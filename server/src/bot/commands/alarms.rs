@@ -7,7 +7,7 @@ use std::time::Duration;
 use crate::data_store::data_router::{AddAlarm, RemoveAlarm};
 use crate::data_store::data_router::{Alarm, DataRouterState, NotifyVia};
 use crate::data_store::DatasetId;
-use crate::databases::{AlarmDbError, User};
+use crate::database::{AlarmDbError, User};
 use bitspec::FieldId;
 use chrono::{self, Weekday};
 use evalexpr::{build_operator_tree, EvalexprError};
@@ -41,10 +41,10 @@ pub enum Error {
 		"One of the arguments could not be converted to a number\nuse: {}",
 		HELP_ADD
 	)]
-	ArgumentParseError(#[from] std::num::ParseIntError),
+	ArgumentParse(#[from] std::num::ParseIntError),
     #[report(debug)]
 	#[error("I could not understand the alarms condition. Cause: {0}")]
-	ExpressionError(#[from] EvalexprError),
+	Expression(#[from] EvalexprError),
     #[report(debug)]
 	#[error("I could not understand what day this is: {0}")]
 	InvalidDay(String),
@@ -56,7 +56,7 @@ pub enum Error {
 	NotAnAlarmNumber(String),
     #[report(error)]
 	#[error("Could not save alarm")]
-	DbError(#[from] AlarmDbError),
+	Db(#[from] AlarmDbError),
 }
 
 pub const HELP_ADD: &str = "/alarm add [options] \"condition\"\n\
@@ -150,7 +150,7 @@ pub fn format_time_human_readable(expression: String) -> String {
 fn parse_arguments(args: &str) -> Result<Arguments, Error> {
 	dbg!(&args); //FIXME problem seems to be no spaces anymore here
 	let exp_re = Regex::new(r#""(.*)""#).unwrap();
-	let expression = exp_re.find(&args).ok_or(Error::NoExpression)?.as_str();
+	let expression = exp_re.find(args).ok_or(Error::NoExpression)?.as_str();
 	let expression = expression.get(1..expression.len() - 1).unwrap().to_owned();
 	dbg!("exp");
 	dbg!(&expression);
@@ -158,7 +158,7 @@ fn parse_arguments(args: &str) -> Result<Arguments, Error> {
 
 	let day_re = Regex::new(r#"-d \[(.+)\]"#).unwrap();
 	let day: Option<Result<HashSet<Weekday>, Error>> = day_re
-		.captures(&args)
+		.captures(args)
 		//.map(|f| f.get(1))
 		//.ok_or(Error::InvalidDay(args.to_owned()))?
 		.map(|m| {
@@ -177,7 +177,7 @@ fn parse_arguments(args: &str) -> Result<Arguments, Error> {
 	let day = day.transpose()?;
 
 	let period_re = Regex::new(r#"-p (\d+)([smhdw])"#).unwrap();
-	let period = if let Some(caps) = period_re.captures(&args) {
+	let period = if let Some(caps) = period_re.captures(args) {
 		let numb = caps.get(1).unwrap().as_str().parse::<u64>()?;
 		let unit = caps.get(2).unwrap().as_str();
 		if numb == 0 {
@@ -195,14 +195,14 @@ fn parse_arguments(args: &str) -> Result<Arguments, Error> {
 			})
 		}
 	} else {
-		Some(Duration::from_secs(1 * 60 * 60))
+		Some(Duration::from_secs(60 * 60))
 	};
 
 	let message_re = Regex::new(r#"-m "(.+)""#).unwrap();
-	let message = message_re.find(&args).map(|mat| mat.as_str().to_owned());
+	let message = message_re.find(args).map(|mat| mat.as_str().to_owned());
 
 	let command_re = Regex::new(r#"-c ([^"\-\s]+|".+")"#).unwrap();
-	let command = command_re.find(&args).map(|mat| mat.as_str().to_owned());
+	let command = command_re.find(args).map(|mat| mat.as_str().to_owned());
 
 	let counter_expr = args.contains("-bc");
 

@@ -11,26 +11,20 @@ use futures::Future;
 //    next service in chain as parameter.
 // 2. Middleware's call method gets called with normal request.
 #[allow(dead_code)]
-pub struct SayHi;
+pub struct SayHiTransform;
 
-// Middleware factory is `Transform` trait from actix-service crate
-// `S` - type of the next service
-// `B` - type of response's body
-impl<S, B> Transform<S> for SayHi
+impl<S: Service<Req>, Req> Transform<S, Req> for SayHiTransform
 where
-	S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
-	S::Future: 'static,
-	B: 'static,
+	Req: actix_web::dev::ResourcePath,
 {
-	type Request = ServiceRequest;
-	type Response = ServiceResponse<B>;
-	type Error = Error;
-	type InitError = ();
+	type Response = S::Response;
+	type Error = S::Error;
+	type InitError = S::Error;
 	type Transform = SayHiMiddleware<S>;
 	type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
 	fn new_transform(&self, service: S) -> Self::Future {
-		ok(SayHiMiddleware { service })
+		futures::future::ready(Ok(SayHiMiddleware { service }))
 	}
 }
 
@@ -38,28 +32,18 @@ pub struct SayHiMiddleware<S> {
 	service: S,
 }
 
-impl<S, B> Service for SayHiMiddleware<S>
+impl<S: Service<Req>, Req> Service<Req> for SayHiMiddleware<S>
 where
-	S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
-	S::Future: 'static,
-	B: 'static,
+	Req: actix_web::dev::ResourcePath,
 {
-	type Request = ServiceRequest;
-	type Response = ServiceResponse<B>;
-	type Error = Error;
-	type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
+	type Response = S::Response;
+	type Error = S::Error;
+	type Future = S::Future;
 
-	fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-		self.service.poll_ready(cx)
-	}
+    actix_service::forward_ready!(service);	
 
-	fn call(&mut self, req: ServiceRequest) -> Self::Future {
+	fn call(&self, req: Req) -> Self::Future {
 		println!("You requested: {}", req.path());
-
-		let fut = self.service.call(req);
-		Box::pin(async move {
-			let res = fut.await?;
-			Ok(res)
-		})
+		self.service.call(req)
 	}
 }

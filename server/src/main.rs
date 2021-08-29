@@ -6,7 +6,7 @@ mod database;
 mod debug_middleware;
 mod error;
 mod httpserver;
-mod admin_interface;
+mod rpc;
 
 use data_store::{
 	data_router::DataRouter, data_router::DataRouterState, error_router::ErrorRouter,
@@ -52,7 +52,7 @@ struct Opt {
 	upgrade_db: bool,
 }
 
-#[actix_rt::main]
+#[actix_web::main]
 async fn main() {
 	let opt = Opt::from_args();
 
@@ -85,7 +85,6 @@ async fn main() {
 	let sessions = Arc::new(RwLock::new(HashMap::new()));
 
 	let data_router_addr = DataRouter::new(&data, alarm_db.clone(), opt.token.clone()).start();
-
 	let error_router_addr = ErrorRouter::load(&db, data.clone()).unwrap().start();
 
 	let data_router_state = DataRouterState {
@@ -103,8 +102,7 @@ async fn main() {
 		free_ws_session_ids: Arc::new(AtomicUsize::new(0)),
 	};
 
-	//runs in its own thread
-	let http_server = httpserver::start( // TODO get out of seperate thread into event loop
+	let http_server = httpserver::start_in_thread( // TODO get out of seperate thread into event loop
 		data_router_state.clone(),
 		opt.port,
 		opt.domain.clone(),
@@ -115,6 +113,5 @@ async fn main() {
 		error!("could not start telegram bot: {:?}", e);
 	}
 
-    http_server.await;
-    // TODO add menu interface, it will block forever
+    // rpc::host(8080).await; // blocks forever
 }

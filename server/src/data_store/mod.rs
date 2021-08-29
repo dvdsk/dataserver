@@ -2,7 +2,7 @@ use log::{debug, info, trace, warn};
 use serde::{Deserialize, Serialize};
 
 use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
-use bytes::Bytes;
+use actix_web::web::Bytes;
 use smallvec::SmallVec;
 
 use std::cmp::Ordering;

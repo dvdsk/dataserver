@@ -19,7 +19,7 @@ use super::{data_router_ws_client, error_router_ws_client, Session};
 pub fn index() -> HttpResponse {
 	let index_page = std::include_str!("static_webpages/index.html");
 	HttpResponse::Ok()
-		.header(http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+		.append_header((http::header::CONTENT_TYPE, "text/html; charset=utf-8"))
 		.body(index_page)
 }
 
@@ -31,7 +31,7 @@ pub fn logout(id: Identity) -> HttpResponse {
 pub fn login_page() -> HttpResponse {
 	let page = include_str!("static_webpages/login.html");
 	HttpResponse::Ok()
-		.header(http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+		.append_header((http::header::CONTENT_TYPE, "text/html; charset=utf-8"))
 		.body(page)
 }
 
@@ -87,10 +87,10 @@ pub async fn login_get_and_check(
 	println!("{:?}", end - now);
 
 	Ok(HttpResponse::Found()
-		.header(
+		.append_header((
 			http::header::LOCATION,
 			req.path()["/login".len()..].to_owned(),
-		)
+		))
 		.finish())
 }
 

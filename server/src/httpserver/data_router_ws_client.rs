@@ -10,7 +10,7 @@ use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 
-use bytes::Bytes;
+use actix_web::web::Bytes;
 use chrono::DateTime;
 use chrono::TimeZone; // We need the trait in scope to use Utc::timestamp().
 use std::sync::mpsc;

@@ -1,9 +1,13 @@
+use std::net::{IpAddr, Ipv4Addr};
+
 use structopt::StructOpt;
+// import WorldClient comes from tarpc derive macro
+use interface::rpc::{WorldClient, Codec, tarpc};
 
-mod menu;
-mod remote;
+// mod menu;
+// mod remote;
 
-use remote::Connection;
+// use remote::Connection;
 
 /// A basic example
 #[derive(StructOpt)]
@@ -14,8 +18,20 @@ struct Opt {
 	port: u16,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let opt = Opt::from_args();
-    let conn = remote::Connection::from_port(opt.port);
-    menu::command_line_interface(conn);
+    // let conn = remote::Connection::from_port(opt.port);
+    // menu::command_line_interface(conn);
+    
+    let addr = (IpAddr::V4(Ipv4Addr::LOCALHOST), opt.port);
+    let transport = tarpc::serde_transport::tcp::connect(addr, Codec::default);
+
+    let config = crate::tarpc::client::Config::default();
+    let client = WorldClient::new(config, transport.await.unwrap()).spawn();
+
+    use tarpc::context;
+    let hello = client.hello(context::current(), "david".to_owned()).await;
+    dbg!(hello);
+
 }

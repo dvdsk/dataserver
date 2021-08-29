@@ -1,5 +1,6 @@
 use actix_web::http::StatusCode;
 use actix_web::web::{Bytes, Data, HttpResponse};
+use actix_web::Responder;
 
 use log::{error, info, warn};
 
@@ -169,11 +170,11 @@ async fn handle(update: Update, state: &DataRouterState) {
 	}
 }
 
-pub async fn handle_webhook(state: Data<DataRouterState>, raw_update: Bytes) -> HttpResponse {
+pub async fn handle_webhook(state: Data<DataRouterState>, raw_update: Bytes) -> impl Responder {
 	let update: Update = serde_json::from_slice(&raw_update.to_vec()).unwrap();
 	handle(update, state.get_ref()).await;
 
-	HttpResponse::Ok().status(StatusCode::OK).body("{}")
+	HttpResponse::build(StatusCode::OK).body("{}")
 }
 
 pub async fn send_text_reply<T: Into<String>>(

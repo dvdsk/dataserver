@@ -16,15 +16,13 @@ use crate::data_store::data_router::DataRouterState;
 #[derive(Default)]
 pub struct CheckLogin {}
 
-impl<S, B> Transform<S> for CheckLogin
+impl<S: Service<Req>, Req> Transform<S, Req> for CheckLogin
 where
-	S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
 	S::Future: 'static,
 {
-	type Request = ServiceRequest;
-	type Response = ServiceResponse<B>;
+	type Response = S::Response;
 	type Error = Error;
-	type InitError = ();
+	type InitError = S::Error;
 	type Transform = CheckLoginMiddleware<S>;
 	type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
@@ -51,15 +49,10 @@ fn is_logged_in(state: &DataRouterState, id: String) -> Result<(), ()> {
 	}
 }
 
-impl<S, B> Service for CheckLoginMiddleware<S>
-where
-	S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
-	S::Future: 'static,
-{
-	type Request = ServiceRequest;
-	type Response = ServiceResponse<B>;
+impl<S: Service<Req>, Req> Service<Req> for CheckLoginMiddleware<S> {
+	type Response = S::Response;
 	type Error = Error;
-	type Future = Either<S::Future, Ready<Result<Self::Response, Self::Error>>>;
+	type Future = Either<S::Future, Result<Self::Response, Self::Error>>;
 
 	fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
 		self.service.poll_ready(cx)
@@ -75,9 +68,9 @@ where
 				Either::Left(self.service.call(req))
 			} else {
 				let redirect = "/login".to_owned() + req.path();
-				Either::Right(ok(req.into_response(
+				Either::Right(Ok(req.into_response(
 					HttpResponse::Found()
-						.header(http::header::LOCATION, redirect)
+						.append_header((http::header::LOCATION, redirect))
 						.finish()
 						.into_body(), //TODO why comma? is needed?
 				)))
@@ -85,9 +78,9 @@ where
 		} else {
 			info!("could not get identity thus redirecting");
 			let redirect = "/login".to_owned() + req.path();
-			Either::Right(ok(req.into_response(
+			Either::Right(Ok(req.into_response(
 				HttpResponse::Found()
-					.header(http::header::LOCATION, redirect)
+					.append_header((http::header::LOCATION, redirect))
 					.finish()
 					.into_body(), //TODO why comma? is needed?
 			)))

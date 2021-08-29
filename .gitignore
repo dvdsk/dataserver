@@ -15,3 +15,4 @@ src/config.rs
 *.sh
 *.log
 database/
+interface/target
